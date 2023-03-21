@@ -1,0 +1,22 @@
+[package]
+name = "stam-tools"
+version = "0.1.0"
+edition = "2021"
+authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
+description = "Command-line tools for working with standoff annotations on text (STAM)"
+documentation = "https://docs.rs/stam"
+homepage = "https://github.com/annotation/stam-tools"
+include = ["src/**/*","tests/**/*", "LICENSE", "README.md"]
+license = "GPL-3.0-only"
+readme = "README.md"
+repository = "https://github.com/annotation/stam-tools"
+keywords = [ "text-processing", "annotation", "linguistics", "standoff", "nlp"]
+
+[dependencies]
+stam = "0.2.0"
+clap = "3.2.23"
+
+#compile against development version: (doesn't work when building with maturin for pypi)
+[patch.crates-io]
+#stam = { git = 'https://github.com/annotation/stam-rust.git' } #from git
+stam = { path = '../stam-rust' } #local
