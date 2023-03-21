@@ -17,7 +17,7 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("verbose")
             .long("verbose")
             .short('V')
-            .help("Verbose output")
+            .help("Produce verbose output")
             .required(false),
     );
     args
@@ -114,7 +114,7 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
             if verbose {
                 let textselections: Vec<(TextResourceHandle, TextSelection)> =
                     store.textselections_by_annotation(annotation).collect();
-                print!(
+                println!(
                     "{}\t{}\t{}\t{}\t{}\t{}",
                     id,
                     dataset.id().unwrap(),
@@ -128,7 +128,7 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
                         .join("|")
                 );
             } else {
-                print!(
+                println!(
                     "{}\t{}\t{}\t{}",
                     id,
                     key.id().unwrap(),
