@@ -1,5 +1,5 @@
 use clap::{App, Arg, SubCommand};
-use stam::{AnnotationStore, AnyId, Handle, Storable};
+use stam::{AnnotationStore, AnyId, Handle, Storable, TextResourceHandle, TextSelection};
 use std::process::exit;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -105,6 +105,41 @@ fn info(store: &AnnotationStore, verbose: bool) {
     }
 }
 
+fn to_tsv(store: &AnnotationStore, verbose: bool) {
+    for annotation in store.annotations() {
+        let id = annotation.id().unwrap_or("(none)");
+        for (key, data, dataset) in store.data_by_annotation(annotation) {
+            // get the text to which this annotation refers (if any)
+            let text: Vec<&str> = store.text_by_annotation(annotation).collect();
+            if verbose {
+                let textselections: Vec<(TextResourceHandle, TextSelection)> =
+                    store.textselections_by_annotation(annotation).collect();
+                print!(
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    id,
+                    dataset.id().unwrap(),
+                    key.id().unwrap(),
+                    data.value(),
+                    text.join("|").replace("\n", " "),
+                    textselections
+                        .iter()
+                        .map(|(_res, t)| format!("{}-{}", t.begin(), t.end()))
+                        .collect::<Vec<String>>()
+                        .join("|")
+                );
+            } else {
+                print!(
+                    "{}\t{}\t{}\t{}",
+                    id,
+                    key.id().unwrap(),
+                    data.value(),
+                    text.join("|").replace("\n", " ")
+                );
+            }
+        }
+    }
+}
+
 fn main() {
     let rootargs = App::new("STAM")
         .version(VERSION)
@@ -115,9 +150,16 @@ fn main() {
                 .about("Return information regarding a STAM model")
                 .args(&common_arguments()),
         )
+        .subcommand(
+            SubCommand::with_name("to-tsv")
+                .about("Output all annotations in a simple TSV format")
+                .args(&common_arguments()),
+        )
         .get_matches();
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
+        args
+    } else if let Some(args) = rootargs.subcommand_matches("to-tsv") {
         args
     } else {
         eprintln!("No command specified, please see stam --help");
@@ -140,5 +182,7 @@ fn main() {
 
     if rootargs.subcommand_matches("info").is_some() {
         info(&store, args.is_present("verbose"));
+    } else if rootargs.subcommand_matches("to-tsv").is_some() {
+        to_tsv(&store, args.is_present("verbose"));
     }
 }
