@@ -140,6 +140,18 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
     }
 }
 
+fn validate(store: &AnnotationStore, verbose: bool) {
+    if verbose {
+        let result = store.to_string();
+        if result.is_ok() {
+            println!("{}", result.unwrap());
+        } else {
+            eprintln!("Error: {:?}", result);
+            exit(2);
+        }
+    }
+}
+
 fn main() {
     let rootargs = App::new("STAM")
         .version(VERSION)
@@ -148,6 +160,11 @@ fn main() {
         .subcommand(
             SubCommand::with_name("info")
                 .about("Return information regarding a STAM model")
+                .args(&common_arguments()),
+        )
+        .subcommand(
+            SubCommand::with_name("validate")
+                .about("Validate a STAM model")
                 .args(&common_arguments()),
         )
         .subcommand(
@@ -160,6 +177,8 @@ fn main() {
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("to-tsv") {
+        args
+    } else if let Some(args) = rootargs.subcommand_matches("validate") {
         args
     } else {
         eprintln!("No command specified, please see stam --help");
@@ -184,5 +203,7 @@ fn main() {
         info(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("to-tsv").is_some() {
         to_tsv(&store, args.is_present("verbose"));
+    } else if rootargs.subcommand_matches("validate").is_some() {
+        validate(&store, args.is_present("verbose"));
     }
 }
