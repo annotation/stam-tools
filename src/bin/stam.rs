@@ -1,7 +1,7 @@
 use clap::{App, Arg, SubCommand};
 use stam::{
-    AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, AnyId, Handle, Storable,
-    TextResourceBuilder, TextResourceHandle, TextSelection,
+    AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, AnyId, Configurable, Handle,
+    Storable, TextResourceBuilder, TextResourceHandle, TextSelection,
 };
 use std::process::exit;
 
@@ -261,18 +261,20 @@ fn annotate(
     let mut builder = AnnotationStoreBuilder::default();
     for filename in setfiles {
         builder.annotationsets.push(
-            AnnotationDataSetBuilder::from_file(filename, !no_include).unwrap_or_else(|err| {
-                eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
-                exit(1);
-            }),
+            AnnotationDataSetBuilder::from_file(filename, store.config().workdir(), !no_include)
+                .unwrap_or_else(|err| {
+                    eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
+                    exit(1);
+                }),
         );
     }
     for filename in resourcefiles {
         builder.resources.push(
-            TextResourceBuilder::from_file(filename, !no_include).unwrap_or_else(|err| {
-                eprintln!("Error loading TextResource {}: {}", filename, err);
-                exit(1);
-            }),
+            TextResourceBuilder::from_file(filename, store.config().workdir(), !no_include)
+                .unwrap_or_else(|err| {
+                    eprintln!("Error loading TextResource {}: {}", filename, err);
+                    exit(1);
+                }),
         );
     }
     for filename in annotationfiles {
