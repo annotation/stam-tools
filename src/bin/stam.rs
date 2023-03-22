@@ -140,14 +140,22 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
     }
 }
 
-fn validate(store: &AnnotationStore, verbose: bool) {
+fn validate(store: &AnnotationStore, verbose: bool, no_include: bool) {
     if verbose {
+        if no_include {
+            store.set_serialize_mode(stam::SerializeMode::NoInclude);
+        }
         let result = store.to_string();
-        if result.is_ok() {
-            println!("{}", result.unwrap());
-        } else {
-            eprintln!("Error: {:?}", result);
-            exit(2);
+        if no_include {
+            //reset
+            store.set_serialize_mode(stam::SerializeMode::AllowInclude);
+        }
+        match result {
+            Ok(result) => println!("{}", result),
+            Err(err) => {
+                eprintln!("Error during serialization: {}", err);
+                exit(1);
+            }
         }
     }
 }
@@ -165,7 +173,13 @@ fn main() {
         .subcommand(
             SubCommand::with_name("validate")
                 .about("Validate a STAM model")
-                .args(&common_arguments()),
+                .args(&common_arguments())
+                .arg(
+                    Arg::with_name("no-include")
+                        .long("no-include")
+                        .help("Serialize as one file, do not output @include statement and standoff-files")
+                        .required(false),
+                ),
         )
         .subcommand(
             SubCommand::with_name("to-tsv")
@@ -192,9 +206,15 @@ fn main() {
         for (i, filename) in storefiles.iter().enumerate() {
             eprintln!("Loading annotation store {}", filename);
             if i == 0 {
-                store = AnnotationStore::from_file(filename).expect("Error loading file");
+                store = AnnotationStore::from_file(filename).unwrap_or_else(|err| {
+                    eprintln!("Error loading annotation store: {}", err);
+                    exit(1);
+                });
             } else {
-                store.merge_from_file(filename).expect("Error merging file");
+                store.merge_from_file(filename).unwrap_or_else(|err| {
+                    eprintln!("Error loading annotation store: {}", err);
+                    exit(1);
+                });
             }
         }
     }
@@ -204,6 +224,10 @@ fn main() {
     } else if rootargs.subcommand_matches("to-tsv").is_some() {
         to_tsv(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("validate").is_some() {
-        validate(&store, args.is_present("verbose"));
+        validate(
+            &store,
+            args.is_present("verbose"),
+            args.is_present("no-include"),
+        );
     }
 }
