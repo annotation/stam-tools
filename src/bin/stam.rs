@@ -141,22 +141,24 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
 }
 
 fn validate(store: &AnnotationStore, verbose: bool, no_include: bool) {
-    if verbose {
-        if no_include {
-            store.set_serialize_mode(stam::SerializeMode::NoInclude);
-        }
-        let result = store.to_string();
-        if no_include {
-            //reset
-            store.set_serialize_mode(stam::SerializeMode::AllowInclude);
-        }
-        match result {
-            Ok(result) => println!("{}", result),
-            Err(err) => {
-                eprintln!("Error during serialization: {}", err);
-                exit(1);
+    if no_include || !verbose {
+        store.set_serialize_mode(stam::SerializeMode::NoInclude);
+    }
+    let result = store.to_string();
+    match result {
+        Ok(result) => {
+            if verbose {
+                println!("{}", result)
             }
         }
+        Err(err) => {
+            eprintln!("Error during serialization: {}", err);
+            exit(1);
+        }
+    }
+    if no_include || !verbose {
+        //reset
+        store.set_serialize_mode(stam::SerializeMode::AllowInclude);
     }
 }
 
