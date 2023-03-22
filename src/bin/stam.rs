@@ -123,7 +123,12 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
                     text.join("|").replace("\n", " "),
                     textselections
                         .iter()
-                        .map(|(_res, t)| format!("{}-{}", t.begin(), t.end()))
+                        .map(|(reshandle, t)| {
+                            let resource = store
+                                .resource(&AnyId::Handle(*reshandle))
+                                .expect("resource must exist");
+                            format!("{}#{}-{}", resource.id().unwrap_or(""), t.begin(), t.end())
+                        })
                         .collect::<Vec<String>>()
                         .join("|")
                 );
