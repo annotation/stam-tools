@@ -1,5 +1,8 @@
 use clap::{App, Arg, SubCommand};
-use stam::{AnnotationStore, AnyId, Handle, Storable, TextResourceHandle, TextSelection};
+use stam::{
+    AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, AnyId, Handle, Storable,
+    TextResourceBuilder, TextResourceHandle, TextSelection,
+};
 use std::process::exit;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
@@ -167,6 +170,46 @@ fn validate(store: &AnnotationStore, verbose: bool, no_include: bool) {
     }
 }
 
+fn init(
+    resourcefiles: &[&str],
+    setfiles: &[&str],
+    storefiles: &[&str],
+    annotationfiles: &[&str],
+    id: Option<&str>,
+    no_include: bool,
+) {
+    let mut store = AnnotationStore::new();
+    if let Some(id) = id {
+        store = store.with_id(id.to_string());
+    }
+    for filename in storefiles {
+        store = store.with_file(filename).unwrap_or_else(|err| {
+            eprintln!("Error merging annotation store {}: {}", filename, err);
+            exit(1);
+        });
+    }
+    let mut builder = AnnotationStoreBuilder::default();
+    for filename in setfiles {
+        builder.annotationsets.push(
+            AnnotationDataSetBuilder::from_file(filename, !no_include).unwrap_or_else(|err| {
+                eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
+                exit(1);
+            }),
+        );
+    }
+    for filename in resourcefiles {
+        builder.resources.push(
+            TextResourceBuilder::from_file(filename, !no_include).unwrap_or_else(|err| {
+                eprintln!("Error loading TextResource {}: {}", filename, err);
+                exit(1);
+            }),
+        );
+    }
+    for filename in annotationfiles {
+        //TODO
+    }
+}
+
 fn main() {
     let rootargs = App::new("STAM")
         .version(VERSION)
@@ -184,7 +227,7 @@ fn main() {
                 .arg(
                     Arg::with_name("no-include")
                         .long("no-include")
-                        .help("Serialize as one file, do not output @include statement and standoff-files")
+                        .help("Serialize as one file, do not output @include directives nor standoff-files")
                         .required(false),
                 ),
         )
@@ -193,6 +236,54 @@ fn main() {
                 .about("Output all annotations in a simple TSV format. Set --verbose for extra columns.")
                 .args(&common_arguments()),
         )
+        .subcommand(
+            SubCommand::with_name("init")
+                .about("Initialize a new stam annotationstore")
+                .arg(
+                    Arg::with_name("set")
+                        .long("set")
+                        .short('s')
+                        .help("STAM JSON file containing an annotation data set")
+                        .takes_value(true)
+                        .multiple(true),
+                )
+                .arg(
+                    Arg::with_name("resource")
+                        .long("resource")
+                        .short('r')
+                        .help("Plain text or STAM JSON file containing a text resource")
+                        .takes_value(true)
+                        .multiple(true),
+                )
+                .arg(
+                    Arg::with_name("store")
+                        .long("store")
+                        .short('i')
+                        .help("STAM JSON file containing an annotation store, will be merged into the new store")
+                        .takes_value(true)
+                        .multiple(true),
+                )
+                .arg(
+                    Arg::with_name("annotation")
+                        .long("annotation")
+                        .short('a')
+                        .help("STAM JSON file containing one or more annotations, will be merged into the new store")
+                        .takes_value(true)
+                        .multiple(true),
+                )
+                .arg(
+                    Arg::with_name("no-include")
+                        .long("no-include")
+                        .help("Serialize as one file, do not output @include directives nor standoff-files")
+                        .required(false),
+                )
+                .arg(
+                    Arg::with_name("id")
+                        .long("id")
+                        .help("Sets the identifier for the annotation store")
+                        .takes_value(true)
+                ),
+        )
         .get_matches();
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
@@ -200,6 +291,8 @@ fn main() {
     } else if let Some(args) = rootargs.subcommand_matches("to-tsv") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("validate") {
+        args
+    } else if let Some(args) = rootargs.subcommand_matches("init") {
         args
     } else {
         eprintln!("No command specified, please see stam --help");
@@ -218,7 +311,7 @@ fn main() {
                     exit(1);
                 });
             } else {
-                store.merge_from_file(filename).unwrap_or_else(|err| {
+                store = store.with_file(filename).unwrap_or_else(|err| {
                     eprintln!("Error loading annotation store: {}", err);
                     exit(1);
                 });
@@ -234,6 +327,19 @@ fn main() {
         validate(
             &store,
             args.is_present("verbose"),
+            args.is_present("no-include"),
+        );
+    } else if rootargs.subcommand_matches("init").is_some() {
+        let resourcefiles = args.values_of("resource").unwrap().collect::<Vec<&str>>();
+        let setfiles = args.values_of("setfiles").unwrap().collect::<Vec<&str>>();
+        let storefiles = args.values_of("storefiles").unwrap().collect::<Vec<&str>>();
+        let annotationfiles = args.values_of("annotation").unwrap().collect::<Vec<&str>>();
+        init(
+            &resourcefiles,
+            &setfiles,
+            &storefiles,
+            &annotationfiles,
+            args.value_of("id"),
             args.is_present("no-include"),
         );
     }
