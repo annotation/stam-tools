@@ -169,12 +169,12 @@ fn main() {
         .about("CLI tool to work with standoff text annotation (STAM)")
         .subcommand(
             SubCommand::with_name("info")
-                .about("Return information regarding a STAM model")
+                .about("Return information regarding a STAM model. Set --verbose for extra details.")
                 .args(&common_arguments()),
         )
         .subcommand(
             SubCommand::with_name("validate")
-                .about("Validate a STAM model")
+                .about("Validate a STAM model. Set --verbose to have it output the STAM JSON to standard output.")
                 .args(&common_arguments())
                 .arg(
                     Arg::with_name("no-include")
@@ -185,7 +185,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("to-tsv")
-                .about("Output all annotations in a simple TSV format")
+                .about("Output all annotations in a simple TSV format. Set --verbose for extra columns.")
                 .args(&common_arguments()),
         )
         .get_matches();
