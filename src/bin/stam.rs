@@ -26,6 +26,57 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("set")
+            .long("set")
+            .short('s')
+            .help("STAM JSON file containing an annotation data set")
+            .takes_value(true)
+            .multiple(true),
+    );
+    args.push(
+        Arg::with_name("resource")
+            .long("resource")
+            .short('r')
+            .help("Plain text or STAM JSON file containing a text resource")
+            .takes_value(true)
+            .multiple(true),
+    );
+    args.push(
+        Arg::with_name("store")
+            .long("store")
+            .short('i')
+            .help(
+                "STAM JSON file containing an annotation store, will be merged into the new store",
+            )
+            .takes_value(true)
+            .multiple(true),
+    );
+    args.push(
+        Arg::with_name("annotations")
+            .long("annotations")
+            .short('a')
+            .help("JSON file containing an array of annotations, will be merged into the new store")
+            .takes_value(true)
+            .multiple(true),
+    );
+    args.push(
+        Arg::with_name("no-include")
+            .long("no-include")
+            .help("Serialize as one file, do not output @include directives nor standoff-files")
+            .required(false),
+    );
+    args.push(
+        Arg::with_name("id")
+            .long("id")
+            .help("Sets the identifier for the annotation store")
+            .takes_value(true),
+    );
+    args
+}
+
 fn info(store: &AnnotationStore, verbose: bool) {
     if let Some(id) = store.id() {
         println!("ID: {}", id);
@@ -152,7 +203,7 @@ fn validate(store: &AnnotationStore, verbose: bool, no_include: bool) {
     if no_include || !verbose {
         store.set_serialize_mode(stam::SerializeMode::NoInclude);
     }
-    let result = store.to_string();
+    let result = store.to_json();
     match result {
         Ok(result) => {
             if verbose {
@@ -177,11 +228,30 @@ fn init(
     annotationfiles: &[&str],
     id: Option<&str>,
     no_include: bool,
-) {
+) -> AnnotationStore {
     let mut store = AnnotationStore::new();
+    store = annotate(
+        store,
+        resourcefiles,
+        setfiles,
+        storefiles,
+        annotationfiles,
+        no_include,
+    );
     if let Some(id) = id {
         store = store.with_id(id.to_string());
     }
+    store
+}
+
+fn annotate(
+    mut store: AnnotationStore,
+    resourcefiles: &[&str],
+    setfiles: &[&str],
+    storefiles: &[&str],
+    annotationfiles: &[&str],
+    no_include: bool,
+) -> AnnotationStore {
     for filename in storefiles {
         store = store.with_file(filename).unwrap_or_else(|err| {
             eprintln!("Error merging annotation store {}: {}", filename, err);
@@ -206,12 +276,16 @@ fn init(
         );
     }
     for filename in annotationfiles {
-        //TODO
+        store.annotate_from_file(filename).unwrap_or_else(|err| {
+            eprintln!("Error parsing annotations from {}: {}", filename, err);
+            exit(1);
+        });
     }
+    store
 }
 
 fn main() {
-    let rootargs = App::new("STAM")
+    let rootargs = App::new("STAM Tools")
         .version(VERSION)
         .author("Maarten van Gompel (proycon) <proycon@anaproy.nl>")
         .about("CLI tool to work with standoff text annotation (STAM)")
@@ -239,49 +313,28 @@ fn main() {
         .subcommand(
             SubCommand::with_name("init")
                 .about("Initialize a new stam annotationstore")
+                .args(&annotate_arguments())
                 .arg(
-                    Arg::with_name("set")
-                        .long("set")
-                        .short('s')
-                        .help("STAM JSON file containing an annotation data set")
+                    Arg::with_name("annotationstore")
+                        .help(
+                            "Output file for the annotation store (will be overwritten if it already exists!)",
+                        )
                         .takes_value(true)
-                        .multiple(true),
-                )
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("annotate")
+                .about("Add annotations (or datasets, resources) to an existing annotationstore")
+                .args(&annotate_arguments())
+                .args(&common_arguments())
                 .arg(
-                    Arg::with_name("resource")
-                        .long("resource")
-                        .short('r')
-                        .help("Plain text or STAM JSON file containing a text resource")
+                    Arg::with_name("annotationstore")
+                        .help(
+                            "Input and output file for the annotation store, will be edited in-place",
+                        )
                         .takes_value(true)
-                        .multiple(true),
-                )
-                .arg(
-                    Arg::with_name("store")
-                        .long("store")
-                        .short('i')
-                        .help("STAM JSON file containing an annotation store, will be merged into the new store")
-                        .takes_value(true)
-                        .multiple(true),
-                )
-                .arg(
-                    Arg::with_name("annotation")
-                        .long("annotation")
-                        .short('a')
-                        .help("STAM JSON file containing one or more annotations, will be merged into the new store")
-                        .takes_value(true)
-                        .multiple(true),
-                )
-                .arg(
-                    Arg::with_name("no-include")
-                        .long("no-include")
-                        .help("Serialize as one file, do not output @include directives nor standoff-files")
-                        .required(false),
-                )
-                .arg(
-                    Arg::with_name("id")
-                        .long("id")
-                        .help("Sets the identifier for the annotation store")
-                        .takes_value(true)
+                        .required(true),
                 ),
         )
         .get_matches();
@@ -293,6 +346,8 @@ fn main() {
     } else if let Some(args) = rootargs.subcommand_matches("validate") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("init") {
+        args
+    } else if let Some(args) = rootargs.subcommand_matches("annotate") {
         args
     } else {
         eprintln!("No command specified, please see stam --help");
@@ -330,11 +385,15 @@ fn main() {
             args.is_present("no-include"),
         );
     } else if rootargs.subcommand_matches("init").is_some() {
+        let filename = args.value_of("annotationstore").unwrap();
         let resourcefiles = args.values_of("resource").unwrap().collect::<Vec<&str>>();
         let setfiles = args.values_of("setfiles").unwrap().collect::<Vec<&str>>();
         let storefiles = args.values_of("storefiles").unwrap().collect::<Vec<&str>>();
-        let annotationfiles = args.values_of("annotation").unwrap().collect::<Vec<&str>>();
-        init(
+        let annotationfiles = args
+            .values_of("annotations")
+            .unwrap()
+            .collect::<Vec<&str>>();
+        store = init(
             &resourcefiles,
             &setfiles,
             &storefiles,
@@ -342,5 +401,34 @@ fn main() {
             args.value_of("id"),
             args.is_present("no-include"),
         );
+        store.to_file(filename).unwrap_or_else(|err| {
+            eprintln!("Failed to write annotation store {}: {}", filename, err);
+            exit(1);
+        });
+    } else if rootargs.subcommand_matches("annotate").is_some() {
+        let filename = args.value_of("annotationstore").unwrap();
+        store = AnnotationStore::from_file(filename).unwrap_or_else(|err| {
+            eprintln!("Error loading annotation store: {}", err);
+            exit(1);
+        });
+        let resourcefiles = args.values_of("resource").unwrap().collect::<Vec<&str>>();
+        let setfiles = args.values_of("setfiles").unwrap().collect::<Vec<&str>>();
+        let storefiles = args.values_of("storefiles").unwrap().collect::<Vec<&str>>();
+        let annotationfiles = args
+            .values_of("annotations")
+            .unwrap()
+            .collect::<Vec<&str>>();
+        store = annotate(
+            store,
+            &resourcefiles,
+            &setfiles,
+            &storefiles,
+            &annotationfiles,
+            args.is_present("no-include"),
+        );
+        store.to_file(filename).unwrap_or_else(|err| {
+            eprintln!("Failed to write annotation store {}: {}", filename, err);
+            exit(1);
+        });
     }
 }
