@@ -110,7 +110,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
     println!("Resources:              {}", store.resources_len());
     for resource in store.resources() {
         println!(
-            "    - [{}] Resource ID: {}; textlength: {}",
+            "    - [{}] Resource ID: {:?}; textlength: {}",
             resource.handle().unwrap().unwrap(),
             resource.id().unwrap_or("(none)"),
             resource.textlen()
@@ -122,10 +122,25 @@ fn info(store: &AnnotationStore, verbose: bool) {
                     textselection.handle().unwrap(),
                 );
                 println!(
-                    "        - [{}] TextSelection; begin: {}; end: {}, #annotations: {}",
+                    "        - [{}] TextSelection; begin: {}; end: {}, text: {:?}, #annotations: {}",
                     textselection.handle().unwrap().unwrap(),
                     textselection.begin(),
                     textselection.end(),
+                    {
+                        if let Some(resource) = store.resource(&AnyId::Handle(resource.handle().unwrap())) {
+                            let text = resource.text_by_textselection(textselection).unwrap_or_else(|err| {
+                                eprintln!("Failed get text: {}", err);
+                                exit(1);
+                            });
+                            if text.len() > 1024 {
+                                "(too long)"
+                            } else {
+                                text
+                            }
+                        } else {
+                            "(none)"
+                        }
+                    },
                     if let Some(annotations) = annotations {
                         annotations.len()
                     } else {
@@ -138,7 +153,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
     println!("Annotation datasets:    {}", store.annotationsets_len());
     for annotationset in store.annotationsets() {
         println!(
-            "    - [{}] Set ID: {}; #keys: {}; #data: {}",
+            "    - [{}] Set ID: {:?}; #keys: {}; #data: {}",
             annotationset.handle().unwrap().unwrap(),
             annotationset.id().unwrap_or("(none)"),
             annotationset.keys_len(),
@@ -147,7 +162,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
         if verbose {
             for key in annotationset.keys() {
                 println!(
-                    "        - [{}] Key ID: {}; #data: {}",
+                    "        - [{}] Key ID: {:?}; #data: {}",
                     key.handle().unwrap().unwrap(),
                     key.id().unwrap_or("(none)"),
                     annotationset
@@ -163,7 +178,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
                 let annotations = store
                     .annotations_by_data(annotationset.handle().unwrap(), data.handle().unwrap());
                 println!(
-                    "        - [{}] Data ID: {}; Key: {}; Value: {:?}; #annotations: {}",
+                    "        - [{}] Data ID: {:?}; Key: {:?}; Value: {:?}; #annotations: {}",
                     data.handle().unwrap().unwrap(),
                     data.id().unwrap_or("(none)"),
                     key.id().unwrap_or("(none)"),
@@ -181,7 +196,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
     if verbose {
         for annotation in store.annotations() {
             println!(
-                "    - [{}] Annotation ID: {}; target: {:?}; #data: {}",
+                "    - [{}] Annotation ID: {:?}; target: {:?}; #data: {}",
                 annotation.handle().unwrap().unwrap(),
                 annotation.id().unwrap_or("(none)"),
                 annotation.target(),
@@ -189,7 +204,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
             );
             for (key, data, annotationset) in store.data_by_annotation(annotation) {
                 println!(
-                    "        - [{}] Data ID: {}; Set ID: {}; Key: {}; Value: {:?}",
+                    "        - [{}] Data ID: {:?}; Set ID: {:?}; Key: {:?}; Value: {:?}",
                     data.handle().unwrap().unwrap(),
                     data.id().unwrap_or("(none)"),
                     annotationset.id().unwrap_or("(none)"),
