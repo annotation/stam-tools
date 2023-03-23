@@ -11,7 +11,9 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
         Arg::with_name("store")
-            .help("Input file containing an annotation store in STAM JSON")
+            .help(
+                "Input file containing an annotation store in STAM JSON. Set value to - for standard input.",
+            )
             .takes_value(true)
             .required(true)
             .multiple(true),
@@ -51,7 +53,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("set")
             .long("set")
             .short('s')
-            .help("STAM JSON file containing an annotation data set")
+            .help("STAM JSON file containing an annotation data set. Set value to - for standard input.")
             .takes_value(true)
             .multiple(true),
     );
@@ -59,7 +61,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("resource")
             .long("resource")
             .short('r')
-            .help("Plain text or STAM JSON file containing a text resource")
+            .help("Plain text or STAM JSON file containing a text resource. Set value to - for standard input.")
             .takes_value(true)
             .multiple(true),
     );
@@ -68,7 +70,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("store")
             .short('i')
             .help(
-                "STAM JSON file containing an annotation store, will be merged into the new store",
+                "STAM JSON file containing an annotation store, will be merged into the new store. Set value to - for standard input.",
             )
             .takes_value(true)
             .multiple(true),
@@ -77,7 +79,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("annotations")
             .long("annotations")
             .short('a')
-            .help("JSON file containing an array of annotations, will be merged into the new store")
+            .help("JSON file containing an array of annotations, will be merged into the new store. Set value to - for standard input.")
             .takes_value(true)
             .multiple(true),
     );
@@ -377,7 +379,7 @@ fn main() {
                 .arg(
                     Arg::with_name("annotationstore")
                         .help(
-                            "Output file for the annotation store (will be overwritten if it already exists!)",
+                            "Output file for the annotation store (will be overwritten if it already exists!). Set to - for standard output.",
                         )
                         .takes_value(true)
                         .required(true),
@@ -392,7 +394,7 @@ fn main() {
                 .arg(
                     Arg::with_name("annotationstore")
                         .help(
-                            "Input and output file for the annotation store, will be edited in-place",
+                            "Input and output file for the annotation store, will be edited in-place. Set to - for standard input and output",
                         )
                         .takes_value(true)
                         .required(true),
