@@ -1,4 +1,4 @@
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
 use stam::{
     AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, AnyId, Config, Configurable,
     Handle, Storable, TextResourceBuilder, TextResourceHandle, TextSelection,
@@ -16,7 +16,7 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
             )
             .takes_value(true)
             .required(true)
-            .multiple(true),
+            .action(ArgAction::Append),
     );
     args.push(
         Arg::with_name("verbose")
@@ -55,7 +55,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .short('s')
             .help("STAM JSON file containing an annotation data set. Set value to - for standard input.")
             .takes_value(true)
-            .multiple(true),
+            .action(ArgAction::Append),
     );
     args.push(
         Arg::with_name("resource")
@@ -63,7 +63,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .short('r')
             .help("Plain text or STAM JSON file containing a text resource. Set value to - for standard input.")
             .takes_value(true)
-            .multiple(true),
+            .action(ArgAction::Append),
     );
     args.push(
         Arg::with_name("store")
@@ -73,7 +73,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
                 "STAM JSON file containing an annotation store, will be merged into the new store. Set value to - for standard input.",
             )
             .takes_value(true)
-            .multiple(true),
+            .action(ArgAction::Append),
     );
     args.push(
         Arg::with_name("annotations")
@@ -81,7 +81,7 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .short('a')
             .help("JSON file containing an array of annotations, will be merged into the new store. Set value to - for standard input.")
             .takes_value(true)
-            .multiple(true),
+            .action(ArgAction::Append),
     );
     args.push(
         Arg::with_name("id")
@@ -281,6 +281,21 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
     }
 }
 
+fn to_text(store: &AnnotationStore, resource_ids: Vec<&str>) {
+    for resource_id in resource_ids {
+        if let Some(resource) = store.resource(&AnyId::Id(resource_id.to_string())) {
+            eprintln!(
+                "--------------------------- {} ---------------------------",
+                resource_id
+            );
+            println!("{}", resource.text());
+        } else {
+            eprintln!("Error: Resource with ID {} does not exist", resource_id);
+            exit(1);
+        }
+    }
+}
+
 fn validate(store: &AnnotationStore, verbose: bool) {
     if !store.config().use_include {
         store.set_serialize_mode(stam::SerializeMode::NoInclude);
@@ -382,6 +397,23 @@ fn main() {
                 .args(&config_arguments()),
         )
         .subcommand(
+            SubCommand::with_name("to-text")
+                .about("Output the plain text of one or more resource(s). Requires --resource")
+                .args(&common_arguments())
+                .args(&config_arguments())
+                .arg(
+                    Arg::with_name("resource")
+                        .long("resource")
+                        .short('r')
+                        .help(
+                            "The resource ID (not necessarily the filename!) of the text to output",
+                        )
+                        .takes_value(true)
+                        .required(true)
+                        .action(ArgAction::Append),
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("init")
                 .about("Initialize a new stam annotationstore")
                 .args(&annotate_arguments())
@@ -410,11 +442,26 @@ fn main() {
                         .required(true),
                 ),
         )
+        .subcommand(
+            SubCommand::with_name("tag")
+                .about("Regular-expression based tagger")
+                .args(&config_arguments())
+                .arg(
+                    Arg::with_name("annotationstore")
+                        .help(
+                            "Input and output file for the annotation store, will be edited in-place. Set to - for standard input and output",
+                        )
+                        .takes_value(true)
+                        .required(true),
+                ),
+        )
         .get_matches();
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("to-tsv") {
+        args
+    } else if let Some(args) = rootargs.subcommand_matches("to-text") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("validate") {
         args
@@ -452,6 +499,9 @@ fn main() {
         info(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("to-tsv").is_some() {
         to_tsv(&store, args.is_present("verbose"));
+    } else if rootargs.subcommand_matches("to-text").is_some() {
+        let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
+        to_text(&store, resource_ids);
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("init").is_some() {
