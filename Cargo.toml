@@ -18,5 +18,6 @@ clap = "3.2.23"
 
 #compile against development version: (doesn't work when building with maturin for pypi)
 [patch.crates-io]
-#stam = { git = 'https://github.com/annotation/stam-rust.git' } #from git
-stam = { path = '../stam-rust' } #local
+stam = { git = 'https://github.com/annotation/stam-rust.git' } #from git
+#stam = { path = '../stam-rust' } #local
+

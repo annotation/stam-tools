@@ -1,7 +1,7 @@
-use clap::{App, Arg, SubCommand};
+use clap::{App, Arg, ArgMatches, SubCommand};
 use stam::{
-    AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, AnyId, Configurable, Handle,
-    Storable, TextResourceBuilder, TextResourceHandle, TextSelection,
+    AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, AnyId, Config, Configurable,
+    Handle, Storable, TextResourceBuilder, TextResourceHandle, TextSelection,
 };
 use std::process::exit;
 
@@ -21,6 +21,25 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("verbose")
             .short('V')
             .help("Produce verbose output")
+            .required(false),
+    );
+    args
+}
+
+fn config_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("debug")
+            .long("debug")
+            .short('d')
+            .help("Set debug mode for the underlying library")
+            .required(false),
+    );
+    args.push(
+        Arg::with_name("no-include")
+            .long("no-include")
+            .short('I')
+            .help("Serialize as one file, do not output @include directives nor standoff-files")
             .required(false),
     );
     args
@@ -63,12 +82,6 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .multiple(true),
     );
     args.push(
-        Arg::with_name("no-include")
-            .long("no-include")
-            .help("Serialize as one file, do not output @include directives nor standoff-files")
-            .required(false),
-    );
-    args.push(
         Arg::with_name("id")
             .long("id")
             .help("Sets the identifier for the annotation store")
@@ -77,10 +90,23 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+/// Translate command line arguments to stam library's configuration structure
+fn config_from_args(args: &ArgMatches) -> Config {
+    let mut config = Config::default();
+    if args.is_present("no-include") {
+        config.use_include = false;
+    }
+    if args.is_present("debug") {
+        config.debug = true;
+    }
+    config
+}
+
 fn info(store: &AnnotationStore, verbose: bool) {
     if let Some(id) = store.id() {
         println!("ID: {}", id);
     }
+    println!("Configuration: {:?}", store.config());
     println!("Resources:              {}", store.resources_len());
     for resource in store.resources() {
         println!(
@@ -227,17 +253,10 @@ fn init(
     storefiles: &[&str],
     annotationfiles: &[&str],
     id: Option<&str>,
-    no_include: bool,
+    config: Config,
 ) -> AnnotationStore {
-    let mut store = AnnotationStore::new();
-    store = annotate(
-        store,
-        resourcefiles,
-        setfiles,
-        storefiles,
-        annotationfiles,
-        no_include,
-    );
+    let mut store = AnnotationStore::new().with_config(config);
+    store = annotate(store, resourcefiles, setfiles, storefiles, annotationfiles);
     if let Some(id) = id {
         store = store.with_id(id.to_string());
     }
@@ -250,7 +269,6 @@ fn annotate(
     setfiles: &[&str],
     storefiles: &[&str],
     annotationfiles: &[&str],
-    no_include: bool,
 ) -> AnnotationStore {
     for filename in storefiles {
         store = store.with_file(filename).unwrap_or_else(|err| {
@@ -261,20 +279,18 @@ fn annotate(
     let mut builder = AnnotationStoreBuilder::default();
     for filename in setfiles {
         builder.annotationsets.push(
-            AnnotationDataSetBuilder::from_file(filename, store.config().workdir(), !no_include)
-                .unwrap_or_else(|err| {
-                    eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
-                    exit(1);
-                }),
+            AnnotationDataSetBuilder::from_file(filename, store.config()).unwrap_or_else(|err| {
+                eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
+                exit(1);
+            }),
         );
     }
     for filename in resourcefiles {
         builder.resources.push(
-            TextResourceBuilder::from_file(filename, store.config().workdir(), !no_include)
-                .unwrap_or_else(|err| {
-                    eprintln!("Error loading TextResource {}: {}", filename, err);
-                    exit(1);
-                }),
+            TextResourceBuilder::from_file(filename, store.config()).unwrap_or_else(|err| {
+                eprintln!("Error loading TextResource {}: {}", filename, err);
+                exit(1);
+            }),
         );
     }
     for filename in annotationfiles {
@@ -294,28 +310,26 @@ fn main() {
         .subcommand(
             SubCommand::with_name("info")
                 .about("Return information regarding a STAM model. Set --verbose for extra details.")
-                .args(&common_arguments()),
+                .args(&common_arguments())
+                .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("validate")
                 .about("Validate a STAM model. Set --verbose to have it output the STAM JSON to standard output.")
                 .args(&common_arguments())
-                .arg(
-                    Arg::with_name("no-include")
-                        .long("no-include")
-                        .help("Serialize as one file, do not output @include directives nor standoff-files")
-                        .required(false),
-                ),
+                .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("to-tsv")
                 .about("Output all annotations in a simple TSV format. Set --verbose for extra columns.")
-                .args(&common_arguments()),
+                .args(&common_arguments())
+                .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("init")
                 .about("Initialize a new stam annotationstore")
                 .args(&annotate_arguments())
+                .args(&config_arguments())
                 .arg(
                     Arg::with_name("annotationstore")
                         .help(
@@ -330,6 +344,7 @@ fn main() {
                 .about("Add annotations (or datasets, resources) to an existing annotationstore")
                 .args(&annotate_arguments())
                 .args(&common_arguments())
+                .args(&config_arguments())
                 .arg(
                     Arg::with_name("annotationstore")
                         .help(
@@ -356,17 +371,18 @@ fn main() {
         exit(2);
     };
 
-    let mut store = AnnotationStore::new();
+    let mut store = AnnotationStore::new().with_config(config_from_args(args));
 
     if args.is_present("store") {
         let storefiles = args.values_of("store").unwrap().collect::<Vec<&str>>();
         for (i, filename) in storefiles.iter().enumerate() {
             eprintln!("Loading annotation store {}", filename);
             if i == 0 {
-                store = AnnotationStore::from_file(filename).unwrap_or_else(|err| {
-                    eprintln!("Error loading annotation store: {}", err);
-                    exit(1);
-                });
+                store = AnnotationStore::from_file(filename, config_from_args(args))
+                    .unwrap_or_else(|err| {
+                        eprintln!("Error loading annotation store: {}", err);
+                        exit(1);
+                    });
             } else {
                 store = store.with_file(filename).unwrap_or_else(|err| {
                     eprintln!("Error loading annotation store: {}", err);
@@ -401,7 +417,7 @@ fn main() {
             &storefiles,
             &annotationfiles,
             args.value_of("id"),
-            args.is_present("no-include"),
+            config_from_args(args),
         );
         store.to_file(filename).unwrap_or_else(|err| {
             eprintln!("Failed to write annotation store {}: {}", filename, err);
@@ -409,10 +425,11 @@ fn main() {
         });
     } else if rootargs.subcommand_matches("annotate").is_some() {
         let filename = args.value_of("annotationstore").unwrap();
-        store = AnnotationStore::from_file(filename).unwrap_or_else(|err| {
-            eprintln!("Error loading annotation store: {}", err);
-            exit(1);
-        });
+        store =
+            AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
+                eprintln!("Error loading annotation store: {}", err);
+                exit(1);
+            });
         let resourcefiles = args.values_of("resource").unwrap().collect::<Vec<&str>>();
         let setfiles = args.values_of("setfiles").unwrap().collect::<Vec<&str>>();
         let storefiles = args.values_of("storefiles").unwrap().collect::<Vec<&str>>();
@@ -426,7 +443,6 @@ fn main() {
             &setfiles,
             &storefiles,
             &annotationfiles,
-            args.is_present("no-include"),
         );
         store.to_file(filename).unwrap_or_else(|err| {
             eprintln!("Failed to write annotation store {}: {}", filename, err);
