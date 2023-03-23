@@ -112,6 +112,13 @@ fn info(store: &AnnotationStore, verbose: bool) {
         println!("ID: {}", id);
     }
     println!("Configuration: {:?}", store.config());
+    let count = store.index_totalcount();
+    println!("Indices:");
+    println!("    - dataset_data_annotation_map:      {}", count.0);
+    println!("    - textrelationmap:                  {}", count.1);
+    println!("    - resource_annotation_map:          {}", count.2);
+    println!("    - dataset_annotation_map:           {}", count.3);
+    println!("    - annotation_annotation_map:        {}", count.4);
     println!("Resources:              {}", store.resources_len());
     for resource in store.resources() {
         println!(
