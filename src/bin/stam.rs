@@ -189,10 +189,10 @@ fn info(store: &AnnotationStore, verbose: bool) {
             );
             for (key, data, annotationset) in store.data_by_annotation(annotation) {
                 println!(
-                    "        - [{}] Set ID: {}; Data ID: {}; Key: {}; Value: {:?}",
+                    "        - [{}] Data ID: {}; Set ID: {}; Key: {}; Value: {:?}",
                     data.handle().unwrap().unwrap(),
-                    annotationset.id().unwrap_or("(none)"),
                     data.id().unwrap_or("(none)"),
+                    annotationset.id().unwrap_or("(none)"),
                     key.id().unwrap_or("(none)"),
                     data.value()
                 );
