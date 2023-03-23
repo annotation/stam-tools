@@ -117,11 +117,20 @@ fn info(store: &AnnotationStore, verbose: bool) {
         );
         if verbose {
             for textselection in resource.textselections() {
+                let annotations = store.annotations_by_textselection_handle(
+                    resource.handle().unwrap(),
+                    textselection.handle().unwrap(),
+                );
                 println!(
-                    "        - [{}] TextSelection; begin: {}; end: {}",
+                    "        - [{}] TextSelection; begin: {}; end: {}, #annotations: {}",
                     textselection.handle().unwrap().unwrap(),
                     textselection.begin(),
                     textselection.end(),
+                    if let Some(annotations) = annotations {
+                        annotations.len()
+                    } else {
+                        0
+                    }
                 );
             }
         }
@@ -151,12 +160,19 @@ fn info(store: &AnnotationStore, verbose: bool) {
                 let key = annotationset
                     .key(&AnyId::Handle(data.key()))
                     .expect("Key not found");
+                let annotations = store
+                    .annotations_by_data(annotationset.handle().unwrap(), data.handle().unwrap());
                 println!(
-                    "        - [{}] Data ID: {}; Key: {}; Value: {:?}",
+                    "        - [{}] Data ID: {}; Key: {}; Value: {:?}; #annotations: {}",
                     data.handle().unwrap().unwrap(),
                     data.id().unwrap_or("(none)"),
                     key.id().unwrap_or("(none)"),
-                    data.value()
+                    data.value(),
+                    if let Some(annotations) = annotations {
+                        annotations.len()
+                    } else {
+                        0
+                    }
                 );
             }
         }
