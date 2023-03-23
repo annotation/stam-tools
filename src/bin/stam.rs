@@ -105,6 +105,9 @@ fn config_from_args(args: &ArgMatches) -> Config {
 }
 
 fn info(store: &AnnotationStore, verbose: bool) {
+    if !verbose {
+        eprintln!("(Tip: add --verbose for more detailed info output)");
+    }
     if let Some(id) = store.id() {
         println!("ID: {}", id);
     }
@@ -271,8 +274,8 @@ fn to_tsv(store: &AnnotationStore, verbose: bool) {
     }
 }
 
-fn validate(store: &AnnotationStore, verbose: bool, no_include: bool) {
-    if no_include || !verbose {
+fn validate(store: &AnnotationStore, verbose: bool) {
+    if !store.config().use_include {
         store.set_serialize_mode(stam::SerializeMode::NoInclude);
     }
     let result = store.to_json();
@@ -287,7 +290,7 @@ fn validate(store: &AnnotationStore, verbose: bool, no_include: bool) {
             exit(1);
         }
     }
-    if no_include || !verbose {
+    if !store.config().use_include || !verbose {
         //reset
         store.set_serialize_mode(stam::SerializeMode::AllowInclude);
     }
@@ -443,11 +446,7 @@ fn main() {
     } else if rootargs.subcommand_matches("to-tsv").is_some() {
         to_tsv(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("validate").is_some() {
-        validate(
-            &store,
-            args.is_present("verbose"),
-            args.is_present("no-include"),
-        );
+        validate(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("init").is_some() {
         let filename = args.value_of("annotationstore").unwrap();
         let resourcefiles = args.values_of("resource").unwrap().collect::<Vec<&str>>();
