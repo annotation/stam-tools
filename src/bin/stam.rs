@@ -126,6 +126,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
                     textselection.handle().unwrap().unwrap(),
                     textselection.begin(),
                     textselection.end(),
+                    //text:
                     {
                         if let Some(resource) = store.resource(&AnyId::Handle(resource.handle().unwrap())) {
                             let text = resource.text_by_textselection(textselection).unwrap_or_else(|err| {
@@ -141,6 +142,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
                             "(none)"
                         }
                     },
+                    //nrannotations:
                     if let Some(annotations) = annotations {
                         annotations.len()
                     } else {
@@ -196,10 +198,21 @@ fn info(store: &AnnotationStore, verbose: bool) {
     if verbose {
         for annotation in store.annotations() {
             println!(
-                "    - [{}] Annotation ID: {:?}; target: {:?}; #data: {}",
+                "    - [{}] Annotation ID: {:?}; target: {:?}; text: {:?}, #data: {}",
                 annotation.handle().unwrap().unwrap(),
                 annotation.id().unwrap_or("(none)"),
                 annotation.target(),
+                //text:
+                {
+                    if let Some(annotation) =
+                        store.annotation(&AnyId::Handle(annotation.handle().unwrap()))
+                    {
+                        let text: Vec<&str> = store.text_by_annotation(annotation).collect();
+                        text
+                    } else {
+                        vec!["(no text)"]
+                    }
+                },
                 annotation.len(),
             );
             for (key, data, annotationset) in store.data_by_annotation(annotation) {
@@ -209,7 +222,7 @@ fn info(store: &AnnotationStore, verbose: bool) {
                     data.id().unwrap_or("(none)"),
                     annotationset.id().unwrap_or("(none)"),
                     key.id().unwrap_or("(none)"),
-                    data.value()
+                    data.value(),
                 );
             }
         }
