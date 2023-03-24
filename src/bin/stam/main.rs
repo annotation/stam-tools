@@ -4,7 +4,6 @@ use std::process::exit;
 
 mod annotate;
 mod info;
-mod init;
 mod tag;
 mod to_text;
 mod to_tsv;
@@ -12,7 +11,6 @@ mod validate;
 
 use crate::annotate::*;
 use crate::info::*;
-use crate::init::*;
 use crate::tag::*;
 use crate::to_text::*;
 use crate::to_tsv::*;
@@ -23,20 +21,44 @@ const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
-        Arg::with_name("store")
-            .help(
-                "Input file containing an annotation store in STAM JSON. Set value to - for standard input.",
-            )
-            .takes_value(true)
-            .required(true)
-            .action(ArgAction::Append),
-    );
-    args.push(
         Arg::with_name("verbose")
             .long("verbose")
             .short('V')
             .help("Produce verbose output")
             .required(false),
+    );
+    args.push(
+        Arg::with_name("dry-run")
+            .long("dry-run")
+            .help("Dry run, do not write changes to file")
+            .required(false),
+    );
+    args
+}
+
+fn store_argument<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("annotationstore")
+            .help(
+                "Input and output file for the annotation store (will be overwritten if it already exists!). Set to - for standard input/output. Note that for 'stam init', this is only used as output.",
+            )
+            .takes_value(true)
+            .required(true),
+    );
+    args
+}
+
+fn multi_store_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("multistore")
+            .help(
+                "Input file containing an annotation store in STAM JSON. Set value to - for standard input. Multiple are allowed.",
+            )
+            .takes_value(true)
+            .required(true)
+            .action(ArgAction::Append),
     );
     args
 }
@@ -72,6 +94,16 @@ fn config_from_args(args: &ArgMatches) -> Config {
     config
 }
 
+fn load_store(args: &ArgMatches) -> AnnotationStore {
+    let filename = args
+        .value_of("annotationstore")
+        .expect("an annotation store must be provided");
+    AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
+        eprintln!("Error loading annotation store: {}", err);
+        exit(1);
+    })
+}
+
 fn main() {
     let rootargs = App::new("STAM Tools")
         .version(VERSION)
@@ -81,24 +113,28 @@ fn main() {
             SubCommand::with_name("info")
                 .about("Return information regarding a STAM model. Set --verbose for extra details.")
                 .args(&common_arguments())
+                .args(&multi_store_arguments())
                 .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("validate")
                 .about("Validate a STAM model. Set --verbose to have it output the STAM JSON to standard output.")
                 .args(&common_arguments())
+                .args(&multi_store_arguments())
                 .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("to-tsv")
                 .about("Output all annotations in a simple TSV format. Set --verbose for extra columns.")
                 .args(&common_arguments())
+                .args(&multi_store_arguments())
                 .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("to-text")
                 .about("Output the plain text of one or more resource(s). Requires --resource")
                 .args(&common_arguments())
+                .args(&multi_store_arguments())
                 .args(&config_arguments())
                 .arg(
                     Arg::with_name("resource")
@@ -115,39 +151,28 @@ fn main() {
         .subcommand(
             SubCommand::with_name("init")
                 .about("Initialize a new stam annotationstore")
+                .args(&common_arguments())
+                .args(&store_argument())
                 .args(&annotate_arguments())
-                .args(&config_arguments())
-                .arg(
-                    Arg::with_name("annotationstore")
-                        .help(
-                            "Output file for the annotation store (will be overwritten if it already exists!). Set to - for standard output.",
-                        )
-                        .takes_value(true)
-                        .required(true),
-                ),
+                .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("annotate")
                 .about("Add annotations (or datasets, resources) to an existing annotationstore")
                 .args(&annotate_arguments())
+                .args(&store_argument())
                 .args(&common_arguments())
-                .args(&config_arguments())
-                .arg(
-                    Arg::with_name("annotationstore")
-                        .help(
-                            "Input and output file for the annotation store, will be edited in-place. Set to - for standard input and output",
-                        )
-                        .takes_value(true)
-                        .required(true),
-                ),
+                .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("tag")
                 .about("Regular-expression based tagger on plain text")
                 .args(&common_arguments())
+                .args(&store_argument())
                 .args(&config_arguments())
                 .arg(
                     Arg::with_name("rules")
+                        .long("rules")
                         .help(
                             "A TSV file containing regular expression rules for the tagger.",
                         )
@@ -163,8 +188,7 @@ The file contains the following columns:
 ")
                         .takes_value(true)
                         .required(true),
-                ),
-        )
+                ))
         .get_matches();
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
@@ -193,8 +217,8 @@ The file contains the following columns:
         || rootargs.subcommand_matches("to-text").is_some()
         || rootargs.subcommand_matches("validate").is_some()
     {
-        if args.is_present("store") {
-            let storefiles = args.values_of("store").unwrap().collect::<Vec<&str>>();
+        if args.is_present("multistore") {
+            let storefiles = args.values_of("multistore").unwrap().collect::<Vec<&str>>();
             for (i, filename) in storefiles.iter().enumerate() {
                 eprintln!("Loading annotation store {}", filename);
                 if i == 0 {
@@ -225,17 +249,15 @@ The file contains the following columns:
     } else if rootargs.subcommand_matches("init").is_some()
         || rootargs.subcommand_matches("annotate").is_some()
     {
-        let filename = args
-            .value_of("annotationstore")
-            .expect("an annotation store must be provided");
         if rootargs.subcommand_matches("annotate").is_some() {
             //load the store
-            store = AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(
-                |err| {
-                    eprintln!("Error loading annotation store: {}", err);
-                    exit(1);
-                },
-            );
+            store = load_store(args);
+        } else {
+            //init: associate the filename with the pre-created store
+            let filename = args
+                .value_of("annotationstore")
+                .expect("an annotation store must be provided");
+            store.set_filename(filename);
         }
         let resourcefiles = args
             .values_of("resources")
@@ -261,14 +283,9 @@ The file contains the following columns:
             storefiles.len()
         );
         if rootargs.subcommand_matches("init").is_some() {
-            store = init(
-                &resourcefiles,
-                &setfiles,
-                &storefiles,
-                &annotationfiles,
-                args.value_of("id"),
-                config_from_args(args),
-            );
+            if let Some(id) = args.value_of("id") {
+                store = store.with_id(id.to_string());
+            }
         } else {
             store = annotate(
                 store,
@@ -279,12 +296,18 @@ The file contains the following columns:
             );
         }
         if !args.is_present("dry-run") {
-            store.to_file(filename).unwrap_or_else(|err| {
-                eprintln!("Failed to write annotation store {}: {}", filename, err);
+            store.save().unwrap_or_else(|err| {
+                eprintln!(
+                    "Failed to write annotation store {:?}: {}",
+                    store.filename(),
+                    err
+                );
                 exit(1);
             });
         }
     } else if rootargs.subcommand_matches("tag").is_some() {
+        //load the store
+        store = load_store(args);
         tag(
             &mut store,
             args.value_of("rules").expect("--rules must be provided"),

@@ -10,6 +10,13 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         println!("ID: {}", id);
     }
     println!("Configuration: {:?}", store.config());
+    println!(
+        "Filename: {:?}",
+        store
+            .filename()
+            .map(|x| x.to_str().unwrap())
+            .unwrap_or("(none)")
+    );
     let count = store.index_totalcount();
     println!("Indices:");
     println!("    - dataset_data_annotation_map:      {}", count.0);

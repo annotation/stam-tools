@@ -47,12 +47,6 @@ pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Sets the identifier for the annotation store")
             .takes_value(true),
     );
-    args.push(
-        Arg::with_name("dry-run")
-            .long("dry-run")
-            .help("Dry run, do not write changes to file")
-            .required(false),
-    );
     args
 }
 
