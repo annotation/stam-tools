@@ -8,15 +8,15 @@ use std::process::exit;
 pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
-        Arg::with_name("set")
-            .long("set")
+        Arg::with_name("annotationsets")
+            .long("annotationset")
             .short('s')
             .help("STAM JSON file containing an annotation data set. Set value to - for standard input.")
             .takes_value(true)
             .action(ArgAction::Append),
     );
     args.push(
-        Arg::with_name("resource")
+        Arg::with_name("resources")
             .long("resource")
             .short('r')
             .help("Plain text or STAM JSON file containing a text resource. Set value to - for standard input.")
@@ -24,7 +24,7 @@ pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .action(ArgAction::Append),
     );
     args.push(
-        Arg::with_name("store")
+        Arg::with_name("stores")
             .long("store")
             .short('i')
             .help(
@@ -46,6 +46,12 @@ pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("id")
             .help("Sets the identifier for the annotation store")
             .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("dry-run")
+            .long("dry-run")
+            .help("Dry run, do not write changes to file")
+            .required(false),
     );
     args
 }
@@ -80,6 +86,10 @@ pub fn annotate(
             }),
         );
     }
+    store.merge_from_builder(builder).unwrap_or_else(|err| {
+        eprintln!("Error annotating: {}", err);
+        exit(1);
+    });
     for filename in annotationfiles {
         store.annotate_from_file(filename).unwrap_or_else(|err| {
             eprintln!("Error parsing annotations from {}: {}", filename, err);

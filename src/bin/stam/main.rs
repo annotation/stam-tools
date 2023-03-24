@@ -38,12 +38,6 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Produce verbose output")
             .required(false),
     );
-    args.push(
-        Arg::with_name("dry-run")
-            .long("dry-run")
-            .help("Dry run, do not write changes to file")
-            .required(false),
-    );
     args
 }
 
@@ -194,21 +188,27 @@ The file contains the following columns:
 
     let mut store = AnnotationStore::new().with_config(config_from_args(args));
 
-    if args.is_present("store") {
-        let storefiles = args.values_of("store").unwrap().collect::<Vec<&str>>();
-        for (i, filename) in storefiles.iter().enumerate() {
-            eprintln!("Loading annotation store {}", filename);
-            if i == 0 {
-                store = AnnotationStore::from_file(filename, config_from_args(args))
-                    .unwrap_or_else(|err| {
+    if rootargs.subcommand_matches("info").is_some()
+        || rootargs.subcommand_matches("to-tsv").is_some()
+        || rootargs.subcommand_matches("to-text").is_some()
+        || rootargs.subcommand_matches("validate").is_some()
+    {
+        if args.is_present("store") {
+            let storefiles = args.values_of("store").unwrap().collect::<Vec<&str>>();
+            for (i, filename) in storefiles.iter().enumerate() {
+                eprintln!("Loading annotation store {}", filename);
+                if i == 0 {
+                    store = AnnotationStore::from_file(filename, config_from_args(args))
+                        .unwrap_or_else(|err| {
+                            eprintln!("Error loading annotation store: {}", err);
+                            exit(1);
+                        });
+                } else {
+                    store = store.with_file(filename).unwrap_or_else(|err| {
                         eprintln!("Error loading annotation store: {}", err);
                         exit(1);
                     });
-            } else {
-                store = store.with_file(filename).unwrap_or_else(|err| {
-                    eprintln!("Error loading annotation store: {}", err);
-                    exit(1);
-                });
+                }
             }
         }
     }
@@ -222,56 +222,73 @@ The file contains the following columns:
         to_text(&store, resource_ids);
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));
-    } else if rootargs.subcommand_matches("init").is_some() {
-        let filename = args.value_of("annotationstore").unwrap();
-        let resourcefiles = args.values_of("resource").unwrap().collect::<Vec<&str>>();
-        let setfiles = args.values_of("setfiles").unwrap().collect::<Vec<&str>>();
-        let storefiles = args.values_of("storefiles").unwrap().collect::<Vec<&str>>();
+    } else if rootargs.subcommand_matches("init").is_some()
+        || rootargs.subcommand_matches("annotate").is_some()
+    {
+        let filename = args
+            .value_of("annotationstore")
+            .expect("an annotation store must be provided");
+        if rootargs.subcommand_matches("annotate").is_some() {
+            //load the store
+            store = AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(
+                |err| {
+                    eprintln!("Error loading annotation store: {}", err);
+                    exit(1);
+                },
+            );
+        }
+        let resourcefiles = args
+            .values_of("resources")
+            .unwrap_or_default()
+            .collect::<Vec<&str>>();
+        let setfiles = args
+            .values_of("annotationsets")
+            .unwrap_or_default()
+            .collect::<Vec<&str>>();
+        let storefiles = args
+            .values_of("stores")
+            .unwrap_or_default()
+            .collect::<Vec<&str>>();
         let annotationfiles = args
             .values_of("annotations")
-            .unwrap()
+            .unwrap_or_default()
             .collect::<Vec<&str>>();
-        store = init(
-            &resourcefiles,
-            &setfiles,
-            &storefiles,
-            &annotationfiles,
-            args.value_of("id"),
-            config_from_args(args),
+        eprintln!(
+            "Initializing store with {} annotation(s), {} resource(s), {} annotationset(s), {} additional store(s)",
+            annotationfiles.len(),
+            resourcefiles.len(),
+            setfiles.len(),
+            storefiles.len()
         );
-        store.to_file(filename).unwrap_or_else(|err| {
-            eprintln!("Failed to write annotation store {}: {}", filename, err);
-            exit(1);
-        });
-    } else if rootargs.subcommand_matches("annotate").is_some() {
-        let filename = args.value_of("annotationstore").unwrap();
-        store =
-            AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
-                eprintln!("Error loading annotation store: {}", err);
-                exit(1);
-            });
-        let resourcefiles = args.values_of("resource").unwrap().collect::<Vec<&str>>();
-        let setfiles = args.values_of("setfiles").unwrap().collect::<Vec<&str>>();
-        let storefiles = args.values_of("storefiles").unwrap().collect::<Vec<&str>>();
-        let annotationfiles = args
-            .values_of("annotations")
-            .unwrap()
-            .collect::<Vec<&str>>();
-        store = annotate(
-            store,
-            &resourcefiles,
-            &setfiles,
-            &storefiles,
-            &annotationfiles,
-        );
+        if rootargs.subcommand_matches("init").is_some() {
+            store = init(
+                &resourcefiles,
+                &setfiles,
+                &storefiles,
+                &annotationfiles,
+                args.value_of("id"),
+                config_from_args(args),
+            );
+        } else {
+            store = annotate(
+                store,
+                &resourcefiles,
+                &setfiles,
+                &storefiles,
+                &annotationfiles,
+            );
+        }
         if !args.is_present("dry-run") {
-            store.save().unwrap_or_else(|err| {
+            store.to_file(filename).unwrap_or_else(|err| {
                 eprintln!("Failed to write annotation store {}: {}", filename, err);
                 exit(1);
             });
         }
     } else if rootargs.subcommand_matches("tag").is_some() {
-        tag(&mut store, args.value_of("rules").unwrap());
+        tag(
+            &mut store,
+            args.value_of("rules").expect("--rules must be provided"),
+        );
         if !args.is_present("dry-run") {
             store.save().unwrap_or_else(|err| {
                 eprintln!(
