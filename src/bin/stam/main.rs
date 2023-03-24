@@ -1,8 +1,5 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
-use stam::{
-    AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, AnyId, Config, Configurable,
-    Handle, Storable, TextResourceBuilder, TextResourceHandle, TextSelection,
-};
+use stam::{AnnotationStore, Config, Configurable};
 use std::process::exit;
 
 mod annotate;
@@ -39,6 +36,12 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("verbose")
             .short('V')
             .help("Produce verbose output")
+            .required(false),
+    );
+    args.push(
+        Arg::with_name("dry-run")
+            .long("dry-run")
+            .help("Dry run, do not write changes to file")
             .required(false),
     );
     args
@@ -261,11 +264,23 @@ The file contains the following columns:
             &storefiles,
             &annotationfiles,
         );
-        store.save().unwrap_or_else(|err| {
-            eprintln!("Failed to write annotation store {}: {}", filename, err);
-            exit(1);
-        });
+        if !args.is_present("dry-run") {
+            store.save().unwrap_or_else(|err| {
+                eprintln!("Failed to write annotation store {}: {}", filename, err);
+                exit(1);
+            });
+        }
     } else if rootargs.subcommand_matches("tag").is_some() {
-        //tag(&store);
+        tag(&mut store, args.value_of("rules").unwrap());
+        if !args.is_present("dry-run") {
+            store.save().unwrap_or_else(|err| {
+                eprintln!(
+                    "Failed to write annotation store {:?}: {}",
+                    store.filename(),
+                    err
+                );
+                exit(1);
+            });
+        }
     }
 }

@@ -85,7 +85,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             }
             for data in annotationset.data() {
                 let key = annotationset
-                    .key(&AnyId::Handle(data.key()))
+                    .key(&AnyId::from(data.key()))
                     .expect("Key not found");
                 let annotations = store
                     .annotations_by_data(annotationset.handle().unwrap(), data.handle().unwrap());

@@ -20,7 +20,7 @@ pub fn to_tsv(store: &AnnotationStore, verbose: bool) {
                         .iter()
                         .map(|(reshandle, t)| {
                             let resource = store
-                                .resource(&AnyId::Handle(*reshandle))
+                                .resource(&AnyId::from(*reshandle))
                                 .expect("resource must exist");
                             format!("{}#{}-{}", resource.id().unwrap_or(""), t.begin(), t.end())
                         })
