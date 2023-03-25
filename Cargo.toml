@@ -1,6 +1,6 @@
 [package]
 name = "stam-tools"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
 description = "Command-line tools for working with standoff annotations on text (STAM)"
