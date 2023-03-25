@@ -286,15 +286,14 @@ The file contains the following columns:
             if let Some(id) = args.value_of("id") {
                 store = store.with_id(id.to_string());
             }
-        } else {
-            store = annotate(
-                store,
-                &resourcefiles,
-                &setfiles,
-                &storefiles,
-                &annotationfiles,
-            );
         }
+        store = annotate(
+            store,
+            &resourcefiles,
+            &setfiles,
+            &storefiles,
+            &annotationfiles,
+        );
         if !args.is_present("dry-run") {
             store.save().unwrap_or_else(|err| {
                 eprintln!(

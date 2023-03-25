@@ -59,6 +59,7 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
 pub fn tag(store: &mut AnnotationStore, rulefile: &str) {
     let rules = load_tag_rules(rulefile);
     let expressions: Vec<_> = rules.iter().map(|rule| rule.expression.clone()).collect();
+    eprintln!("Loaded {} expressions from {}", rules.len(), rulefile);
     let precompiledset =
         RegexSet::new(expressions.iter().map(|x| x.as_str())).unwrap_or_else(|e| {
             eprintln!("Error in compiling regexset: {}", e);
