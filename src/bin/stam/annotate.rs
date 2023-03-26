@@ -66,18 +66,22 @@ pub fn annotate(
     let mut builder = AnnotationStoreBuilder::default();
     for filename in setfiles {
         builder.annotationsets.push(
-            AnnotationDataSetBuilder::from_file(filename, store.config()).unwrap_or_else(|err| {
-                eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
-                exit(1);
-            }),
+            AnnotationDataSetBuilder::from_file(filename, store.config().clone()).unwrap_or_else(
+                |err| {
+                    eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
+                    exit(1);
+                },
+            ),
         );
     }
     for filename in resourcefiles {
         builder.resources.push(
-            TextResourceBuilder::from_file(filename, store.config()).unwrap_or_else(|err| {
-                eprintln!("Error loading TextResource {}: {}", filename, err);
-                exit(1);
-            }),
+            TextResourceBuilder::from_file(filename, store.config().clone()).unwrap_or_else(
+                |err| {
+                    eprintln!("Error loading TextResource {}: {}", filename, err);
+                    exit(1);
+                },
+            ),
         );
     }
     store.merge_from_builder(builder).unwrap_or_else(|err| {
