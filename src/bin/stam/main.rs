@@ -188,6 +188,13 @@ The file contains the following columns:
 ")
                         .takes_value(true)
                         .required(true),
+                )
+                .arg(
+                    Arg::with_name("allow-overlap")
+                        .long("allow-overlap")
+                        .short('O')
+                        .help("Allow regular expression matches to overlap")
+                        .required(false),
                 ))
         .get_matches();
 
@@ -310,6 +317,7 @@ The file contains the following columns:
         tag(
             &mut store,
             args.value_of("rules").expect("--rules must be provided"),
+            args.is_present("allow-overlap"),
         );
         if !args.is_present("dry-run") {
             store.save().unwrap_or_else(|err| {

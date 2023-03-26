@@ -56,7 +56,7 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
     rules
 }
 
-pub fn tag(store: &mut AnnotationStore, rulefile: &str) {
+pub fn tag(store: &mut AnnotationStore, rulefile: &str, allow_overlap: bool) {
     let rules = load_tag_rules(rulefile);
     let expressions: Vec<_> = rules.iter().map(|rule| rule.expression.clone()).collect();
     eprintln!("Loaded {} expressions from {}", rules.len(), rulefile);
@@ -67,7 +67,7 @@ pub fn tag(store: &mut AnnotationStore, rulefile: &str) {
         });
     //search the text and build annotations
     let annotations: Vec<AnnotationBuilder> = store
-        .search_text(&expressions, &None, &Some(precompiledset))
+        .search_text(&expressions, &None, &Some(precompiledset), allow_overlap)
         .map(|textmatch| {
             //get the matching rule
             let rule = rules
