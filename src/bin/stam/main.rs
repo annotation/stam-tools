@@ -179,13 +179,12 @@ fn main() {
                         .long_help("A TSV file containing regular expression rules for the tagger.
 The file contains the following columns:
 
-1. The regular expression following the following syntax: https://docs.rs/regex/latest/regex/#syntax
-   The expression must contain one or or more capture groups containing the items that will be
-   tagged (anything else is considered context and will not be tagged)
+1. The regular expressions follow the following syntax: https://docs.rs/regex/latest/regex/#syntax
+   The expression may contain one or or more capture groups containing the items that will be
+   tagged, in that case anything else is considered context and will not be tagged.
 2. The ID of annotation data set
 3. The ID of the data key
-4. The value to set. If this follows the syntax $1,$2,etc.. it will assign the value of that capture group (1-indexed). Use $0 for all capture groups combined (space delimited).
-")
+4. The value to set. If this follows the syntax $1,$2,etc.. it will assign the value of that capture group (1-indexed).")
                         .takes_value(true)
                         .required(true),
                 )
