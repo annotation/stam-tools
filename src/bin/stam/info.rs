@@ -27,10 +27,11 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     println!("Resources:              {}", store.resources_len());
     for resource in store.resources() {
         println!(
-            "    - [{}] Resource ID: {:?}; textlength: {}",
+            "    - [{}] Resource ID: {:?}; textlength: {}, #positions: {}",
             resource.handle().unwrap().unwrap(),
             resource.id().unwrap_or("(none)"),
-            resource.textlen()
+            resource.textlen(),
+            resource.positionindex_len(),
         );
         if verbose {
             for textselection in resource.textselections() {
