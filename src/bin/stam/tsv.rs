@@ -4,8 +4,6 @@ use stam::{
     Storable, TextResource, TextResourceHandle, TextSelection,
 };
 use std::fmt;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::process::exit;
 
 pub fn tsv_arguments<'a>() -> Vec<clap::Arg<'a>> {
@@ -688,69 +686,6 @@ pub fn to_tsv(
                     }
                 }
             }
-        }
-    }
-}
-
-pub fn from_tsv(
-    store: &mut AnnotationStore,
-    filename: &str,
-    columns: Vec<&str>,
-    tp: Option<Type>,
-    flattened: bool,
-    delimiter: &str,
-    null: &str,
-    has_header: bool,
-) {
-    let f = File::open(filename).unwrap_or_else(|e| {
-        eprintln!("Error opening rules {}: {}", filename, e);
-        exit(1)
-    });
-    let reader = BufReader::new(f);
-
-    let mut columns = Columns(
-        columns
-            .iter()
-            .map(|col| {
-                Column::try_from(*col)
-                    .map_err(|err| {
-                        eprintln!("{}", err);
-                        exit(1);
-                    })
-                    .unwrap()
-            })
-            .collect(),
-    );
-
-    for (i, line) in reader.lines().enumerate() {
-        if let Ok(line) = line {
-            if line.is_empty() {
-                continue;
-            } else if i == 0 && (has_header || line.starts_with('#')) {
-                //assume a first line with a comment is a header
-                let headerline = if line.starts_with('#') {
-                    line[1..].to_string()
-                } else {
-                    line
-                };
-                columns = Columns(
-                    headerline
-                        .split("\t")
-                        .map(|col| {
-                            Column::try_from(col)
-                                .map_err(|err| {
-                                    eprintln!("{}", err);
-                                    exit(1);
-                                })
-                                .unwrap()
-                        })
-                        .collect(),
-                );
-                continue;
-            } else if line.starts_with('#') {
-                continue;
-            }
-            //TODO
         }
     }
 }
