@@ -121,14 +121,16 @@ fn main() {
                 .about("Validate a STAM model. Set --verbose to have it output the STAM JSON to standard output.")
                 .args(&common_arguments())
                 .args(&multi_store_arguments())
-                .args(&config_arguments()),
+                .args(&config_arguments())
+                .args(&tsv_arguments()),
         )
         .subcommand(
             SubCommand::with_name("to-tsv")
-                .about("Output all annotations in a simple TSV format. Set --verbose for extra columns.")
+                .about("Output annotations (or other data structures) in a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
                 .args(&common_arguments())
                 .args(&multi_store_arguments())
-                .args(&config_arguments()),
+                .args(&config_arguments())
+                .args(&tsv_arguments()),
         )
         .subcommand(
             SubCommand::with_name("to-text")
@@ -246,7 +248,19 @@ The file contains the following columns:
     if rootargs.subcommand_matches("info").is_some() {
         info(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("to-tsv").is_some() {
-        to_tsv(&store, args.is_present("verbose"));
+        let columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
+        to_tsv(
+            &store,
+            &columns,
+            Type::try_from(args.value_of("type").unwrap()).unwrap_or_else(|err| {
+                eprintln!("Invalid type specified: {}", err);
+                exit(1);
+            }),
+            !args.is_present("verbose"),
+            args.value_of("delimiter").unwrap(),
+            args.value_of("null").unwrap(),
+            !args.is_present("no-header"),
+        );
     } else if rootargs.subcommand_matches("to-text").is_some() {
         let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
         to_text(&store, resource_ids);
