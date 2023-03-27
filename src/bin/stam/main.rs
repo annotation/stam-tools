@@ -6,14 +6,14 @@ mod annotate;
 mod info;
 mod tag;
 mod to_text;
-mod to_tsv;
+mod tsv;
 mod validate;
 
 use crate::annotate::*;
 use crate::info::*;
 use crate::tag::*;
 use crate::to_text::*;
-use crate::to_tsv::*;
+use crate::tsv::*;
 use crate::validate::*;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
