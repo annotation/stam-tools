@@ -1,11 +1,11 @@
-use stam::{AnnotationStore, Configurable, SerializeMode};
+use stam::{AnnotationStore, Configurable, SerializeMode,Writable};
 use std::process::exit;
 
 pub fn validate(store: &AnnotationStore, verbose: bool) {
     if !store.config().use_include {
         store.set_serialize_mode(SerializeMode::NoInclude);
     }
-    let result = store.to_json();
+    let result = store.serialize_to_string(store.config());
     match result {
         Ok(result) => {
             if verbose {
