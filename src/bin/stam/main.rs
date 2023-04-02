@@ -125,6 +125,25 @@ fn main() {
                 .args(&tsv_arguments()),
         )
         .subcommand(
+            SubCommand::with_name("save")
+                .about("Save the annotation store and all underlying files to the the specified location and data format (detected by extension).")
+                .args(&common_arguments())
+                .args(&store_argument())
+                .args(&config_arguments())
+                .arg(
+                    Arg::with_name("outputfile")
+                        .long("outputfile")
+                        .short('o')
+                        .help(
+                            "Output filename for the annotation store, other filenames will be derived automatically. You can use the following extensions:
+                                * .json (recommended: .store.json) - STAM JSON - Very verbose but also more interopable.
+                                * .csv (recommended: .store.csv) - STAM CSV - Not very verbose, less interoperable",
+                        )
+                        .takes_value(true)
+                        .required(true)
+                ),
+        )
+        .subcommand(
             SubCommand::with_name("to-tsv")
                 .about("Output annotations (or other data structures) in a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
                 .args(&common_arguments())
@@ -201,6 +220,8 @@ The file contains the following columns:
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
         args
+    } else if let Some(args) = rootargs.subcommand_matches("save") {
+        args
     } else if let Some(args) = rootargs.subcommand_matches("to-tsv") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("to-text") {
@@ -247,6 +268,19 @@ The file contains the following columns:
 
     if rootargs.subcommand_matches("info").is_some() {
         info(&store, args.is_present("verbose"));
+    } else if rootargs.subcommand_matches("save").is_some() {
+        store = load_store(args);
+        store.set_filename(args.value_of("outputfile").unwrap());
+        if !args.is_present("dry-run") {
+            store.save().unwrap_or_else(|err| {
+                eprintln!(
+                    "Failed to write annotation store {:?}: {}",
+                    store.filename(),
+                    err
+                );
+                exit(1);
+            });
+        }
     } else if rootargs.subcommand_matches("to-tsv").is_some() {
         let columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
         to_tsv(
