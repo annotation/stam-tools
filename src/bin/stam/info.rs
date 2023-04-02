@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use stam::{AnnotationStore, AnyId, Configurable, Handle, Storable};
+use stam::{AnnotationStore, AnyId, AssociatedFile, Configurable, Handle, Storable};
 
 pub fn info(store: &AnnotationStore, verbose: bool) {
     if !verbose {
@@ -10,13 +10,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         println!("ID: {}", id);
     }
     println!("Configuration: {:?}", store.config());
-    println!(
-        "Filename: {:?}",
-        store
-            .filename()
-            .map(|x| x.to_str().unwrap())
-            .unwrap_or("(none)")
-    );
+    println!("Filename: {:?}", store.filename().unwrap_or("(none)"));
     let count = store.index_totalcount();
     println!("Indices:");
     println!("    - dataset_data_annotation_map:      {}", count.0);
