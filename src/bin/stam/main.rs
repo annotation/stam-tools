@@ -54,7 +54,7 @@ fn multi_store_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("multistore")
             .help(
-                "Input file containing an annotation store in STAM JSON. Set value to - for standard input. Multiple are allowed.",
+                "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed.",
             )
             .takes_value(true)
             .required(true)
@@ -113,7 +113,7 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("validate")
-                .about("Validate a STAM model. Set --verbose to have it output the STAM JSON to standard output.")
+                .about("Validate a STAM model. Set --verbose to have it output the STAM JSON or STAM CSV to standard output.")
                 .args(&common_arguments())
                 .args(&multi_store_arguments())
                 .args(&config_arguments())

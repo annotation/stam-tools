@@ -28,7 +28,7 @@ pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("store")
             .short('i')
             .help(
-                "STAM JSON file containing an annotation store, will be merged into the new store. Set value to - for standard input.",
+                "STAM JSON or STAM CSV file containing an annotation store, will be merged into the new store. Set value to - for standard input.",
             )
             .takes_value(true)
             .action(ArgAction::Append),
