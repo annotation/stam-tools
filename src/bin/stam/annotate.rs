@@ -65,7 +65,7 @@ pub fn annotate(
     }
     let mut builder = AnnotationStoreBuilder::default();
     for filename in setfiles {
-        builder.annotationsets.push(
+        builder = builder.with_annotationset(
             AnnotationDataSetBuilder::from_file(filename, store.config().clone()).unwrap_or_else(
                 |err| {
                     eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
@@ -75,7 +75,7 @@ pub fn annotate(
         );
     }
     for filename in resourcefiles {
-        builder.resources.push(
+        builder = builder.with_resource(
             TextResourceBuilder::from_file(filename, store.config().clone()).unwrap_or_else(
                 |err| {
                     eprintln!("Error loading TextResource {}: {}", filename, err);

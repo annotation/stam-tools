@@ -1,11 +1,8 @@
-use stam::{AnnotationStore, Configurable, SerializeMode, ToJson};
+use stam::{AnnotationStore, Configurable, ToJson};
 use std::process::exit;
 
 pub fn validate(store: &AnnotationStore, verbose: bool) {
-    if !store.config().use_include() {
-        store.set_serialize_mode(SerializeMode::NoInclude);
-    }
-    let result = store.to_json_string(store.config());
+    let result = store.to_json_string(&store.config().clone().with_use_include(false));
     match result {
         Ok(result) => {
             if verbose {
@@ -16,9 +13,5 @@ pub fn validate(store: &AnnotationStore, verbose: bool) {
             eprintln!("Error during serialization: {}", err);
             exit(1);
         }
-    }
-    if !store.config().use_include() || !verbose {
-        //reset
-        store.set_serialize_mode(SerializeMode::AllowInclude);
     }
 }
