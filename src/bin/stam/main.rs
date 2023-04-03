@@ -84,14 +84,9 @@ fn config_arguments<'a>() -> Vec<clap::Arg<'a>> {
 
 /// Translate command line arguments to stam library's configuration structure
 fn config_from_args(args: &ArgMatches) -> Config {
-    let mut config = Config::default();
-    if args.is_present("no-include") {
-        config.use_include = false;
-    }
-    if args.is_present("debug") {
-        config.debug = true;
-    }
-    config
+    Config::default()
+        .with_use_include(!args.is_present("no-include"))
+        .with_debug(args.is_present("debug"))
 }
 
 fn load_store(args: &ArgMatches) -> AnnotationStore {
