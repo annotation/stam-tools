@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use stam::{AnnotationStore, AnyId, AssociatedFile, Configurable, Handle, Storable};
+use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Item, Storable};
 
 pub fn info(store: &AnnotationStore, verbose: bool) {
     if !verbose {
@@ -40,7 +40,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                     textselection.end(),
                     //text:
                     {
-                        if let Some(resource) = store.resource(&AnyId::Handle(resource.handle().unwrap())) {
+                        if let Some(resource) = store.resource(&Item::Handle(resource.handle().unwrap())) {
                             let text = resource.text_by_textselection(textselection).unwrap_or_else(|err| {
                                 eprintln!("Failed get text: {}", err);
                                 exit(1);
@@ -80,14 +80,14 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                     key.handle().unwrap().unwrap(),
                     key.id().unwrap_or("(none)"),
                     annotationset
-                        .data_by_key(key.handle().unwrap())
+                        .data_by_key(&key.handle().into())
                         .unwrap_or(&vec!())
                         .len()
                 );
             }
             for data in annotationset.data() {
                 let key = annotationset
-                    .key(&AnyId::from(data.key()))
+                    .key(&Item::from(data.key()))
                     .expect("Key not found");
                 let annotations = store
                     .annotations_by_data(annotationset.handle().unwrap(), data.handle().unwrap());
@@ -117,7 +117,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                 //text:
                 {
                     if let Some(annotation) =
-                        store.annotation(&AnyId::Handle(annotation.handle().unwrap()))
+                        store.annotation(&Item::Handle(annotation.handle().unwrap()))
                     {
                         let text: Vec<&str> = store.text_by_annotation(annotation).collect();
                         text

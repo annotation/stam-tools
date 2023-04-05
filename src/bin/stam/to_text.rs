@@ -1,9 +1,9 @@
-use stam::{AnnotationStore, AnyId};
+use stam::{AnnotationStore, Item};
 use std::process::exit;
 
 pub fn to_text(store: &AnnotationStore, resource_ids: Vec<&str>) {
     for resource_id in resource_ids {
-        if let Some(resource) = store.resource(&AnyId::Id(resource_id.to_string())) {
+        if let Some(resource) = store.resource(&Item::Id(resource_id.to_string())) {
             eprintln!(
                 "--------------------------- {} ---------------------------",
                 resource_id

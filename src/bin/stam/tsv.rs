@@ -1,6 +1,6 @@
 use clap::Arg;
 use stam::{
-    Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, AnyId, DataKey, DataValue,
+    Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, DataKey, DataValue, Item,
     Storable, TextResource, TextResourceHandle, TextSelection,
 };
 use std::fmt;
@@ -279,7 +279,7 @@ impl Column {
                             .iter()
                             .map(|(reshandle, t)| {
                                 let resource = store
-                                    .resource(&AnyId::from(*reshandle))
+                                    .resource(&Item::from(*reshandle))
                                     .expect("resource must exist");
                                 format!("{}#{}-{}", resource.id().unwrap_or(""), t.begin(), t.end())
                             })
@@ -358,7 +358,7 @@ impl Column {
                             .iter()
                             .map(|(reshandle, t)| {
                                 let resource = store
-                                    .resource(&AnyId::from(*reshandle))
+                                    .resource(&Item::from(*reshandle))
                                     .expect("resource must exist");
                                 format!(
                                     "{}-{}",
@@ -390,7 +390,7 @@ impl Column {
                             .iter()
                             .map(|(reshandle, t)| {
                                 let resource = store
-                                    .resource(&AnyId::from(*reshandle))
+                                    .resource(&Item::from(*reshandle))
                                     .expect("resource must exist");
                                 format!(
                                     "{}",
@@ -421,7 +421,7 @@ impl Column {
                             .iter()
                             .map(|(reshandle, t)| {
                                 let resource = store
-                                    .resource(&AnyId::from(*reshandle))
+                                    .resource(&Item::from(*reshandle))
                                     .expect("resource must exist");
                                 format!(
                                     "{}",
@@ -627,7 +627,7 @@ pub fn to_tsv(
                 if tp == Type::AnnotationData {
                     for data in set.data() {
                         let key = set
-                            .key(&AnyId::from(data.key()))
+                            .key(&Item::from(data.key()))
                             .expect("Referenced key from data must exist");
                         let context = Context {
                             id: data.id(),

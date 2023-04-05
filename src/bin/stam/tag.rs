@@ -1,14 +1,14 @@
 use stam::{
-    AnnotationBuilder, AnnotationDataBuilder, AnnotationStore, AnyId, Offset, Regex, RegexSet,
+    AnnotationBuilder, AnnotationDataBuilder, AnnotationStore, Item, Offset, Regex, RegexSet,
     SelectorBuilder, Storable,
 };
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::process::exit;
 
-struct Rule {
+struct Rule<'a> {
     expression: Regex,
-    databuilder: AnnotationDataBuilder,
+    databuilder: AnnotationDataBuilder<'a>,
     //does the value reference capture groups like $1 $2 $3?
     variable_value: bool,
 }
@@ -45,8 +45,8 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
                 rules.push(Rule {
                     expression,
                     databuilder: AnnotationDataBuilder::new()
-                        .with_annotationset(fields[1].into())
-                        .with_key(fields[2].into())
+                        .with_annotationset(Item::Id(fields[1].to_string()))
+                        .with_key(Item::Id(fields[2].to_string()))
                         .with_value(fields[3].into()),
                     variable_value,
                 });
@@ -56,7 +56,7 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
     rules
 }
 
-pub fn tag(store: &mut AnnotationStore, rulefile: &str, allow_overlap: bool) {
+pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bool) {
     let rules = load_tag_rules(rulefile);
     let expressions: Vec<_> = rules.iter().map(|rule| rule.expression.clone()).collect();
     eprintln!("Loaded {} expressions from {}", rules.len(), rulefile);
@@ -66,8 +66,8 @@ pub fn tag(store: &mut AnnotationStore, rulefile: &str, allow_overlap: bool) {
             exit(1);
         });
     //search the text and build annotations
-    let annotations: Vec<AnnotationBuilder> = store
-        .search_text(&expressions, &None, &Some(precompiledset), allow_overlap)
+    let annotations: Vec<AnnotationBuilder<'a>> = store
+        .find_text_regex(&expressions, &None, &Some(precompiledset), allow_overlap)
         .map(|textmatch| {
             //get the matching rule
             let rule = rules
@@ -100,7 +100,7 @@ pub fn tag(store: &mut AnnotationStore, rulefile: &str, allow_overlap: bool) {
                 //build an annotation with a TextSelector
                 AnnotationBuilder::new()
                     .with_target(SelectorBuilder::TextSelector(
-                        AnyId::Handle(textmatch.resource().handle().unwrap()),
+                        Item::Handle(textmatch.resource().handle().unwrap()),
                         Offset::from(textmatch.textselections().first().unwrap()),
                     ))
                     .with_data_builder(databuilder)
@@ -113,7 +113,7 @@ pub fn tag(store: &mut AnnotationStore, rulefile: &str, allow_overlap: bool) {
                             .iter()
                             .map(|textselection| {
                                 SelectorBuilder::TextSelector(
-                                    AnyId::Handle(textmatch.resource().handle().unwrap()),
+                                    Item::Handle(textmatch.resource().handle().unwrap()),
                                     Offset::from(textselection),
                                 )
                             })
