@@ -1,5 +1,3 @@
-use std::process::exit;
-
 use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Item, Storable, Text};
 
 pub fn info(store: &AnnotationStore, verbose: bool) {
@@ -40,15 +38,11 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                     textselection.end(),
                     //text:
                     {
-                        if let Some(resource) = store.resource(&Item::Handle(resource.handle().unwrap())) {
-                            let text = textselection.text();
-                            if text.len() > 1024 {
-                                "(too long)"
-                            } else {
-                                text
-                            }
+                        let text = textselection.text();
+                        if text.len() > 1024 {
+                            "(too long)"
                         } else {
-                            "(none)"
+                            text
                         }
                     },
                     //nrannotations:

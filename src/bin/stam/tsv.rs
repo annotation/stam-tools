@@ -1,7 +1,7 @@
 use clap::Arg;
 use stam::{
-    Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, DataKey, DataValue, Item,
-    Storable, Text, TextResource, TextResourceHandle, TextSelection, WrappedItem,
+    Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, DataKey, DataValue, Storable,
+    Text, TextResource, TextSelection, WrappedItem,
 };
 use std::fmt;
 use std::process::exit;
@@ -246,7 +246,6 @@ impl Column {
 
     fn print(
         &self,
-        store: &AnnotationStore,
         tp: Type,
         colnr: usize,
         col_len: usize,
@@ -470,16 +469,9 @@ impl Column {
 struct Columns(Vec<Column>);
 
 impl Columns {
-    fn printrow(
-        &self,
-        store: &AnnotationStore,
-        tp: Type,
-        context: &Context,
-        delimiter: &str,
-        null: &str,
-    ) {
+    fn printrow(&self, tp: Type, context: &Context, delimiter: &str, null: &str) {
         for (i, column) in self.0.iter().enumerate() {
-            column.print(&store, tp, i, self.0.len(), context, delimiter, null);
+            column.print(tp, i, self.0.len(), context, delimiter, null);
         }
     }
 
@@ -542,7 +534,7 @@ pub fn to_tsv(
                         textselections: textselections.as_ref(),
                         ..Context::default()
                     };
-                    columns.printrow(&store, Type::Annotation, &context, delimiter, null);
+                    columns.printrow(Type::Annotation, &context, delimiter, null);
                 }
                 for data in annotation.data() {
                     let context = Context {
@@ -560,7 +552,6 @@ pub fn to_tsv(
                         ..Context::default()
                     };
                     columns.printrow(
-                        &store,
                         if flatten {
                             Type::Annotation
                         } else {
@@ -581,7 +572,7 @@ pub fn to_tsv(
                         set: Some(set.clone()),
                         ..Context::default()
                     };
-                    columns.printrow(&store, Type::AnnotationDataSet, &context, delimiter, null);
+                    columns.printrow(Type::AnnotationDataSet, &context, delimiter, null);
                 }
                 if tp == Type::AnnotationData {
                     for data in set.data() {
@@ -592,7 +583,7 @@ pub fn to_tsv(
                             value: Some(data.value()),
                             ..Context::default()
                         };
-                        columns.printrow(&store, Type::AnnotationData, &context, delimiter, null);
+                        columns.printrow(Type::AnnotationData, &context, delimiter, null);
                     }
                 } else if tp == Type::DataKey {
                     for key in set.keys() {
@@ -602,7 +593,7 @@ pub fn to_tsv(
                             key: Some(key.clone()),
                             ..Context::default()
                         };
-                        columns.printrow(&store, Type::DataKey, &context, delimiter, null);
+                        columns.printrow(Type::DataKey, &context, delimiter, null);
                     }
                 }
             }
@@ -620,7 +611,7 @@ pub fn to_tsv(
                         },
                         ..Context::default()
                     };
-                    columns.printrow(&store, Type::TextResource, &context, delimiter, null);
+                    columns.printrow(Type::TextResource, &context, delimiter, null);
                 }
                 if tp == Type::TextSelection {
                     for textselection in res.textselections() {
@@ -639,7 +630,7 @@ pub fn to_tsv(
                             text,
                             ..Context::default()
                         };
-                        columns.printrow(&store, Type::TextSelection, &context, delimiter, null);
+                        columns.printrow(Type::TextSelection, &context, delimiter, null);
                     }
                 }
             }
