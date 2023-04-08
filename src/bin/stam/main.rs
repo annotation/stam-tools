@@ -1,5 +1,5 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
-use stam::{AnnotationStore, AssociatedFile, Config, Configurable};
+use stam::{AnnotationStore, AssociatedFile, Config, Configurable, Text};
 use std::process::exit;
 
 mod annotate;

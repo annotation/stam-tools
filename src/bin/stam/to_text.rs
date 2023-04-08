@@ -1,4 +1,4 @@
-use stam::{AnnotationStore, Item};
+use stam::{AnnotationStore, Item, Text};
 use std::process::exit;
 
 pub fn to_text(store: &AnnotationStore, resource_ids: Vec<&str>) {

@@ -1,6 +1,6 @@
 use std::process::exit;
 
-use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Item, Storable};
+use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Item, Storable, Text};
 
 pub fn info(store: &AnnotationStore, verbose: bool) {
     if !verbose {
@@ -41,10 +41,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                     //text:
                     {
                         if let Some(resource) = store.resource(&Item::Handle(resource.handle().unwrap())) {
-                            let text = resource.text_by_textselection(textselection).unwrap_or_else(|err| {
-                                eprintln!("Failed get text: {}", err);
-                                exit(1);
-                            });
+                            let text = textselection.text();
                             if text.len() > 1024 {
                                 "(too long)"
                             } else {
@@ -86,16 +83,13 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                 );
             }
             for data in annotationset.data() {
-                let key = annotationset
-                    .key(&Item::from(data.key()))
-                    .expect("Key not found");
                 let annotations = store
                     .annotations_by_data(annotationset.handle().unwrap(), data.handle().unwrap());
                 println!(
                     "        - [{}] Data ID: {:?}; Key: {:?}; Value: {:?}; #annotations: {}",
                     data.handle().unwrap().unwrap(),
                     data.id().unwrap_or("(none)"),
-                    key.id().unwrap_or("(none)"),
+                    data.key().id().unwrap_or("(none)"),
                     data.value(),
                     if let Some(annotations) = annotations {
                         annotations.len()
@@ -119,7 +113,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                     if let Some(annotation) =
                         store.annotation(&Item::Handle(annotation.handle().unwrap()))
                     {
-                        let text: Vec<&str> = store.text_by_annotation(annotation).collect();
+                        let text: Vec<&str> = annotation.text().collect();
                         text
                     } else {
                         vec!["(no text)"]
@@ -127,13 +121,13 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                 },
                 annotation.len(),
             );
-            for (key, data, annotationset) in store.data_by_annotation(annotation) {
+            for data in annotation.data() {
                 println!(
                     "        - [{}] Data ID: {:?}; Set ID: {:?}; Key: {:?}; Value: {:?}",
                     data.handle().unwrap().unwrap(),
                     data.id().unwrap_or("(none)"),
-                    annotationset.id().unwrap_or("(none)"),
-                    key.id().unwrap_or("(none)"),
+                    data.set().id().unwrap_or("(none)"),
+                    data.key().id().unwrap_or("(none)"),
                     data.value(),
                 );
             }

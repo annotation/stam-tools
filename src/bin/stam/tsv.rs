@@ -1,7 +1,7 @@
 use clap::Arg;
 use stam::{
     Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, DataKey, DataValue, Item,
-    Storable, TextResource, TextResourceHandle, TextSelection,
+    Storable, Text, TextResource, TextResourceHandle, TextSelection, WrappedItem,
 };
 use std::fmt;
 use std::process::exit;
@@ -195,15 +195,13 @@ impl fmt::Display for Column {
 #[derive(Clone)]
 struct Context<'a> {
     id: Option<&'a str>,
-    textselections: Option<&'a Vec<(TextResourceHandle, TextSelection)>>,
-    textselections_text: Option<&'a Vec<&'a str>>,
-    textselection: Option<&'a TextSelection>,
+    textselections: Option<&'a Vec<WrappedItem<'a, TextSelection>>>,
     text: Option<&'a str>,
-    annotation: Option<&'a Annotation>,
-    data: Option<&'a AnnotationData>,
-    resource: Option<&'a TextResource>,
-    set: Option<&'a AnnotationDataSet>,
-    key: Option<&'a DataKey>,
+    annotation: Option<WrappedItem<'a, Annotation>>,
+    data: Option<WrappedItem<'a, AnnotationData>>,
+    resource: Option<WrappedItem<'a, TextResource>>,
+    set: Option<WrappedItem<'a, AnnotationDataSet>>,
+    key: Option<WrappedItem<'a, DataKey>>,
     value: Option<&'a DataValue>,
 }
 
@@ -211,10 +209,8 @@ impl<'a> Default for Context<'a> {
     fn default() -> Self {
         Context {
             id: None,
-            textselections: None,      //multiple
-            textselections_text: None, //text for possibly multiple textselections
-            textselection: None,       //single one
-            text: None,                //single text reference
+            textselections: None, //multiple
+            text: None,           //single text reference
             annotation: None,
             data: None,
             resource: None,
@@ -265,23 +261,18 @@ impl Column {
             Column::Type => print!("{}", tp.as_str()),
             Column::Id => print!("{}", context.id.unwrap_or(null)),
             Column::TextSelection => {
-                if context.textselection.is_some() && context.resource.is_some() {
-                    print!(
-                        "{}#{}-{}",
-                        context.resource.unwrap().id().unwrap_or(""),
-                        context.textselection.unwrap().begin(),
-                        context.textselection.unwrap().end(),
-                    );
-                } else if let Some(textselections) = context.textselections {
+                if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
                         textselections
                             .iter()
-                            .map(|(reshandle, t)| {
-                                let resource = store
-                                    .resource(&Item::from(*reshandle))
-                                    .expect("resource must exist");
-                                format!("{}#{}-{}", resource.id().unwrap_or(""), t.begin(), t.end())
+                            .map(|textselection| {
+                                format!(
+                                    "{}#{}-{}",
+                                    textselection.resource().id().unwrap_or(""),
+                                    textselection.begin(),
+                                    textselection.end()
+                                )
                             })
                             .collect::<Vec<String>>()
                             .join(delimiter)
@@ -291,14 +282,14 @@ impl Column {
                 }
             }
             Column::Offset => {
-                if let Some(textselection) = context.textselection {
-                    print!("{}-{}", textselection.begin(), textselection.end(),);
-                } else if let Some(textselections) = context.textselections {
+                if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
                         textselections
                             .iter()
-                            .map(|(_reshandle, t)| { format!("{}-{}", t.begin(), t.end()) })
+                            .map(|textselection| {
+                                format!("{}-{}", textselection.begin(), textselection.end())
+                            })
                             .collect::<Vec<String>>()
                             .join(delimiter)
                     );
@@ -307,14 +298,12 @@ impl Column {
                 }
             }
             Column::BeginOffset => {
-                if let Some(textselection) = context.textselection {
-                    print!("{}", textselection.begin());
-                } else if let Some(textselections) = context.textselections {
+                if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
                         textselections
                             .iter()
-                            .map(|(_reshandle, t)| { format!("{}", t.begin()) })
+                            .map(|textselection| { format!("{}", textselection.begin()) })
                             .collect::<Vec<String>>()
                             .join(delimiter)
                     );
@@ -323,14 +312,12 @@ impl Column {
                 }
             }
             Column::EndOffset => {
-                if let Some(textselection) = context.textselection {
-                    print!("{}", textselection.end());
-                } else if let Some(textselections) = context.textselections {
+                if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
                         textselections
                             .iter()
-                            .map(|(_reshandle, t)| { format!("{}", t.end()) })
+                            .map(|textselection| { format!("{}", textselection.end()) })
                             .collect::<Vec<String>>()
                             .join(delimiter)
                     );
@@ -339,31 +326,22 @@ impl Column {
                 }
             }
             Column::Utf8Offset => {
-                if let (Some(textselection), Some(resource)) =
-                    (context.textselection, context.resource)
-                {
-                    print!(
-                        "{}-{}",
-                        resource
-                            .utf8byte(textselection.begin())
-                            .expect("Offset must be valid"),
-                        resource
-                            .utf8byte(textselection.end())
-                            .expect("Offset must be valid"),
-                    );
-                } else if let Some(textselections) = context.textselections {
+                if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
                         textselections
                             .iter()
-                            .map(|(reshandle, t)| {
-                                let resource = store
-                                    .resource(&Item::from(*reshandle))
-                                    .expect("resource must exist");
+                            .map(|textselection| {
                                 format!(
                                     "{}-{}",
-                                    resource.utf8byte(t.begin()).expect("offset must be valid"),
-                                    resource.utf8byte(t.end()).expect("offset must be valid"),
+                                    textselection
+                                        .resource()
+                                        .utf8byte(textselection.begin())
+                                        .expect("offset must be valid"),
+                                    textselection
+                                        .resource()
+                                        .utf8byte(textselection.end())
+                                        .expect("offset must be valid"),
                                 )
                             })
                             .collect::<Vec<String>>()
@@ -374,27 +352,18 @@ impl Column {
                 }
             }
             Column::BeginUtf8Offset => {
-                if let (Some(textselection), Some(resource)) =
-                    (context.textselection, context.resource)
-                {
-                    print!(
-                        "{}",
-                        resource
-                            .utf8byte(textselection.begin())
-                            .expect("Offset must be valid"),
-                    );
-                } else if let Some(textselections) = context.textselections {
+                if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
                         textselections
                             .iter()
-                            .map(|(reshandle, t)| {
-                                let resource = store
-                                    .resource(&Item::from(*reshandle))
-                                    .expect("resource must exist");
+                            .map(|textselection| {
                                 format!(
                                     "{}",
-                                    resource.utf8byte(t.begin()).expect("offset must be valid"),
+                                    textselection
+                                        .resource()
+                                        .utf8byte(textselection.begin())
+                                        .expect("offset must be valid"),
                                 )
                             })
                             .collect::<Vec<String>>()
@@ -405,27 +374,18 @@ impl Column {
                 }
             }
             Column::EndUtf8Offset => {
-                if let (Some(textselection), Some(resource)) =
-                    (context.textselection, context.resource)
-                {
-                    print!(
-                        "{}",
-                        resource
-                            .utf8byte(textselection.end())
-                            .expect("Offset must be valid"),
-                    );
-                } else if let Some(textselections) = context.textselections {
+                if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
                         textselections
                             .iter()
-                            .map(|(reshandle, t)| {
-                                let resource = store
-                                    .resource(&Item::from(*reshandle))
-                                    .expect("resource must exist");
+                            .map(|textselection| {
                                 format!(
                                     "{}",
-                                    resource.utf8byte(t.end()).expect("offset must be valid"),
+                                    textselection
+                                        .resource()
+                                        .utf8byte(textselection.end())
+                                        .expect("offset must be valid"),
                                 )
                             })
                             .collect::<Vec<String>>()
@@ -438,13 +398,14 @@ impl Column {
             Column::Text => {
                 if let Some(text) = context.text {
                     print!("{}", text)
-                } else if context.textselections_text.is_some() {
+                } else if let Some(textselections) = context.textselections {
                     print!(
                         "{}",
-                        context
-                            .textselections_text
-                            .map(|text| text.join(delimiter).replace("\n", " "))
-                            .unwrap_or(null.to_string()),
+                        textselections
+                            .iter()
+                            .map(|textselection| textselection.text().replace("\n", " "))
+                            .collect::<Vec<String>>()
+                            .join(delimiter)
                     )
                 } else {
                     print!("{}", null)
@@ -454,6 +415,7 @@ impl Column {
                 "{}",
                 context
                     .annotation
+                    .as_ref()
                     .map(|annotation| annotation.id().unwrap_or(null))
                     .unwrap_or(null)
             ),
@@ -461,6 +423,7 @@ impl Column {
                 "{}",
                 context
                     .data
+                    .as_ref()
                     .map(|data| data.id().unwrap_or(null))
                     .unwrap_or(null)
             ),
@@ -468,6 +431,7 @@ impl Column {
                 "{}",
                 context
                     .set
+                    .as_ref()
                     .map(|set| set.id().unwrap_or(null))
                     .unwrap_or(null)
             ),
@@ -475,6 +439,7 @@ impl Column {
                 "{}",
                 context
                     .resource
+                    .as_ref()
                     .map(|resource| resource.id().unwrap_or(null))
                     .unwrap_or(null)
             ),
@@ -482,6 +447,7 @@ impl Column {
                 "{}",
                 context
                     .key
+                    .as_ref()
                     .map(|key| key.id().unwrap_or(null))
                     .unwrap_or(null)
             ),
@@ -489,6 +455,7 @@ impl Column {
                 "{}",
                 context
                     .value
+                    .as_ref()
                     .map(|value| value.to_string())
                     .unwrap_or(null.to_string())
             ),
@@ -560,43 +527,35 @@ pub fn to_tsv(
 
     match tp {
         Type::Annotation => {
-            let want_text = columns.0.contains(&Column::Text);
-            let want_textselections = columns.0.contains(&Column::TextSelection);
+            let want_textselections =
+                columns.0.contains(&Column::TextSelection) || columns.0.contains(&Column::Text);
             for annotation in store.annotations() {
-                let text: Option<Vec<&str>> = if want_text {
-                    Some(store.text_by_annotation(annotation).collect())
+                let textselections: Option<Vec<_>> = if want_textselections {
+                    Some(annotation.textselections().collect())
                 } else {
                     None
                 };
-                let textselections: Option<Vec<(TextResourceHandle, TextSelection)>> =
-                    if want_textselections {
-                        Some(store.textselections_by_annotation(annotation).collect())
-                    } else {
-                        None
-                    };
                 if !flatten {
                     let context = Context {
                         id: annotation.id(),
-                        annotation: Some(annotation),
+                        annotation: Some(annotation.clone()), //clones only the WrappedItem::Borrowed(), cheap
                         textselections: textselections.as_ref(),
-                        textselections_text: text.as_ref(),
                         ..Context::default()
                     };
                     columns.printrow(&store, Type::Annotation, &context, delimiter, null);
                 }
-                for (key, data, dataset) in store.data_by_annotation(annotation) {
+                for data in annotation.data() {
                     let context = Context {
                         id: if flatten { annotation.id() } else { data.id() },
-                        annotation: Some(annotation),
+                        annotation: Some(annotation.clone()),
                         textselections: if flatten {
                             textselections.as_ref()
                         } else {
                             None
                         },
-                        textselections_text: if flatten { text.as_ref() } else { None },
-                        key: Some(key),
-                        data: Some(data),
-                        set: Some(dataset),
+                        key: Some(data.key()),
+                        data: Some(data.clone()),
+                        set: Some(data.set().wrap_in(store).unwrap()),
                         value: Some(data.value()),
                         ..Context::default()
                     };
@@ -619,20 +578,17 @@ pub fn to_tsv(
                 if !flatten || tp == Type::AnnotationDataSet {
                     let context = Context {
                         id: set.id(),
-                        set: Some(set),
+                        set: Some(set.clone()),
                         ..Context::default()
                     };
                     columns.printrow(&store, Type::AnnotationDataSet, &context, delimiter, null);
                 }
                 if tp == Type::AnnotationData {
                     for data in set.data() {
-                        let key = set
-                            .key(&Item::from(data.key()))
-                            .expect("Referenced key from data must exist");
                         let context = Context {
                             id: data.id(),
-                            set: Some(set),
-                            key: Some(key),
+                            set: Some(set.clone()),
+                            key: Some(data.key()),
                             value: Some(data.value()),
                             ..Context::default()
                         };
@@ -642,8 +598,8 @@ pub fn to_tsv(
                     for key in set.keys() {
                         let context = Context {
                             id: key.id(),
-                            set: Some(set),
-                            key: Some(key),
+                            set: Some(set.clone()),
+                            key: Some(key.clone()),
                             ..Context::default()
                         };
                         columns.printrow(&store, Type::DataKey, &context, delimiter, null);
@@ -656,7 +612,7 @@ pub fn to_tsv(
                 if !flatten || tp == Type::TextResource {
                     let context = Context {
                         id: res.id(),
-                        resource: Some(res),
+                        resource: Some(res.clone()),
                         text: if res.text().len() > 1024 || res.text().find("\n").is_some() {
                             Some("[too long to display]")
                         } else {
@@ -668,18 +624,19 @@ pub fn to_tsv(
                 }
                 if tp == Type::TextSelection {
                     for textselection in res.textselections() {
-                        let textselections = vec![(res.handle().unwrap(), textselection.clone())];
                         let id = format!(
                             "{}#{}-{}",
                             res.id().unwrap_or(""),
                             textselection.begin(),
                             textselection.end()
                         );
+                        let text = Some(textselection.text());
+                        let textselections = vec![textselection];
                         let context = Context {
                             id: Some(id.as_str()),
-                            resource: Some(res),
+                            resource: Some(res.clone()),
                             textselections: Some(&textselections),
-                            text: res.text_by_textselection(textselection).ok(),
+                            text,
                             ..Context::default()
                         };
                         columns.printrow(&store, Type::TextSelection, &context, delimiter, null);

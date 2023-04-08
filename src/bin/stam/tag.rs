@@ -1,6 +1,6 @@
 use stam::{
     AnnotationBuilder, AnnotationDataBuilder, AnnotationStore, Item, Offset, Regex, RegexSet,
-    SelectorBuilder, Storable,
+    SelectorBuilder, Storable, Text,
 };
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -67,7 +67,7 @@ pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bo
         });
     //search the text and build annotations
     let annotations: Vec<AnnotationBuilder<'a>> = store
-        .find_text_regex(&expressions, &None, &Some(precompiledset), allow_overlap)
+        .find_text_regex(&expressions, &Some(precompiledset), allow_overlap)
         .map(|textmatch| {
             //get the matching rule
             let rule = rules
@@ -84,15 +84,8 @@ pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bo
                     .iter()
                     .zip(textmatch.textselections().iter())
                 {
-                    let text = textmatch
-                        .resource()
-                        .text_by_textselection(textselection)
-                        .unwrap_or_else(|e| {
-                            eprintln!("Can't get text for {:?}: {}", textselection, e);
-                            exit(1)
-                        });
                     let pattern = format!("${}", capnum); //this will fail if there are more than 9 capture groups but that seems excessive to me anyway
-                    value = value.replace(pattern.as_str(), text);
+                    value = value.replace(pattern.as_str(), textselection.text());
                 }
                 databuilder = databuilder.with_value(value.into());
             }
