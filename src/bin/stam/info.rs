@@ -27,10 +27,6 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         );
         if verbose {
             for textselection in resource.textselections() {
-                let annotations = store.annotations_by_textselection_handle(
-                    resource.handle().unwrap(),
-                    textselection.handle().unwrap(),
-                );
                 println!(
                     "        - [{}] TextSelection; begin: {}; end: {}, text: {:?}, #annotations: {}",
                     textselection.handle().unwrap().unwrap(),
@@ -46,11 +42,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                         }
                     },
                     //nrannotations:
-                    if let Some(annotations) = annotations {
-                        annotations.len()
-                    } else {
-                        0
-                    }
+                    textselection.annotations_len(store)
                 );
             }
         }
