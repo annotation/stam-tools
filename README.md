@@ -1,3 +1,7 @@
+[![Crate](https://img.shields.io/crates/v/stam-tools.svg)](https://crates.io/crates/stam-tools)
+[![GitHub release](https://img.shields.io/github/release/annotation/stam-tools.svg)](https://GitHub.com/annotation/stam-tools/releases/)
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+
 # STAM Tools
 
 A collection of command-line tools for working with STAM.
