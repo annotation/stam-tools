@@ -1,7 +1,7 @@
 use clap::Arg;
 use stam::{
-    Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, DataKey, DataValue, Storable,
-    Text, TextResource, TextSelection, WrappedItem,
+    Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, DataKey, DataOperator,
+    DataValue, Storable, Text, TextResource, TextSelection, WrappedItem,
 };
 use std::fmt;
 use std::process::exit;
@@ -47,6 +47,13 @@ pub fn tsv_arguments<'a>() -> Vec<clap::Arg<'a>> {
 * BeginUtf8Offset      - Outputs begin offset in UTF-8 bytes
 * EndUtf8Offset        - Outputs end offset in UTF8-bytes
 * Ignore               - Always outputs the NULL value
+
+Instead of the above columns, you may also set a *custom* column by  specifying an AnnotationDataSet and DataKey within, seperated by a slash. The rows will then be filled with the
+data values corresponding to the data key. Which works great when you set --type Annotation and want specific AnnotationData outputted. Example:
+
+* my_set/part_of_speech
+* my_set/lemma
+
 ",
             )
             .takes_value(true)
@@ -80,7 +87,7 @@ pub fn tsv_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Column {
     Type,
     Id,
@@ -99,6 +106,7 @@ pub enum Column {
     Text,
     TextSelection,
     Ignore,
+    Custom { set: String, key: String },
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -153,42 +161,52 @@ impl fmt::Display for Type {
 impl TryFrom<&str> for Column {
     type Error = String;
     fn try_from(val: &str) -> Result<Self, Self::Error> {
-        let val_lower = val.to_lowercase();
-        match val_lower.as_str() {
-            "type" => Ok(Self::Type),
-            "id" => Ok(Self::Id),
-            "annotationid" | "annotation" => Ok(Self::Annotation),
-            "annotationdatasetid"
-            | "annotationdataset"
-            | "set"
-            | "setid"
-            | "datasetid"
-            | "dataset" => Ok(Self::AnnotationDataSet),
-            "resource" | "resourceid" | "textresource" | "textresources" => Ok(Self::TextResource),
-            "annotationdataid" | "dataid" => Ok(Self::AnnotationData),
-            "offset" => Ok(Self::Offset),
-            "beginoffset" | "begin" | "start" | "startoffset" => Ok(Self::BeginOffset),
-            "endoffset" | "end" => Ok(Self::EndOffset),
-            "utf8offset" => Ok(Self::Utf8Offset),
-            "beginutf8offset" | "beginutf8" | "beginbyte" | "startbyte" | "startutf8"
-            | "startutf8offset" => Ok(Self::BeginUtf8Offset),
-            "endutf8offset" | "endutf8" | "endbyte" => Ok(Self::EndUtf8Offset),
-            "datakey" | "key" | "datakeyid" | "keyid" => Ok(Self::DataKey),
-            "datavalue" | "value" => Ok(Self::DataValue),
-            "text" => Ok(Self::Text),
-            "textselections" | "textselection" => Ok(Self::TextSelection),
-            "ignore" => Ok(Self::Ignore),
-            _ => Err(format!(
-                "Unknown column: {}, see --help for allowed values",
-                val
-            )),
+        if val.find("/").is_some() {
+            let (set, key) = val.rsplit_once("/").unwrap();
+            Ok(Self::Custom {
+                set: set.to_string(),
+                key: key.to_string(),
+            })
+        } else {
+            let val_lower = val.to_lowercase();
+            match val_lower.as_str() {
+                "type" => Ok(Self::Type),
+                "id" => Ok(Self::Id),
+                "annotationid" | "annotation" => Ok(Self::Annotation),
+                "annotationdatasetid"
+                | "annotationdataset"
+                | "set"
+                | "setid"
+                | "datasetid"
+                | "dataset" => Ok(Self::AnnotationDataSet),
+                "resource" | "resourceid" | "textresource" | "textresources" => {
+                    Ok(Self::TextResource)
+                }
+                "annotationdataid" | "dataid" => Ok(Self::AnnotationData),
+                "offset" => Ok(Self::Offset),
+                "beginoffset" | "begin" | "start" | "startoffset" => Ok(Self::BeginOffset),
+                "endoffset" | "end" => Ok(Self::EndOffset),
+                "utf8offset" => Ok(Self::Utf8Offset),
+                "beginutf8offset" | "beginutf8" | "beginbyte" | "startbyte" | "startutf8"
+                | "startutf8offset" => Ok(Self::BeginUtf8Offset),
+                "endutf8offset" | "endutf8" | "endbyte" => Ok(Self::EndUtf8Offset),
+                "datakey" | "key" | "datakeyid" | "keyid" => Ok(Self::DataKey),
+                "datavalue" | "value" => Ok(Self::DataValue),
+                "text" => Ok(Self::Text),
+                "textselections" | "textselection" => Ok(Self::TextSelection),
+                "ignore" => Ok(Self::Ignore),
+                _ => Err(format!(
+                    "Unknown column: {}, see --help for allowed values",
+                    val
+                )),
+            }
         }
     }
 }
 
 impl fmt::Display for Column {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        write!(f, "{}", self.to_string())
     }
 }
 
@@ -222,25 +240,26 @@ impl<'a> Default for Context<'a> {
 }
 
 impl Column {
-    fn as_str(&self) -> &str {
+    fn to_string(&self) -> String {
         match self {
-            Self::Type => "Type",
-            Self::Id => "Id",
-            Self::Annotation => "Annotation",
-            Self::TextResource => "TextResource",
-            Self::AnnotationData => "AnnotationData",
-            Self::AnnotationDataSet => "AnnotationDataSet",
-            Self::Offset => "Offset",
-            Self::BeginOffset => "BeginOffset",
-            Self::EndOffset => "EndOffset",
-            Self::Utf8Offset => "Utf8Offset",
-            Self::BeginUtf8Offset => "BeginUtf8Offset",
-            Self::EndUtf8Offset => "EndUtf8Offset",
-            Self::DataKey => "DataKey",
-            Self::DataValue => "DataValue",
-            Self::Text => "Text",
-            Self::TextSelection => "TextSelection",
-            Self::Ignore => "Ignore",
+            Self::Type => "Type".to_string(),
+            Self::Id => "Id".to_string(),
+            Self::Annotation => "Annotation".to_string(),
+            Self::TextResource => "TextResource".to_string(),
+            Self::AnnotationData => "AnnotationData".to_string(),
+            Self::AnnotationDataSet => "AnnotationDataSet".to_string(),
+            Self::Offset => "Offset".to_string(),
+            Self::BeginOffset => "BeginOffset".to_string(),
+            Self::EndOffset => "EndOffset".to_string(),
+            Self::Utf8Offset => "Utf8Offset".to_string(),
+            Self::BeginUtf8Offset => "BeginUtf8Offset".to_string(),
+            Self::EndUtf8Offset => "EndUtf8Offset".to_string(),
+            Self::DataKey => "DataKey".to_string(),
+            Self::DataValue => "DataValue".to_string(),
+            Self::Text => "Text".to_string(),
+            Self::TextSelection => "TextSelection".to_string(),
+            Self::Ignore => "Ignore".to_string(),
+            Self::Custom { set, key } => format!("{}/{}", set, key),
         }
     }
 
@@ -458,6 +477,26 @@ impl Column {
                     .map(|value| value.to_string())
                     .unwrap_or(null.to_string())
             ),
+            Column::Custom { set, key } => {
+                let found = false;
+                if let Some(annotation) = &context.annotation {
+                    for (i, annotationdata) in annotation
+                        .find_data(Some(set.into()), Some(key.into()), DataOperator::Any)
+                        .into_iter()
+                        .flatten()
+                        .enumerate()
+                    {
+                        print!(
+                            "{}{}",
+                            if i > 0 { delimiter } else { "" },
+                            annotationdata.value()
+                        )
+                    }
+                }
+                if !found {
+                    print!("{}", null)
+                }
+            }
             _ => print!("{}", null),
         }
         if colnr == col_len - 1 {

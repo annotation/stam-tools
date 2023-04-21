@@ -37,7 +37,7 @@ pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("annotations")
             .long("annotations")
             .short('a')
-            .help("JSON file containing an array of annotations, will be merged into the new store. Set value to - for standard input.")
+            .help("STAM JSON file containing an array of annotations, will be merged into the new store. Set value to - for standard input.")
             .takes_value(true)
             .action(ArgAction::Append),
     );
