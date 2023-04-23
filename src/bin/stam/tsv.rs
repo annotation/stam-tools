@@ -28,7 +28,7 @@ pub fn tsv_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .short('C')
             .help("Column Format, comma separated list of column names to output")
             .long_help(
-                "Choose from the following known columns names (case insensitive):
+                "Choose from the following known columns names (case insensitive, comma seperated list):
 
 * Type                 - Outputs the type of the row (Annotation,AnnotationData), useful in Nested mode.
 * Id                   - Outputs the ID of the row item
