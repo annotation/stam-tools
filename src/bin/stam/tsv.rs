@@ -478,7 +478,7 @@ impl Column {
                     .unwrap_or(null.to_string())
             ),
             Column::Custom { set, key } => {
-                let found = false;
+                let mut found = false;
                 if let Some(annotation) = &context.annotation {
                     for (i, annotationdata) in annotation
                         .find_data(Some(set.into()), Some(key.into()), DataOperator::Any)
@@ -486,6 +486,7 @@ impl Column {
                         .flatten()
                         .enumerate()
                     {
+                        found = true;
                         print!(
                             "{}{}",
                             if i > 0 { delimiter } else { "" },
