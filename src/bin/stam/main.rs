@@ -1,5 +1,6 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
 use stam::{AnnotationStore, AssociatedFile, Config, Configurable};
+use std::path::Path;
 use std::process::exit;
 
 mod annotate;
@@ -49,15 +50,15 @@ fn store_argument<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
-fn multi_store_arguments<'a>() -> Vec<clap::Arg<'a>> {
+fn multi_store_arguments<'a>(required: bool) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
-        Arg::with_name("multistore")
+        Arg::with_name("annotationstore")
             .help(
                 "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed.",
             )
             .takes_value(true)
-            .required(true)
+            .required(required)
             .action(ArgAction::Append),
     );
     args
@@ -108,16 +109,15 @@ fn main() {
             SubCommand::with_name("info")
                 .about("Return information regarding a STAM model. Set --verbose for extra details.")
                 .args(&common_arguments())
-                .args(&multi_store_arguments())
+                .args(&multi_store_arguments(true))
                 .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("validate")
                 .about("Validate a STAM model. Set --verbose to have it output the STAM JSON or STAM CSV to standard output.")
                 .args(&common_arguments())
-                .args(&multi_store_arguments())
-                .args(&config_arguments())
-                .args(&tsv_arguments()),
+                .args(&multi_store_arguments(true))
+                .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("save")
@@ -142,15 +142,23 @@ fn main() {
             SubCommand::with_name("export")
                 .about("Export annotations (or other data structures) as tabular data to a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
                 .args(&common_arguments())
-                .args(&multi_store_arguments())
+                .args(&multi_store_arguments(true))
                 .args(&config_arguments())
-                .args(&tsv_arguments()),
+                .args(&tsv_arguments_out()),
+        )
+        .subcommand(
+            SubCommand::with_name("import")
+                .about("Import annotations from a TSV format.")
+                .args(&common_arguments())
+                .args(&store_argument())
+                .args(&config_arguments())
+                .args(&tsv_arguments_in()),
         )
         .subcommand(
             SubCommand::with_name("print")
                 .about("Output the plain text of one or more resource(s). Requires --resource")
                 .args(&common_arguments())
-                .args(&multi_store_arguments())
+                .args(&multi_store_arguments(true))
                 .args(&config_arguments())
                 .arg(
                     Arg::with_name("resource")
@@ -219,6 +227,8 @@ The file contains the following columns:
         args
     } else if let Some(args) = rootargs.subcommand_matches("export") {
         args
+    } else if let Some(args) = rootargs.subcommand_matches("import") {
+        args
     } else if let Some(args) = rootargs.subcommand_matches("print") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("validate") {
@@ -241,8 +251,11 @@ The file contains the following columns:
         || rootargs.subcommand_matches("print").is_some()
         || rootargs.subcommand_matches("validate").is_some()
     {
-        if args.is_present("multistore") {
-            let storefiles = args.values_of("multistore").unwrap().collect::<Vec<&str>>();
+        if args.is_present("annotationstore") {
+            let storefiles = args
+                .values_of("annotationstore")
+                .unwrap()
+                .collect::<Vec<&str>>();
             for (i, filename) in storefiles.iter().enumerate() {
                 eprintln!("Loading annotation store {}", filename);
                 if i == 0 {
@@ -290,6 +303,58 @@ The file contains the following columns:
             args.value_of("null").unwrap(),
             !args.is_present("no-header"),
         );
+    } else if rootargs.subcommand_matches("import").is_some() {
+        let storefilename = args
+            .value_of("annotationstore")
+            .expect("an annotation store must be provided");
+        if Path::new(storefilename).exists() {
+            eprintln!("Existing annotation store found");
+            store = load_store(args);
+        } else {
+            eprintln!("New annotation store created");
+            store.set_filename(storefilename);
+        }
+        let columns: Option<Vec<&str>> = if args.is_present("columns") {
+            Some(args.value_of("columns").unwrap().split(",").collect())
+        } else {
+            None
+        };
+        let existing_resource: Option<&str> = if args.is_present("resource") {
+            Some(args.value_of("resource").unwrap())
+        } else {
+            None
+        };
+        let new_resource: Option<&str> = if args.is_present("new-resource") {
+            Some(args.value_of("new-resource").unwrap())
+        } else {
+            None
+        };
+        from_tsv(
+            &mut store,
+            args.value_of("inputfile").unwrap(),
+            columns.as_ref(),
+            existing_resource,
+            new_resource,
+            args.value_of("annotationset"),
+            !args.is_present("no-seq"),
+            args.value_of("delimiter").unwrap(),
+            Some(!args.is_present("no-header")),
+            ValidationMode::try_from(args.value_of("validate").unwrap()).unwrap_or_else(|err| {
+                eprintln!("{}", err);
+                exit(1);
+            }),
+            args.is_present("verbose"),
+        );
+        if !args.is_present("dry-run") {
+            store.save().unwrap_or_else(|err| {
+                eprintln!(
+                    "Failed to write annotation store {:?}: {}",
+                    store.filename(),
+                    err
+                );
+                exit(1);
+            });
+        }
     } else if rootargs.subcommand_matches("print").is_some() {
         let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
         to_text(&store, resource_ids);
