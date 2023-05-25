@@ -4,6 +4,8 @@ use stam::{
     DataValue, Storable, Text, TextResource, TextSelection, WrappedItem,
 };
 use std::fmt;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::process::exit;
 
 pub fn tsv_arguments<'a>() -> Vec<clap::Arg<'a>> {
@@ -519,14 +521,25 @@ impl Columns {
         for (i, column) in self.0.iter().enumerate() {
             if i > 0 {
                 print!("\t")
-            } else {
-                print!("#")
             }
             print!("{}", column);
             if i == self.0.len() - 1 {
                 print!("\n")
             }
         }
+    }
+
+    fn index(&self, coltype: &Column) -> Option<usize> {
+        for (i, col) in self.0.iter().enumerate() {
+            if col == coltype {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn has(&self, coltype: &Column) -> bool {
+        self.index(coltype).is_some()
     }
 }
 
@@ -677,3 +690,139 @@ pub fn to_tsv(
         }
     }
 }
+
+pub enum ParseMode {
+    Simple,
+    /// Align with an existing text resource
+    AlignWithText,
+    /// Reconstruct a text resource from scratch
+    ReconstructText,
+    ///  Tag all occurrences
+    MultiTag,
+    ///
+    Metadata,
+}
+
+impl ParseMode {
+    pub fn new(
+        columns: &Columns,
+        existing_resource: Option<&str>,
+        new_resource: Option<&str>,
+        sequential: bool,
+    ) -> Result<Self, &'static str> {
+        if columns.has(&Column::Text) {
+            if columns.has(&Column::Offset)
+                || (columns.has(&Column::BeginOffset) && columns.has(&Column::EndOffset))
+                || columns.has(&Column::TextSelection)
+            {
+                Ok(Self::Simple)
+            } else {
+                //no offset information
+                if columns.has(&Column::TextResource)
+                    || existing_resource.is_some()
+                    || columns.has(&Column::TextSelection)
+                {
+                    if sequential {
+                        Ok(Self::AlignWithText)
+                    } else {
+                        Ok(Self::MultiTag)
+                    }
+                } else {
+                    if sequential {
+                        Ok(Self::ReconstructText)
+                    } else {
+                        Err("Can not reconstruct a text if rows in input data are not sequential")
+                    }
+                }
+            }
+        } else if !columns.has(&Column::Offset)
+            && !columns.has(&Column::BeginOffset)
+            && !columns.has(&Column::EndOffset)
+            && !columns.has(&Column::TextSelection)
+        {
+            if columns.has(&Column::TextResource) || existing_resource.is_some() {
+                eprintln!("Warning: Data has neither a Text nor an Offset column, interpreting data as metadata");
+                Ok(Self::Metadata)
+            } else {
+                Err("Data has neither a Text nor an Offset column")
+            }
+        } else {
+            Err("Unable to determine how to parse this data based on the available columns. Make sure there is at least an Offset or Text column")
+        }
+    }
+}
+
+pub fn from_tsv(
+    store: &mut AnnotationStore,
+    filename: &str,
+    columnconfig: Option<&[&str]>,
+    existing_resource: Option<&str>,
+    new_resource: Option<&str>,
+    sequential: bool,
+    delimiter: &str,      //input delimiter for multiple values in a cell
+    header: Option<bool>, //None means autodetect
+) {
+    let f = File::open(filename).unwrap_or_else(|e| {
+        eprintln!("Error opening rules {}: {}", filename, e);
+        exit(1);
+    });
+    let reader = BufReader::new(f);
+
+    let mut columns: Option<Columns> = None;
+    let mut parsemode: Option<ParseMode> = None;
+
+    for (i, line) in reader.lines().enumerate() {
+        if let Ok(line) = line {
+            if line.is_empty() {
+                continue;
+            } else if i == 0 && columns.is_none() && header != Some(false) {
+                columns = Some(
+                    Columns(
+                        line.split("\t")
+                            .map(|col| {
+                                Column::try_from(*col)
+                                    .map_err(|err| {
+                                        eprintln!("Unable to parse first line of TSV file as header (please provide a column configuration explicitly if the input file has none): {}", err);
+                                        exit(1);
+                                    })
+                                    .unwrap()
+                            })
+                            .collect(),
+                    )
+                );
+                parsemode = Some(ParseMode::new(
+                    &columns,
+                    existing_resource,
+                    new_resource,
+                    sequential,
+                ));
+            } else {
+                if columns.is_none() {
+                    if columnconfig.is_none() {
+                        eprintln!("Please provide a configuration for the columns");
+                        exit(1);
+                    }
+                    columns = Some(Columns(
+                        columnconfig
+                            .iter()
+                            .map(|col| {
+                                Column::try_from(*col)
+                                    .map_err(|err| {
+                                        eprintln!("Unable to parse provided columns: {}", err);
+                                        exit(1);
+                                    })
+                                    .unwrap()
+                            })
+                            .collect(),
+                    ));
+                    parsemode
+                }
+                if let Some(columns) = columns {
+                    parse_row(store, &line, &columns)
+                }
+            }
+        }
+    }
+}
+
+pub fn parse_row(store: &mut AnnotationStore, line: &str, columns: &Columns) {}
