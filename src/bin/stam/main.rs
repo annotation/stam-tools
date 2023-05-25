@@ -139,15 +139,15 @@ fn main() {
                 ),
         )
         .subcommand(
-            SubCommand::with_name("to-tsv")
-                .about("Output annotations (or other data structures) in a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
+            SubCommand::with_name("export")
+                .about("Export annotations (or other data structures) as tabular data to a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
                 .args(&common_arguments())
                 .args(&multi_store_arguments())
                 .args(&config_arguments())
                 .args(&tsv_arguments()),
         )
         .subcommand(
-            SubCommand::with_name("to-text")
+            SubCommand::with_name("print")
                 .about("Output the plain text of one or more resource(s). Requires --resource")
                 .args(&common_arguments())
                 .args(&multi_store_arguments())
