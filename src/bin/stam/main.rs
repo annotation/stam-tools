@@ -217,9 +217,9 @@ The file contains the following columns:
         args
     } else if let Some(args) = rootargs.subcommand_matches("save") {
         args
-    } else if let Some(args) = rootargs.subcommand_matches("to-tsv") {
+    } else if let Some(args) = rootargs.subcommand_matches("export") {
         args
-    } else if let Some(args) = rootargs.subcommand_matches("to-text") {
+    } else if let Some(args) = rootargs.subcommand_matches("print") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("validate") {
         args
@@ -237,8 +237,8 @@ The file contains the following columns:
     let mut store = AnnotationStore::new().with_config(config_from_args(args));
 
     if rootargs.subcommand_matches("info").is_some()
-        || rootargs.subcommand_matches("to-tsv").is_some()
-        || rootargs.subcommand_matches("to-text").is_some()
+        || rootargs.subcommand_matches("export").is_some()
+        || rootargs.subcommand_matches("print").is_some()
         || rootargs.subcommand_matches("validate").is_some()
     {
         if args.is_present("multistore") {
@@ -276,7 +276,7 @@ The file contains the following columns:
                 exit(1);
             });
         }
-    } else if rootargs.subcommand_matches("to-tsv").is_some() {
+    } else if rootargs.subcommand_matches("export").is_some() {
         let columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
         to_tsv(
             &store,
@@ -290,7 +290,7 @@ The file contains the following columns:
             args.value_of("null").unwrap(),
             !args.is_present("no-header"),
         );
-    } else if rootargs.subcommand_matches("to-text").is_some() {
+    } else if rootargs.subcommand_matches("print").is_some() {
         let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
         to_text(&store, resource_ids);
     } else if rootargs.subcommand_matches("validate").is_some() {
