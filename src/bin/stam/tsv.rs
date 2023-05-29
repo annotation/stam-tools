@@ -771,7 +771,7 @@ pub fn from_tsv(
     new_resource: Option<&str>,
     default_set: &str,
     sequential: bool,
-    delimiter: &str,      //input delimiter for multiple values in a cell
+    subdelimiter: &str,   //input delimiter for multiple values in a cell
     header: Option<bool>, //None means autodetect
 ) {
     let f = File::open(filename).unwrap_or_else(|e| {
@@ -884,16 +884,18 @@ pub fn parse_row(
         ));
     }
     let resource_file: &str =
-        parse_resource_file(store, &cells, columns, existing_resource, new_resource)?;
+        parse_resource_file(&cells, columns, existing_resource, new_resource)?;
     let resource_handle: TextResourceHandle = get_resource_handle(store, resource_file)?;
     match parsemode {
         ParseMode::Simple => {
-            let selector = build_selector(store, &cells, columns, resource_handle)?;
-            let annotationbuilder = build_annotation(&cells, columns, default_set)?;
+            let selector = build_selector(&cells, columns, resource_handle)?;
+            let mut annotationbuilder = build_annotation(&cells, columns, default_set)?;
+            annotationbuilder = annotationbuilder.with_selector(selector);
             if let Err(e) = store.annotate(annotationbuilder) {
                 return Err(format!("{}", e));
             }
         }
+        _ => return Err("Not implemented yet".to_string()),
     }
     Ok(())
 }
@@ -947,7 +949,6 @@ pub fn build_annotation<'a>(
 }
 
 pub fn parse_resource_file<'a>(
-    store: &AnnotationStore,
     cells: &[&'a str],
     columns: &Columns,
     existing_resource: Option<&'a str>,
@@ -986,21 +987,16 @@ pub fn get_resource_handle(
 }
 
 pub fn build_selector(
-    store: &AnnotationStore,
     cells: &[&str],
     columns: &Columns,
     resource_handle: TextResourceHandle,
 ) -> Result<Selector, String> {
     //TODO: for now this only returns a TextSelector, should be adapted to handle multiple offsets (with subdelimiter) and return a CompositeSelector then
-    let offset = parse_offset(store, cells, columns)?;
+    let offset = parse_offset(cells, columns)?;
     Ok(Selector::TextSelector(resource_handle, offset))
 }
 
-pub fn parse_offset(
-    store: &AnnotationStore,
-    cells: &[&str],
-    columns: &Columns,
-) -> Result<Offset, String> {
+pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String> {
     if let (Some(b), Some(e)) = (
         columns.index(&Column::BeginOffset),
         columns.index(&Column::EndOffset),
