@@ -1,11 +1,13 @@
 use clap::Arg;
 use stam::{
-    Annotation, AnnotationData, AnnotationDataSet, AnnotationStore, DataKey, DataOperator,
-    DataValue, Storable, Text, TextResource, TextSelection, WrappedItem,
+    Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
+    AnnotationStore, Cursor, DataKey, DataOperator, DataValue, Item, Offset, Selector, StamError,
+    Storable, StoreFor, Text, TextResource, TextResourceHandle, TextSelection, WrappedItem,
 };
 use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::ops::Deref;
 use std::process::exit;
 
 pub fn tsv_arguments<'a>() -> Vec<clap::Arg<'a>> {
@@ -508,12 +510,12 @@ impl Column {
     }
 }
 
-struct Columns(Vec<Column>);
+pub struct Columns(Vec<Column>);
 
 impl Columns {
     fn printrow(&self, tp: Type, context: &Context, delimiter: &str, null: &str) {
         for (i, column) in self.0.iter().enumerate() {
-            column.print(tp, i, self.0.len(), context, delimiter, null);
+            column.print(tp, i, self.len(), context, delimiter, null);
         }
     }
 
@@ -523,7 +525,7 @@ impl Columns {
                 print!("\t")
             }
             print!("{}", column);
-            if i == self.0.len() - 1 {
+            if i == self.len() - 1 {
                 print!("\n")
             }
         }
@@ -540,6 +542,14 @@ impl Columns {
 
     fn has(&self, coltype: &Column) -> bool {
         self.index(coltype).is_some()
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn iter(&self) -> std::slice::Iter<Column> {
+        self.0.iter()
     }
 }
 
@@ -691,6 +701,7 @@ pub fn to_tsv(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ParseMode {
     Simple,
     /// Align with an existing text resource
@@ -758,6 +769,7 @@ pub fn from_tsv(
     columnconfig: Option<&[&str]>,
     existing_resource: Option<&str>,
     new_resource: Option<&str>,
+    default_set: &str,
     sequential: bool,
     delimiter: &str,      //input delimiter for multiple values in a cell
     header: Option<bool>, //None means autodetect
@@ -780,7 +792,7 @@ pub fn from_tsv(
                     Columns(
                         line.split("\t")
                             .map(|col| {
-                                Column::try_from(*col)
+                                Column::try_from(col)
                                     .map_err(|err| {
                                         eprintln!("Unable to parse first line of TSV file as header (please provide a column configuration explicitly if the input file has none): {}", err);
                                         exit(1);
@@ -790,12 +802,18 @@ pub fn from_tsv(
                             .collect(),
                     )
                 );
-                parsemode = Some(ParseMode::new(
-                    &columns,
-                    existing_resource,
-                    new_resource,
-                    sequential,
-                ));
+                parsemode = Some(
+                    ParseMode::new(
+                        columns.as_ref().unwrap(),
+                        existing_resource,
+                        new_resource,
+                        sequential,
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!("Can't determine parse mode: {}", e);
+                        exit(1);
+                    }),
+                );
             } else {
                 if columns.is_none() {
                     if columnconfig.is_none() {
@@ -804,6 +822,7 @@ pub fn from_tsv(
                     }
                     columns = Some(Columns(
                         columnconfig
+                            .unwrap()
                             .iter()
                             .map(|col| {
                                 Column::try_from(*col)
@@ -815,14 +834,196 @@ pub fn from_tsv(
                             })
                             .collect(),
                     ));
-                    parsemode
+                    parsemode = Some(
+                        ParseMode::new(
+                            columns.as_ref().unwrap(),
+                            existing_resource,
+                            new_resource,
+                            sequential,
+                        )
+                        .unwrap_or_else(|e| {
+                            eprintln!("Can't determine parse mode: {}", e);
+                            exit(1);
+                        }),
+                    );
                 }
-                if let Some(columns) = columns {
-                    parse_row(store, &line, &columns)
+                if let (Some(columns), Some(parsemode)) = (&columns, parsemode) {
+                    if let Err(e) = parse_row(
+                        store,
+                        &line,
+                        &columns,
+                        parsemode,
+                        existing_resource,
+                        new_resource,
+                        default_set,
+                    ) {
+                        eprintln!("Error parsing tsv line {}: {}", i + 1, e);
+                        exit(1);
+                    }
                 }
             }
         }
     }
 }
 
-pub fn parse_row(store: &mut AnnotationStore, line: &str, columns: &Columns) {}
+pub fn parse_row(
+    store: &mut AnnotationStore,
+    line: &str,
+    columns: &Columns,
+    parsemode: ParseMode,
+    existing_resource: Option<&str>,
+    new_resource: Option<&str>,
+    default_set: &str,
+) -> Result<(), String> {
+    let cells: Vec<&str> = line.split("\t").collect();
+    if cells.len() != columns.len() {
+        return Err(format!(
+            "Number of cells is not equal to number of columns in header ({} vs {})",
+            cells.len(),
+            columns.len()
+        ));
+    }
+    let resource_file: &str =
+        parse_resource_file(store, &cells, columns, existing_resource, new_resource)?;
+    let resource_handle: TextResourceHandle = get_resource_handle(store, resource_file)?;
+    match parsemode {
+        ParseMode::Simple => {
+            let selector = build_selector(store, &cells, columns, resource_handle)?;
+            let annotationbuilder = build_annotation(&cells, columns, default_set)?;
+            if let Err(e) = store.annotate(annotationbuilder) {
+                return Err(format!("{}", e));
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn build_annotation<'a>(
+    cells: &'a [&'a str],
+    columns: &Columns,
+    default_set: &'a str,
+) -> Result<AnnotationBuilder<'a>, String> {
+    let mut annotationbuilder = AnnotationBuilder::new();
+    if let Some(i) = columns.index(&Column::Id) {
+        let id = cells.get(i).expect("cell must exist");
+        annotationbuilder = annotationbuilder.with_id(id.to_string());
+    } else if let Some(i) = columns.index(&Column::Annotation) {
+        //same as above
+        let id = cells.get(i).expect("cell must exist");
+        annotationbuilder = annotationbuilder.with_id(id.to_string());
+    } else if let (Some(ikey), Some(ivalue)) = (
+        columns.index(&Column::DataKey),
+        columns.index(&Column::DataValue),
+    ) {
+        let mut databuilder = AnnotationDataBuilder::new();
+        if let Some(i) = columns.index(&Column::AnnotationData) {
+            let id = cells.get(i).expect("cell must exist");
+            databuilder = databuilder.with_id(Item::IdRef(id));
+        } else {
+            databuilder = databuilder.with_id(Item::IdRef(default_set));
+        }
+        if let Some(i) = columns.index(&Column::AnnotationDataSet) {
+            let set = cells.get(i).expect("cell must exist");
+            databuilder = databuilder.with_annotationset(Item::Id(set.to_string()));
+        }
+        let key = cells.get(ikey).expect("cell must exist");
+        let value = cells.get(ivalue).expect("cell must exist");
+        databuilder = databuilder.with_key(Item::from(key.deref()));
+        databuilder = databuilder.with_value(DataValue::from(value.deref()));
+        annotationbuilder = annotationbuilder.with_data_builder(databuilder);
+    }
+    //process custom columns
+    for (column, cell) in columns.iter().zip(cells.iter()) {
+        if let Column::Custom { set, key } = column {
+            let value: DataValue = cell.deref().into();
+            let databuilder = AnnotationDataBuilder::new()
+                .with_annotationset(Item::Id(set.clone()))
+                .with_key(Item::Id(key.clone()))
+                .with_value(value);
+            annotationbuilder = annotationbuilder.with_data_builder(databuilder);
+        }
+    }
+    Ok(annotationbuilder)
+}
+
+pub fn parse_resource_file<'a>(
+    store: &AnnotationStore,
+    cells: &[&'a str],
+    columns: &Columns,
+    existing_resource: Option<&'a str>,
+    new_resource: Option<&'a str>,
+) -> Result<&'a str, String> {
+    if let Some(i) = columns.index(&Column::TextResource) {
+        Ok(cells.get(i).expect("cell must exist"))
+    } else if let Some(i) = columns.index(&Column::TextSelection) {
+        let textselection = cells.get(i).expect("cell must exist");
+        if let Some(bytepos) = textselection.find('#') {
+            Ok(&textselection[..bytepos])
+        } else {
+            Err("Text selection must have format: resource#beginoffset-endoffset".to_string())
+        }
+    } else if let Some(existing_resource) = existing_resource {
+        Ok(existing_resource)
+    } else if let Some(new_resource) = new_resource {
+        Ok(new_resource)
+    } else {
+        Err("Can't find resource".to_string())
+    }
+}
+
+pub fn get_resource_handle(
+    store: &mut AnnotationStore,
+    filename: &str,
+) -> Result<TextResourceHandle, String> {
+    if let Some(resource) = store.resource(&Item::from(filename)) {
+        if let Some(handle) = resource.handle() {
+            return Ok(handle);
+        }
+    }
+    store
+        .add_resource_from_file(filename)
+        .map_err(|e| format!("Specified resource not found: {}: {}", filename, e))
+}
+
+pub fn build_selector(
+    store: &AnnotationStore,
+    cells: &[&str],
+    columns: &Columns,
+    resource_handle: TextResourceHandle,
+) -> Result<Selector, String> {
+    //TODO: for now this only returns a TextSelector, should be adapted to handle multiple offsets (with subdelimiter) and return a CompositeSelector then
+    let offset = parse_offset(store, cells, columns)?;
+    Ok(Selector::TextSelector(resource_handle, offset))
+}
+
+pub fn parse_offset(
+    store: &AnnotationStore,
+    cells: &[&str],
+    columns: &Columns,
+) -> Result<Offset, String> {
+    if let (Some(b), Some(e)) = (
+        columns.index(&Column::BeginOffset),
+        columns.index(&Column::EndOffset),
+    ) {
+        let begin_str = cells.get(b).expect("cell must exist");
+        let end_str = cells.get(e).expect("cell must exist");
+        let begin: Cursor = begin_str.deref().try_into().map_err(|e| format!("{}", e))?;
+        let end: Cursor = end_str.deref().try_into().map_err(|e| format!("{}", e))?;
+        Ok(Offset::new(begin, end))
+    } else if let Some(i) = columns.index(&Column::TextSelection) {
+        let textselection = cells.get(i).expect("cell must exist");
+        if let Some(bytepos) = textselection.find('#') {
+            if let Some(delimiterpos) = &textselection[(bytepos + 2)..].find('-') {
+                let delimiterpos = *delimiterpos + bytepos + 2; //we do 2 rather than 1 to not consider an immediate hyphen after the # , that would indicate a negative begin index
+                let begin_str = &textselection[(bytepos + 1)..delimiterpos];
+                let end_str = &textselection[(delimiterpos + 1)..];
+                let begin: Cursor = begin_str.deref().try_into().map_err(|e| format!("{}", e))?;
+                let end: Cursor = end_str.deref().try_into().map_err(|e| format!("{}", e))?;
+                return Ok(Offset::new(begin, end));
+            }
+        }
+        Err("Text selection must have format: resource#beginoffset-endoffset".to_string())
+    } else {
+        Err(format!("No offset information found"))
+    }
+}
