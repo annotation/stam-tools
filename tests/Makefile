@@ -1,9 +1,9 @@
 .PHONY: test3 clean all
 
+all: test1 test2 test3
+
 clean:
 	rm test1.annotationstore.stam.json test2.annotationstore.stam.json
-
-all: test1 test2 test3
 
 
 test1.annotationstore.stam.json:
