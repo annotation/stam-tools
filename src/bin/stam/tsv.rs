@@ -5,6 +5,7 @@ use stam::{
     Selector, StamError, Storable, StoreFor, Text, TextResource, TextResourceHandle, TextSelection,
     WrappedItem,
 };
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -140,8 +141,7 @@ In addition of the above columns, you may also parse a *custom* column by specif
         Arg::with_name("no-seq")
             .long("no-seq")
             .short('Q')
-            .help("Rows in TSV file are not sequential but in arbitrary order")
-            .takes_value(false),
+            .help("Rows in TSV file are not sequential but in arbitrary order"),
     );
     args.push(
         Arg::with_name("inputfile")
@@ -181,6 +181,11 @@ In addition of the above columns, you may also parse a *custom* column by specif
             )
             .default_value("loose")
             .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("no-case")
+            .long("no-case")
+            .help("Do case insensitive matching when attempting to align text from the TSV input with a text resource"),
     );
     args
 }
@@ -889,6 +894,7 @@ pub fn from_tsv(
     new_resource: Option<&str>,
     default_set: Option<&str>,
     sequential: bool,
+    case_sensitive: bool,
     subdelimiter: &str,   //input delimiter for multiple values in a cell
     header: Option<bool>, //None means autodetect
     validation: ValidationMode,
@@ -902,6 +908,7 @@ pub fn from_tsv(
 
     let mut columns: Option<Columns> = None;
     let mut parsemode: Option<ParseMode> = None;
+    let mut cursors: HashMap<TextResourceHandle, usize> = HashMap::new(); //used in AlignWithText mode to keep track of the begin of text offset (per resource)
 
     for (i, line) in reader.lines().enumerate() {
         if let Ok(line) = line {
@@ -990,7 +997,9 @@ pub fn from_tsv(
                         existing_resource,
                         new_resource,
                         default_set,
+                        case_sensitive,
                         validation,
+                        &mut cursors,
                     ) {
                         eprintln!("Error parsing tsv line {}: {}", i + 1, e);
                         exit(1);
@@ -1009,7 +1018,9 @@ pub fn parse_row(
     existing_resource: Option<&str>,
     new_resource: Option<&str>,
     default_set: Option<&str>,
+    case_sensitive: bool,
     validation: ValidationMode,
+    cursors: &mut HashMap<TextResourceHandle, usize>,
 ) -> Result<(), String> {
     let cells: Vec<&str> = line.split("\t").collect();
     if cells.len() != columns.len() {
@@ -1022,25 +1033,73 @@ pub fn parse_row(
     let resource_file: &str =
         parse_resource_file(&cells, columns, existing_resource, new_resource)?;
     let resource_handle: TextResourceHandle = get_resource_handle(store, resource_file)?;
-    match parsemode {
-        ParseMode::Simple => {
-            let selector = build_selector(&cells, columns, resource_handle)?;
-            let textcolumn = columns.index(&Column::Text);
-            if let Some(textcolumn) = textcolumn {}
-            let mut annotationbuilder = build_annotation(&cells, columns, default_set)?;
-            annotationbuilder = annotationbuilder.with_selector(selector);
-            match store.annotate(annotationbuilder) {
-                Err(e) => return Err(format!("{}", e)),
-                Ok(handle) => {
-                    if let Some(textcolumn) = textcolumn {
-                        validate_text(store, handle, &cells, columns, textcolumn, validation)?;
-                    }
+    let textcolumn = columns.index(&Column::Text);
+    let selector = match parsemode {
+        ParseMode::Simple => build_selector(&cells, columns, resource_handle)?,
+        ParseMode::AlignWithText => align_with_text(
+            store,
+            resource_handle,
+            &cells,
+            textcolumn.expect("text column is required when parsemode is set to AlignWithText"),
+            case_sensitive,
+            cursors,
+        )?,
+        _ => return Err("Not implemented yet".to_string()),
+    };
+    let mut annotationbuilder = build_annotation(&cells, columns, default_set)?;
+    annotationbuilder = annotationbuilder.with_selector(selector);
+    match store.annotate(annotationbuilder) {
+        Err(e) => return Err(format!("{}", e)),
+        Ok(handle) => {
+            if parsemode == ParseMode::Simple {
+                if let Some(textcolumn) = textcolumn {
+                    validate_text(store, handle, &cells, columns, textcolumn, validation)?;
                 }
             }
         }
-        _ => return Err("Not implemented yet".to_string()),
     }
     Ok(())
+}
+
+pub fn align_with_text(
+    store: &AnnotationStore,
+    resource_handle: TextResourceHandle,
+    cells: &[&str],
+    textcolumn: usize,
+    case_sensitive: bool,
+    cursors: &mut HashMap<TextResourceHandle, usize>,
+) -> Result<Selector, String> {
+    let textfragment = cells[textcolumn];
+    if textfragment.is_empty() {
+        return Err("Value in text column can not be empty".to_string());
+    }
+    let cursor = cursors.entry(resource_handle).or_insert(0);
+    let resource = store
+        .resource(&Item::from(resource_handle))
+        .expect("resource must exist");
+    let searchtext = resource
+        .textselection(&Offset::new(
+            Cursor::BeginAligned(*cursor),
+            Cursor::EndAligned(0),
+        ))
+        .map_err(|e| format!("{}", e))?;
+    if let Some(foundtextselection) = if case_sensitive {
+        searchtext.find_text(textfragment).next()
+    } else {
+        searchtext.find_text_nocase(textfragment).next() //MAYBE TODO: this will be sub-optimal on large texts as it is lowercased each time -> use a smaller text buffer
+    } {
+        *cursor = foundtextselection.end();
+        Ok(Selector::TextSelector(
+            resource_handle,
+            Offset::simple(foundtextselection.begin(), foundtextselection.end()),
+        ))
+    } else {
+        return Err(format!(
+            "Unable to align specified text with the underlying resource: '{}' (lost track after character position {})",
+            textfragment,
+            *cursor
+        ));
+    }
 }
 
 pub fn validate_text(

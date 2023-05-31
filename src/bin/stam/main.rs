@@ -337,6 +337,7 @@ The file contains the following columns:
             new_resource,
             args.value_of("annotationset"),
             !args.is_present("no-seq"),
+            !args.is_present("no-case"),
             args.value_of("delimiter").unwrap(),
             Some(!args.is_present("no-header")),
             ValidationMode::try_from(args.value_of("validate").unwrap()).unwrap_or_else(|err| {
