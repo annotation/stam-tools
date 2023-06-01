@@ -25,6 +25,6 @@ test3:
 test4: test4.annotationstore.stam.json
 
 test4.annotationstore.stam.json:
-	@echo "Test 2 - stam import - Reconstruct text"
+	@echo "Test 4 - stam import - Reconstruct text"
 	../target/debug/stam import --inputfile test2.tsv --annotationset default --new-resource hello2.txt --verbose test4.annotationstore.stam.json
 
