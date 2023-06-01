@@ -302,6 +302,7 @@ The file contains the following columns:
             args.value_of("delimiter").unwrap(),
             args.value_of("null").unwrap(),
             !args.is_present("no-header"),
+            args.value_of("setdelimiter").unwrap(),
         );
     } else if rootargs.subcommand_matches("import").is_some() {
         let storefilename = args
@@ -339,6 +340,7 @@ The file contains the following columns:
             !args.is_present("no-seq"),
             !args.is_present("no-case"),
             args.value_of("delimiter").unwrap(),
+            args.value_of("setdelimiter").unwrap(),
             Some(!args.is_present("no-header")),
             ValidationMode::try_from(args.value_of("validate").unwrap()).unwrap_or_else(|err| {
                 eprintln!("{}", err);

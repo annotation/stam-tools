@@ -21,6 +21,15 @@ pub fn tsv_arguments_common<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true)
             .default_value("|"),
     );
+    args.push(
+        Arg::with_name("setdelimiter")
+            .long("setdelimiter")
+            .help(
+                "The delimiter between the annotation set and the key in custom columns. If the delimiter occurs multiple times, only the rightmost one is considered (the others are part of the set)"
+            )
+            .takes_value(true)
+            .default_value("/"),
+    );
     args
 }
 
@@ -77,7 +86,7 @@ pub fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
 * EndUtf8Offset        - Outputs end offset in UTF8-bytes
 * Ignore               - Always outputs the NULL value
 
-In addition to the above columns, you may also set a *custom* column by  specifying an AnnotationDataSet and DataKey within, seperated by a slash. The rows will then be filled with the
+In addition to the above columns, you may also set a *custom* column by  specifying an AnnotationDataSet and DataKey within, seperated by the set/key delimiter (by default a slash). The rows will then be filled with the
 data values corresponding to the data key. Which works great when you set --type Annotation and want specific AnnotationData outputted. Example:
 
 * my_set/part_of_speech
@@ -121,7 +130,7 @@ pub fn tsv_arguments_in<'a>() -> Vec<clap::Arg<'a>> {
 * BeginOffset          - Begin offset in unicode character points
 * EndOffset            - End offset in unicode character points
 
-In addition of the above columns, you may also parse a *custom* column by specifying an AnnotationDataSet and DataKey , separated by a slash. Example:
+In addition of the above columns, you may also parse a *custom* column by specifying an AnnotationDataSet and DataKey , separated by the set/key delimiter (by default a slash). Example:
 
 * my_set/part_of_speech
 * my_set/lemma
@@ -284,11 +293,10 @@ impl fmt::Display for Type {
     }
 }
 
-impl TryFrom<&str> for Column {
-    type Error = String;
-    fn try_from(val: &str) -> Result<Self, Self::Error> {
-        if val.find("/").is_some() {
-            let (set, key) = val.rsplit_once("/").unwrap();
+impl Column {
+    fn parse(val: &str, setdelimiter: &str) -> Result<Self, String> {
+        if val.find(setdelimiter).is_some() {
+            let (set, key) = val.rsplit_once(setdelimiter).unwrap();
             Ok(Self::Custom {
                 set: set.to_string(),
                 key: key.to_string(),
@@ -684,12 +692,13 @@ pub fn to_tsv(
     delimiter: &str,
     null: &str,
     header: bool,
+    setdelimiter: &str,
 ) {
     let columns = Columns(
         columnconfig
             .iter()
             .map(|col| {
-                Column::try_from(*col)
+                Column::parse(*col, setdelimiter)
                     .map_err(|err| {
                         eprintln!("{}", err);
                         exit(1);
@@ -896,6 +905,7 @@ pub fn from_tsv(
     sequential: bool,
     case_sensitive: bool,
     subdelimiter: &str,   //input delimiter for multiple values in a cell
+    setdelimiter: &str,   //delimiter between key/set
     header: Option<bool>, //None means autodetect
     validation: ValidationMode,
     verbose: bool,
@@ -922,7 +932,7 @@ pub fn from_tsv(
                     Columns(
                         line.split("\t")
                             .map(|col| {
-                                parse_column(col, default_set).map_err(|err| {
+                                parse_column(col, default_set, setdelimiter).map_err(|err| {
                                     eprintln!("Unable to parse first line of TSV file as header (please provide a column configuration explicitly if the input file has none): {}. You may consider setting --annotationset if you want to interpret this column as a key in the specified annotationset", err);
                                     exit(1);
                                 }).unwrap()
@@ -962,7 +972,7 @@ pub fn from_tsv(
                             .unwrap()
                             .iter()
                             .map(|col| {
-                                parse_column(col, default_set)
+                                parse_column(col, default_set, setdelimiter)
                                     .map_err(|err| {
                                         eprintln!("Unable to parse provided column: {}", err);
                                         exit(1);
@@ -1303,8 +1313,12 @@ pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String>
     }
 }
 
-pub fn parse_column(column: &str, default_set: Option<&str>) -> Result<Column, String> {
-    let result = Column::try_from(column)
+pub fn parse_column(
+    column: &str,
+    default_set: Option<&str>,
+    setdelimiter: &str,
+) -> Result<Column, String> {
+    let result = Column::parse(column, setdelimiter)
         .map_err(|err| format!("Unable to parse provided columns: {}", err));
     if result.is_err() && default_set.is_some() {
         return Ok(Column::Custom {
