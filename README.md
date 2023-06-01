@@ -12,9 +12,10 @@ A collection of command-line tools for working with STAM.
 
 Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 
-* ``stam annotate``  - Add an annotation from a JSON file
+* ``stam annotate``  - Add annotations (or datasets or resource) from STAM JSON files
 * ``stam info``      - Return information regarding a STAM model. 
 * ``stam init``      - Initialize a new STAM annotationstore
+* ``stam import``    - Import STAM data in tabular from from a simple TSV (Tab Separated Values format.
 * ``stam print``     - Output the text of any resources in the model.
 * ``stam export``    - Export STAM data in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns.
 * ``stam validate``  - Validate a STAM model.  
@@ -45,9 +46,73 @@ These tools also support reading and writing [STAM CSV](https://github.com/annot
 
 ## Tools
 
+### stam export
+
+The `stam export` tool is used to export STAM data into a tabular data format
+(TSV, tab separated values). You can configure precisely what columns you want
+to export using the ``--colums`` parameter. See ``stam export --help`` for a
+list of supported columns. 
+
+One of the more powerful functions is that you can specify custom columns by
+specifying a set ID, a delimiter and a key ID (the delimiter by default is a
+slash), for instance: `my_set/part_of_speech`. This will then output the
+corresponding value in that column, if it exist.
+
+This export function is not lossless, that is, it can not encode everything
+that STAM supports, unlike STAM JSON and STAM CSV. It does, however, give you a great
+deal of flexibility to quickly output only the data relevant for whatever your specific purpose is.
+
+### stam import
+
+The `stam import` tool is used to import tabular data from a TSV (Tab Separated
+Values) file into STAM. Like `stam export`, you can configure precisely what
+columns you want to import, using the ``--columns`` parameter. By default, the
+import function will attempt to parse the first line of your TSV file as the
+header and use that to figure out the column configuration.  You will often
+want to set ``--annotationset`` to set a default annotation set to use for
+custom columns. If you set ``--annotationset my_set`` then a column like
+`part_of_speech` will be interpreted in that set (same as if you wrote
+`my_set/part_of_speech` explicitly).
+
+Here is a simple example of a possible import TSV file (with ``--annotationset my_set``):
+
+```tsv
+Text	TextResource	BeginOffset	EndOffset	part_of_speech
+Hello	hello.txt	0	5	interjection
+world	hello.txt	6	10	noun
+```
+
+The import function has some special abilities. If your TSV data does not
+mention specific offsets in a text resource(s), they will be looked up
+automatically during the import procedure. If the text resources don't even
+exist in the first place, they can be reconstructed (within certain
+constraints, the output text will likely be in tokenised form only). If your
+data does not explicitly reference a resource, use the ``--resource`` parameter
+to point to an existing resource that will act as a default, or
+``--new-resource`` for the reconstruction behaviour.
+
+By setting ``--resource hello.txt`` or ``--new-resource hello.txt`` you can import the following much more minimal TSV:
+
+```tsv
+Text	part_of_speech
+Hello	interjection
+world	noun
+```
+
+The importer supports empty lines within the TSV file. When reconstructing
+text, these will map to (typically) a newline in the to-be-constructed text
+(this configurable with ``--outputdelimiter2``). Likewise, the delimiter
+between rows is configurable with `--outputdelimiter`, and defaults to a space.
+
+Note that `stam import` can not import everything it can itself export. It can only import rows
+exported with ``--type Annotation``  (the default), in which each row
+corresponds with one annotation.
+
 ### stam tag
 
-The `stam tag` tool can be used for matching regular expressions in text and subsequently associated annotations with the found results. It is a tool to do for example tokenization or other tagging tasks.
+The `stam tag` tool can be used for matching regular expressions in text and
+subsequently associated annotations with the found results. It is a tool to do
+for example tokenization or other tagging tasks.
 
 The `stam tag` command takes a TSV file ([example](https://github.com/knaw-huc/stam-experiments/blob/main/config/stam-tag/simpletagger.tsv)) containing regular expression rules for the tagger.
 The file contains the following columns:
@@ -69,5 +134,8 @@ Example:
 [\.\?,/]+	simpletokens	type	punctuation
 [0-9]+(?:[,\.][0-9]+)	simpletokens	type	number
 ```
+
+
+
 
 
