@@ -1,9 +1,9 @@
 use clap::Arg;
 use stam::{
     Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
-    AnnotationHandle, AnnotationStore, Cursor, DataKey, DataOperator, DataValue, Item, Offset,
-    Selector, StamError, Storable, StoreFor, Text, TextResource, TextResourceHandle, TextSelection,
-    WrappedItem,
+    AnnotationHandle, AnnotationStore, Config, Cursor, DataKey, DataOperator, DataValue, Item,
+    Offset, Selector, StamError, Storable, StoreFor, Text, TextResource, TextResourceHandle,
+    TextSelection, WrappedItem,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -15,8 +15,8 @@ use std::process::exit;
 pub fn tsv_arguments_common<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
-        Arg::with_name("delimiter")
-            .long("delimiter")
+        Arg::with_name("subdelimiter")
+            .long("subdelimiter")
             .help("Delimiter for multiple values in a single column")
             .takes_value(true)
             .default_value("|"),
@@ -30,11 +30,6 @@ pub fn tsv_arguments_common<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true)
             .default_value("/"),
     );
-    args
-}
-
-pub fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
-    let mut args: Vec<Arg> = tsv_arguments_common();
     args.push(
         Arg::with_name("null")
             .long("null")
@@ -42,6 +37,11 @@ pub fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true)
             .default_value("-"),
     );
+    args
+}
+
+pub fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = tsv_arguments_common();
     args.push(
         Arg::with_name("type")
             .long("type")
@@ -170,7 +170,7 @@ In addition of the above columns, you may also parse a *custom* column by specif
         Arg::with_name("new-resource")
             .long("new-resource")
             .help(
-                "Interpret data in the TSV file as pertaining to this text resource, and reconstruct it from the data",
+                "Interpret data in the TSV file as pertaining to this text resource, and reconstruct it from the data. Will write a separate txt file unless you provide the --no-include option.",
             )
             .takes_value(true),
     );
@@ -195,6 +195,25 @@ In addition of the above columns, you may also parse a *custom* column by specif
         Arg::with_name("no-case")
             .long("no-case")
             .help("Do case insensitive matching when attempting to align text from the TSV input with a text resource"),
+    );
+    args.push(
+        Arg::with_name("no-escape")
+            .long("no-escape")
+            .help("Do not parse escape sequences for tabs (\\t) and newlines (\\n), leave as is"),
+    );
+    args.push(
+        Arg::with_name("outputdelimiter")
+            .long("outputdelimiter")
+            .help("Output delimiter when reconstructing text, after each row, this string is outputted. In most scenarios, like when having one word per row, you'll want this to be a space (which is the default).")
+            .takes_value(true)
+            .default_value(" "),
+    );
+    args.push(
+        Arg::with_name("outputdelimiter2")
+            .long("outputdelimiter2")
+            .help("Output delimiter when reconstructing text and when an empty line is found in the input data. In most scenarios, you will want this to be a newline (the default)")
+            .takes_value(true)
+            .default_value("\n"),
     );
     args
 }
@@ -850,7 +869,6 @@ impl ParseMode {
     pub fn new(
         columns: &Columns,
         existing_resource: Option<&str>,
-        new_resource: Option<&str>,
         sequential: bool,
     ) -> Result<Self, &'static str> {
         if columns.has(&Column::Text) {
@@ -904,9 +922,12 @@ pub fn from_tsv(
     default_set: Option<&str>,
     sequential: bool,
     case_sensitive: bool,
-    subdelimiter: &str,   //input delimiter for multiple values in a cell
-    setdelimiter: &str,   //delimiter between key/set
-    header: Option<bool>, //None means autodetect
+    escape: bool,
+    subdelimiter: &str,     //input delimiter for multiple values in a cell
+    setdelimiter: &str,     //delimiter between key/set
+    outputdelimiter: &str,  //outputted after each row when reconstructing text (space)
+    outputdelimiter2: &str, //outputted after each empty line when reconstructing text (newline)
+    header: Option<bool>,   //None means autodetect
     validation: ValidationMode,
     verbose: bool,
 ) {
@@ -919,11 +940,15 @@ pub fn from_tsv(
     let mut columns: Option<Columns> = None;
     let mut parsemode: Option<ParseMode> = None;
     let mut cursors: HashMap<TextResourceHandle, usize> = HashMap::new(); //used in AlignWithText mode to keep track of the begin of text offset (per resource)
+    let mut buffer: Vec<String> = Vec::new(); //used in ReconstructText mode for a second pass over the data
+    let mut bufferbegin: usize = 0; //line number where the buffer begins
+    let mut texts: HashMap<String, String> = HashMap::new(); //used in ReconstructText mode
+    let mut buffered_delimiter: Option<String> = None; // used in ReconstructText mode
 
     for (i, line) in reader.lines().enumerate() {
         if let Ok(line) = line {
             if line.is_empty() {
-                continue;
+                buffered_delimiter = Some(outputdelimiter2.to_string()); //only affects ReconstructText mode
             } else if i == 0 && columns.is_none() && header != Some(false) {
                 if verbose {
                     eprintln!("Parsing first row as header...")
@@ -941,16 +966,11 @@ pub fn from_tsv(
                     )
                 );
                 parsemode = Some(
-                    ParseMode::new(
-                        columns.as_ref().unwrap(),
-                        existing_resource,
-                        new_resource,
-                        sequential,
-                    )
-                    .unwrap_or_else(|e| {
-                        eprintln!("Can't determine parse mode: {}", e);
-                        exit(1);
-                    }),
+                    ParseMode::new(columns.as_ref().unwrap(), existing_resource, sequential)
+                        .unwrap_or_else(|e| {
+                            eprintln!("Can't determine parse mode: {}", e);
+                            exit(1);
+                        }),
                 );
                 if verbose {
                     eprintln!("Columns: {:?}", columns.as_ref().unwrap());
@@ -982,16 +1002,11 @@ pub fn from_tsv(
                             .collect(),
                     ));
                     parsemode = Some(
-                        ParseMode::new(
-                            columns.as_ref().unwrap(),
-                            existing_resource,
-                            new_resource,
-                            sequential,
-                        )
-                        .unwrap_or_else(|e| {
-                            eprintln!("Can't determine parse mode: {}", e);
-                            exit(1);
-                        }),
+                        ParseMode::new(columns.as_ref().unwrap(), existing_resource, sequential)
+                            .unwrap_or_else(|e| {
+                                eprintln!("Can't determine parse mode: {}", e);
+                                exit(1);
+                            }),
                     );
                     if verbose {
                         eprintln!("Columns: {:?}", columns.as_ref().unwrap());
@@ -999,7 +1014,24 @@ pub fn from_tsv(
                     }
                 }
                 if let (Some(columns), Some(parsemode)) = (&columns, parsemode) {
-                    if let Err(e) = parse_row(
+                    if parsemode == ParseMode::ReconstructText {
+                        if let Err(e) = reconstruct_text(
+                            &line,
+                            &columns,
+                            &mut texts,
+                            existing_resource,
+                            new_resource,
+                            outputdelimiter,
+                            &mut buffered_delimiter,
+                        ) {
+                            eprintln!("Error reconstructing text (line {}): {}", i + 1, e);
+                            exit(1);
+                        }
+                        if buffer.is_empty() {
+                            bufferbegin = i;
+                        }
+                        buffer.push(line);
+                    } else if let Err(e) = parse_row(
                         store,
                         &line,
                         &columns,
@@ -1008,6 +1040,7 @@ pub fn from_tsv(
                         new_resource,
                         default_set,
                         case_sensitive,
+                        escape,
                         validation,
                         &mut cursors,
                     ) {
@@ -1018,6 +1051,80 @@ pub fn from_tsv(
             }
         }
     }
+
+    if parsemode == Some(ParseMode::ReconstructText) {
+        if verbose {
+            eprintln!("Creating resources...");
+        }
+        for (filename, text) in texts {
+            if verbose {
+                eprintln!("Creating resource {} (length={})", filename, text.len());
+            }
+            let resource = TextResource::new(filename.clone(), Config::default())
+                .with_string(text)
+                .with_filename(&filename);
+            if let Err(e) = store.insert(resource) {
+                eprintln!("Error adding reconstructed text to store: {}", e);
+                exit(1);
+            }
+        }
+        if verbose {
+            eprintln!("Parsing buffered rows...");
+        }
+        let parsemode = ParseMode::AlignWithText;
+        let columns = columns.unwrap();
+        for (i, line) in buffer.iter().enumerate() {
+            if let Err(e) = parse_row(
+                store,
+                &line,
+                &columns,
+                parsemode,
+                existing_resource,
+                new_resource,
+                default_set,
+                case_sensitive,
+                escape,
+                validation,
+                &mut cursors,
+            ) {
+                eprintln!("Error parsing tsv line {}: {}", i + bufferbegin + 1, e);
+                exit(1);
+            }
+        }
+    }
+}
+
+pub fn reconstruct_text(
+    line: &str,
+    columns: &Columns,
+    texts: &mut HashMap<String, String>,
+    existing_resource: Option<&str>,
+    new_resource: Option<&str>,
+    output_delimiter: &str,
+    buffered_delimiter: &mut Option<String>,
+) -> Result<(), String> {
+    let cells: Vec<&str> = line.split("\t").collect();
+    if cells.len() != columns.len() {
+        return Err(format!(
+            "Number of cells is not equal to number of columns in header ({} vs {})",
+            cells.len(),
+            columns.len()
+        ));
+    }
+    let resource_file: &str =
+        parse_resource_file(&cells, columns, existing_resource, new_resource)?;
+    let textcolumn = columns.index(&Column::Text);
+    if !texts.contains_key(resource_file) {
+        texts.insert(resource_file.to_string(), String::new());
+    }
+    if let Some(text) = texts.get_mut(resource_file) {
+        if let Some(buffered_delimiter) = buffered_delimiter {
+            text.push_str(&buffered_delimiter);
+        }
+        text.push_str(&cells[textcolumn.expect("there must be a text column")]);
+        *buffered_delimiter = Some(output_delimiter.to_string());
+    }
+    Ok(())
 }
 
 pub fn parse_row(
@@ -1029,6 +1136,7 @@ pub fn parse_row(
     new_resource: Option<&str>,
     default_set: Option<&str>,
     case_sensitive: bool,
+    escape: bool,
     validation: ValidationMode,
     cursors: &mut HashMap<TextResourceHandle, usize>,
 ) -> Result<(), String> {
@@ -1056,14 +1164,14 @@ pub fn parse_row(
         )?,
         _ => return Err("Not implemented yet".to_string()),
     };
-    let mut annotationbuilder = build_annotation(&cells, columns, default_set)?;
+    let mut annotationbuilder = build_annotation(&cells, columns, default_set, escape)?;
     annotationbuilder = annotationbuilder.with_selector(selector);
     match store.annotate(annotationbuilder) {
         Err(e) => return Err(format!("{}", e)),
         Ok(handle) => {
             if parsemode == ParseMode::Simple {
                 if let Some(textcolumn) = textcolumn {
-                    validate_text(store, handle, &cells, columns, textcolumn, validation)?;
+                    validate_text(store, handle, &cells, textcolumn, validation)?;
                 }
             }
         }
@@ -1116,7 +1224,6 @@ pub fn validate_text(
     store: &AnnotationStore,
     annotation_handle: AnnotationHandle,
     cells: &[&str],
-    columns: &Columns,
     textcolumn: usize,
     validation: ValidationMode,
 ) -> Result<(), String> {
@@ -1175,10 +1282,37 @@ pub fn validate_text(
     Ok(())
 }
 
+pub fn unescape(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut prevc = None;
+    let mut do_unescape: bool = false;
+    for c in s.chars() {
+        if c == '\\' && prevc != Some('\\') {
+            do_unescape = true;
+        }
+        if do_unescape {
+            match c {
+                'n' => result.push('\n'),
+                't' => result.push('\t'),
+                _ => {
+                    result.push('\\');
+                    result.push(c);
+                }
+            }
+        } else {
+            result.push(c)
+        }
+        prevc = Some(c);
+        do_unescape = false;
+    }
+    result
+}
+
 pub fn build_annotation<'a>(
     cells: &'a [&'a str],
     columns: &Columns,
     default_set: Option<&'a str>,
+    escape: bool,
 ) -> Result<AnnotationBuilder<'a>, String> {
     let mut annotationbuilder = AnnotationBuilder::new();
     if let Some(i) = columns.index(&Column::Id) {
@@ -1206,7 +1340,11 @@ pub fn build_annotation<'a>(
         let key = cells.get(ikey).expect("cell must exist");
         let value = cells.get(ivalue).expect("cell must exist");
         databuilder = databuilder.with_key(Item::from(key.deref()));
-        databuilder = databuilder.with_value(DataValue::from(value.deref()));
+        if escape {
+            databuilder = databuilder.with_value(DataValue::from(unescape(value.deref())));
+        } else {
+            databuilder = databuilder.with_value(DataValue::from(value.deref()));
+        }
         annotationbuilder = annotationbuilder.with_data_builder(databuilder);
     }
     //process custom columns
