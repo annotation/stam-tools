@@ -1,4 +1,4 @@
-use clap::Arg;
+use clap::{Arg, ArgAction};
 use stam::{
     Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
     AnnotationHandle, AnnotationStore, Config, Cursor, DataKey, DataOperator, DataValue, Item,
@@ -156,7 +156,8 @@ In addition of the above columns, you may also parse a *custom* column by specif
         Arg::with_name("inputfile")
             .long("inputfile")
             .short('f')
-            .help("TSV file to import")
+            .help("TSV file to import. This option may be specified multiple times.")
+            .action(ArgAction::Append)
             .required(true)
             .takes_value(true),
     );

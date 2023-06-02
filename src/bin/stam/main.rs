@@ -308,6 +308,7 @@ The file contains the following columns:
         let storefilename = args
             .value_of("annotationstore")
             .expect("an annotation store must be provided");
+        let inputfiles = args.values_of("inputfile").unwrap().collect::<Vec<&str>>();
         if Path::new(storefilename).exists() {
             eprintln!("Existing annotation store found");
             store = load_store(args);
@@ -330,28 +331,32 @@ The file contains the following columns:
         } else {
             None
         };
-        from_tsv(
-            &mut store,
-            args.value_of("inputfile").unwrap(),
-            columns.as_ref(),
-            existing_resource,
-            new_resource,
-            args.value_of("annotationset"),
-            !args.is_present("no-seq"),
-            !args.is_present("no-case"),
-            !args.is_present("no-escape"),
-            args.value_of("null").unwrap(),
-            args.value_of("subdelimiter").unwrap(),
-            args.value_of("setdelimiter").unwrap(),
-            args.value_of("outputdelimiter").unwrap(),
-            args.value_of("outputdelimiter2").unwrap(),
-            Some(!args.is_present("no-header")),
-            ValidationMode::try_from(args.value_of("validate").unwrap()).unwrap_or_else(|err| {
-                eprintln!("{}", err);
-                exit(1);
-            }),
-            args.is_present("verbose"),
-        );
+        for inputfile in inputfiles {
+            from_tsv(
+                &mut store,
+                &inputfile,
+                columns.as_ref(),
+                existing_resource,
+                new_resource,
+                args.value_of("annotationset"),
+                !args.is_present("no-seq"),
+                !args.is_present("no-case"),
+                !args.is_present("no-escape"),
+                args.value_of("null").unwrap(),
+                args.value_of("subdelimiter").unwrap(),
+                args.value_of("setdelimiter").unwrap(),
+                args.value_of("outputdelimiter").unwrap(),
+                args.value_of("outputdelimiter2").unwrap(),
+                Some(!args.is_present("no-header")),
+                ValidationMode::try_from(args.value_of("validate").unwrap()).unwrap_or_else(
+                    |err| {
+                        eprintln!("{}", err);
+                        exit(1);
+                    },
+                ),
+                args.is_present("verbose"),
+            );
+        }
         if !args.is_present("dry-run") {
             store.save().unwrap_or_else(|err| {
                 eprintln!(
