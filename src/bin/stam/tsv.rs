@@ -923,6 +923,7 @@ pub fn from_tsv(
     sequential: bool,
     case_sensitive: bool,
     escape: bool,
+    nullvalue: &str,
     subdelimiter: &str,     //input delimiter for multiple values in a cell
     setdelimiter: &str,     //delimiter between key/set
     outputdelimiter: &str,  //outputted after each row when reconstructing text (space)
@@ -1041,6 +1042,7 @@ pub fn from_tsv(
                         default_set,
                         case_sensitive,
                         escape,
+                        nullvalue,
                         validation,
                         &mut cursors,
                     ) {
@@ -1084,6 +1086,7 @@ pub fn from_tsv(
                 default_set,
                 case_sensitive,
                 escape,
+                nullvalue,
                 validation,
                 &mut cursors,
             ) {
@@ -1137,6 +1140,7 @@ pub fn parse_row(
     default_set: Option<&str>,
     case_sensitive: bool,
     escape: bool,
+    nullvalue: &str,
     validation: ValidationMode,
     cursors: &mut HashMap<TextResourceHandle, usize>,
 ) -> Result<(), String> {
@@ -1164,7 +1168,7 @@ pub fn parse_row(
         )?,
         _ => return Err("Not implemented yet".to_string()),
     };
-    let mut annotationbuilder = build_annotation(&cells, columns, default_set, escape)?;
+    let mut annotationbuilder = build_annotation(&cells, columns, default_set, escape, nullvalue)?;
     annotationbuilder = annotationbuilder.with_selector(selector);
     match store.annotate(annotationbuilder) {
         Err(e) => return Err(format!("{}", e)),
@@ -1313,6 +1317,7 @@ pub fn build_annotation<'a>(
     columns: &Columns,
     default_set: Option<&'a str>,
     escape: bool,
+    nullvalue: &str,
 ) -> Result<AnnotationBuilder<'a>, String> {
     let mut annotationbuilder = AnnotationBuilder::new();
     if let Some(i) = columns.index(&Column::Id) {
@@ -1339,13 +1344,15 @@ pub fn build_annotation<'a>(
         }
         let key = cells.get(ikey).expect("cell must exist");
         let value = cells.get(ivalue).expect("cell must exist");
-        databuilder = databuilder.with_key(Item::from(key.deref()));
-        if escape {
-            databuilder = databuilder.with_value(DataValue::from(unescape(value.deref())));
-        } else {
-            databuilder = databuilder.with_value(DataValue::from(value.deref()));
+        if !value.is_empty() && value.deref() != nullvalue {
+            databuilder = databuilder.with_key(Item::from(key.deref()));
+            if escape {
+                databuilder = databuilder.with_value(DataValue::from(unescape(value.deref())));
+            } else {
+                databuilder = databuilder.with_value(DataValue::from(value.deref()));
+            }
+            annotationbuilder = annotationbuilder.with_data_builder(databuilder);
         }
-        annotationbuilder = annotationbuilder.with_data_builder(databuilder);
     }
     //process custom columns
     for (column, cell) in columns.iter().zip(cells.iter()) {

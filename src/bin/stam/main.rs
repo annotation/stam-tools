@@ -340,6 +340,7 @@ The file contains the following columns:
             !args.is_present("no-seq"),
             !args.is_present("no-case"),
             !args.is_present("no-escape"),
+            args.value_of("null").unwrap(),
             args.value_of("subdelimiter").unwrap(),
             args.value_of("setdelimiter").unwrap(),
             args.value_of("outputdelimiter").unwrap(),
