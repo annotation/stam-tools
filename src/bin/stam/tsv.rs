@@ -1364,7 +1364,7 @@ pub fn build_annotation<'a>(
         let key = cells.get(ikey).expect("cell must exist");
         let value = cells.get(ivalue).expect("cell must exist");
         if !value.is_empty() && value.deref() != nullvalue {
-            if let Some(pos) = value.find(subdelimiter) {
+            if value.find(subdelimiter).is_some() {
                 for value in value.split(subdelimiter) {
                     let mut multidatabuilder = AnnotationDataBuilder::new();
                     if let Some(i) = columns.index(&Column::AnnotationDataSet) {
@@ -1396,12 +1396,31 @@ pub fn build_annotation<'a>(
     //process custom columns
     for (column, cell) in columns.iter().zip(cells.iter()) {
         if let Column::Custom { set, key } = column {
-            let value: DataValue = cell.deref().into();
-            let databuilder = AnnotationDataBuilder::new()
-                .with_annotationset(Item::Id(set.clone()))
-                .with_key(Item::Id(key.clone()))
-                .with_value(value);
-            annotationbuilder = annotationbuilder.with_data_builder(databuilder);
+            if cell.find(subdelimiter).is_some() {
+                for value in cell.split(subdelimiter) {
+                    let value: DataValue = if escape {
+                        unescape(value.deref()).into()
+                    } else {
+                        value.deref().into()
+                    };
+                    let databuilder = AnnotationDataBuilder::new()
+                        .with_annotationset(Item::Id(set.clone()))
+                        .with_key(Item::Id(key.clone()))
+                        .with_value(value);
+                    annotationbuilder = annotationbuilder.with_data_builder(databuilder);
+                }
+            } else {
+                let value: DataValue = if escape {
+                    unescape(cell.deref()).into()
+                } else {
+                    cell.deref().into()
+                };
+                let databuilder = AnnotationDataBuilder::new()
+                    .with_annotationset(Item::Id(set.clone()))
+                    .with_key(Item::Id(key.clone()))
+                    .with_value(value);
+                annotationbuilder = annotationbuilder.with_data_builder(databuilder);
+            }
         }
     }
     Ok(annotationbuilder)
