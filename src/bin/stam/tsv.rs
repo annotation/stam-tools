@@ -202,6 +202,9 @@ In addition of the above columns, you may also parse a *custom* column by specif
             .long("no-escape")
             .help("Do not parse escape sequences for tabs (\\t) and newlines (\\n), leave as is"),
     );
+    args.push(Arg::with_name("no-comments").long("no-comments").help(
+        "Do not allow comments, if not set, all lines starting with # are treated as comments",
+    ));
     args.push(
         Arg::with_name("outputdelimiter")
             .long("outputdelimiter")
@@ -921,6 +924,7 @@ pub fn from_tsv(
     existing_resource: Option<&str>,
     new_resource: Option<&str>,
     default_set: Option<&str>,
+    comments: bool,
     sequential: bool,
     case_sensitive: bool,
     escape: bool,
@@ -951,6 +955,9 @@ pub fn from_tsv(
         if let Ok(line) = line {
             if line.is_empty() {
                 buffered_delimiter = Some(outputdelimiter2.to_string()); //only affects ReconstructText mode
+            } else if comments && !line.is_empty() && &line.get(0..1) == &Some("#") {
+                //this is a comment, ignore
+                continue;
             } else if i == 0 && columns.is_none() && header != Some(false) {
                 if verbose {
                     eprintln!("Parsing first row as header...")

@@ -339,6 +339,7 @@ The file contains the following columns:
                 existing_resource,
                 new_resource,
                 args.value_of("annotationset"),
+                !args.is_present("no-comments"),
                 !args.is_present("no-seq"),
                 !args.is_present("no-case"),
                 !args.is_present("no-escape"),
