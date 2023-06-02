@@ -1045,6 +1045,7 @@ pub fn from_tsv(
                         &line,
                         &columns,
                         parsemode,
+                        subdelimiter,
                         existing_resource,
                         new_resource,
                         default_set,
@@ -1089,6 +1090,7 @@ pub fn from_tsv(
                 &line,
                 &columns,
                 parsemode,
+                subdelimiter,
                 existing_resource,
                 new_resource,
                 default_set,
@@ -1143,6 +1145,7 @@ pub fn parse_row(
     line: &str,
     columns: &Columns,
     parsemode: ParseMode,
+    subdelimiter: &str,
     existing_resource: Option<&str>,
     new_resource: Option<&str>,
     default_set: Option<&str>,
@@ -1176,7 +1179,14 @@ pub fn parse_row(
         )?,
         _ => return Err("Not implemented yet".to_string()),
     };
-    let mut annotationbuilder = build_annotation(&cells, columns, default_set, escape, nullvalue)?;
+    let mut annotationbuilder = build_annotation(
+        &cells,
+        columns,
+        default_set,
+        subdelimiter,
+        escape,
+        nullvalue,
+    )?;
     annotationbuilder = annotationbuilder.with_selector(selector);
     match store.annotate(annotationbuilder) {
         Err(e) => return Err(format!("{}", e)),
@@ -1324,6 +1334,7 @@ pub fn build_annotation<'a>(
     cells: &'a [&'a str],
     columns: &Columns,
     default_set: Option<&'a str>,
+    subdelimiter: &str,
     escape: bool,
     nullvalue: &str,
 ) -> Result<AnnotationBuilder<'a>, String> {
@@ -1353,13 +1364,33 @@ pub fn build_annotation<'a>(
         let key = cells.get(ikey).expect("cell must exist");
         let value = cells.get(ivalue).expect("cell must exist");
         if !value.is_empty() && value.deref() != nullvalue {
-            databuilder = databuilder.with_key(Item::from(key.deref()));
-            if escape {
-                databuilder = databuilder.with_value(DataValue::from(unescape(value.deref())));
+            if let Some(pos) = value.find(subdelimiter) {
+                for value in value.split(subdelimiter) {
+                    let mut multidatabuilder = AnnotationDataBuilder::new();
+                    if let Some(i) = columns.index(&Column::AnnotationDataSet) {
+                        let set = cells.get(i).expect("cell must exist");
+                        multidatabuilder =
+                            multidatabuilder.with_annotationset(Item::Id(set.to_string()));
+                    }
+                    multidatabuilder = multidatabuilder.with_key(Item::from(key.deref()));
+                    if escape {
+                        multidatabuilder =
+                            multidatabuilder.with_value(DataValue::from(unescape(value.deref())));
+                    } else {
+                        multidatabuilder =
+                            multidatabuilder.with_value(DataValue::from(value.deref()));
+                    }
+                    annotationbuilder = annotationbuilder.with_data_builder(multidatabuilder);
+                }
             } else {
-                databuilder = databuilder.with_value(DataValue::from(value.deref()));
+                databuilder = databuilder.with_key(Item::from(key.deref()));
+                if escape {
+                    databuilder = databuilder.with_value(DataValue::from(unescape(value.deref())));
+                } else {
+                    databuilder = databuilder.with_value(DataValue::from(value.deref()));
+                }
+                annotationbuilder = annotationbuilder.with_data_builder(databuilder);
             }
-            annotationbuilder = annotationbuilder.with_data_builder(databuilder);
         }
     }
     //process custom columns
