@@ -2,8 +2,8 @@ use clap::{Arg, ArgAction};
 use stam::{
     Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
     AnnotationHandle, AnnotationStore, Config, Cursor, DataKey, DataOperator, DataValue, Item,
-    Offset, Selector, StamError, Storable, StoreFor, Text, TextResource, TextResourceHandle,
-    TextSelection, WrappedItem,
+    Offset, Selector, Storable, StoreFor, Text, TextResource, TextResourceHandle, TextSelection,
+    WrappedItem,
 };
 use std::collections::HashMap;
 use std::fmt;
