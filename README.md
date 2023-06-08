@@ -46,6 +46,58 @@ These tools also support reading and writing [STAM CSV](https://github.com/annot
 
 ## Tools
 
+### stam init & stam annotate
+
+The `stam init` command is used to initialize a new STAM annotationstore with
+resources (`--resource`, plain text or STAM JSON), annotation data sets
+(`--annotationset`, STAM JSON) and/or annotations (`--annotations`, JSON list
+of annotations in STAM JSON).  
+
+Example, the positional parameter (last one) is the annotation store to output,
+it may be STAM JSON or STAM CSV:
+
+```
+$ stam init --resource document.txt new.store.stam.json
+```
+
+The `stam annotate` command is almost identical to `stam init`, except it reads
+and modifies an existing annotation store, rather than starting a new one from
+scratch:
+
+```
+$ stam annotate --resource document.txt existing.store.stam.json
+```
+
+Whenever you load annotations and annotation data sets using these commands,
+they need to already be in STAM JSON format. To import data from other formats,
+use `stam import` instead.
+
+The `stam init` and `stam annotate` commands are also capable of merging
+multiple annotation stores into one.
+
+### stam save
+
+This command is used to load a STAM annotationstore and save it under another
+name and/or other format. It can be used to convert between STAM JSON
+and STAM CSV. Example:
+
+```
+$ stam save -o my.store.stam.csv my.store.stam.json
+```
+
+### stam info
+
+The `stam info` command provides either some high-level details on the
+annotation store (number of resource, annotations, etc), or with the
+`--verbose` flag it goes as far as presenting, in a fairly raw format, all the
+data it holds.
+
+Example:
+
+```
+$ stam info my.store.stam.json
+```
+
 ### stam export
 
 The `stam export` tool is used to export STAM data into a tabular data format
@@ -57,6 +109,12 @@ One of the more powerful functions is that you can specify custom columns by
 specifying a set ID, a delimiter and a key ID (the delimiter by default is a
 slash), for instance: `my_set/part_of_speech`. This will then output the
 corresponding value in that column, if it exist.
+
+Example:
+
+```
+$ stam export -C Id,Text,TextResource,BeginOffset,EndOffset,my_set/part_of_speech
+```
 
 This export function is not lossless, that is, it can not encode everything
 that STAM supports, unlike STAM JSON and STAM CSV. It does, however, give you a great
@@ -72,7 +130,7 @@ header and use that to figure out the column configuration.  You will often
 want to set ``--annotationset`` to set a default annotation set to use for
 custom columns. If you set ``--annotationset my_set`` then a column like
 `part_of_speech` will be interpreted in that set (same as if you wrote
-`my_set/part_of_speech` explicitly).
+`2my_set/part_of_speech` explicitly).
 
 Here is a simple example of a possible import TSV file (with ``--annotationset my_set``):
 
@@ -126,7 +184,7 @@ will be
 4. The value to set. If this follows the syntax $1,$2,etc.. it will assign the value of
 that capture group (1-indexed).
 
-Example:
+Example of the rules:
 
 ```tsv
 #EXPRESSION	#ANNOTATIONSET	#DATAKEY	#DATAVALUE
@@ -135,7 +193,12 @@ Example:
 [0-9]+(?:[,\.][0-9]+)	simpletokens	type	number
 ```
 
+Example of applying this to a text resource:
 
+```
+# first we create a store and add a text resource
+$ stam init --resource sometext.txt my.store.stam.json
 
-
-
+# then we start the tagging
+$ stam tag --rules rules.tsv my.store.stam.json 
+```
