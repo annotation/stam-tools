@@ -1,4 +1,4 @@
-use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Item, Storable, Text};
+use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Storable, Text};
 
 pub fn info(store: &AnnotationStore, verbose: bool) {
     if !verbose {
@@ -20,7 +20,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     for resource in store.resources() {
         println!(
             "    - [{}] Resource ID: {:?}; textlength: {}, #positions: {}",
-            resource.handle().unwrap().unwrap(),
+            resource.handle().unwrap(),
             resource.id().unwrap_or("(none)"),
             resource.textlen(),
             resource.positionindex_len(),
@@ -29,7 +29,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             for textselection in resource.textselections() {
                 println!(
                     "        - [{}] TextSelection; begin: {}; end: {}, text: {:?}, #annotations: {}",
-                    textselection.handle().unwrap().unwrap(),
+                    textselection.handle().unwrap(),
                     textselection.begin(),
                     textselection.end(),
                     //text:
@@ -51,29 +51,29 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     for annotationset in store.annotationsets() {
         println!(
             "    - [{}] Set ID: {:?}; #keys: {}; #data: {}",
-            annotationset.handle().unwrap().unwrap(),
+            annotationset.handle().unwrap(),
             annotationset.id().unwrap_or("(none)"),
-            annotationset.keys_len(),
-            annotationset.data_len(),
+            annotationset.as_ref().keys_len(),
+            annotationset.as_ref().data_len(),
         );
         if verbose {
-            for key in annotationset.keys() {
+            for key in annotationset.as_ref().keys() {
                 println!(
                     "        - [{}] Key ID: {:?}; #data: {}",
-                    key.handle().unwrap().unwrap(),
+                    key.handle().unwrap(),
                     key.id().unwrap_or("(none)"),
                     annotationset
-                        .data_by_key(&key.handle().into())
+                        .as_ref()
+                        .data_by_key(key)
                         .unwrap_or(&vec!())
                         .len()
                 );
             }
-            for data in annotationset.data() {
-                let annotations = store
-                    .annotations_by_data(annotationset.handle().unwrap(), data.handle().unwrap());
+            for data in annotationset.as_ref().data() {
+                let annotations = store.annotations_by_data(annotationset.handle(), data.handle());
                 println!(
                     "        - [{}] Data ID: {:?}; Key: {:?}; Value: {:?}; #annotations: {}",
-                    data.handle().unwrap().unwrap(),
+                    data.handle().unwrap(),
                     data.id().unwrap_or("(none)"),
                     data.key().id().unwrap_or("(none)"),
                     data.value(),
@@ -91,26 +91,20 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         for annotation in store.annotations() {
             println!(
                 "    - [{}] Annotation ID: {:?}; target: {:?}; text: {:?}, #data: {}",
-                annotation.handle().unwrap().unwrap(),
+                annotation.handle().unwrap(),
                 annotation.id().unwrap_or("(none)"),
-                annotation.target(),
+                annotation.as_ref().target(),
                 //text:
                 {
-                    if let Some(annotation) =
-                        store.annotation(&Item::Handle(annotation.handle().unwrap()))
-                    {
-                        let text: Vec<&str> = annotation.text().collect();
-                        text
-                    } else {
-                        vec!["(no text)"]
-                    }
+                    let text: Vec<&str> = annotation.text().collect();
+                    text
                 },
-                annotation.len(),
+                annotation.as_ref().len(),
             );
             for data in annotation.data() {
                 println!(
                     "        - [{}] Data ID: {:?}; Set ID: {:?}; Key: {:?}; Value: {:?}",
-                    data.handle().unwrap().unwrap(),
+                    data.handle().unwrap(),
                     data.id().unwrap_or("(none)"),
                     data.set().id().unwrap_or("(none)"),
                     data.key().id().unwrap_or("(none)"),

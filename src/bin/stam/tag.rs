@@ -1,5 +1,5 @@
 use stam::{
-    AnnotationBuilder, AnnotationDataBuilder, AnnotationStore, Item, Offset, Regex, RegexSet,
+    AnnotationBuilder, AnnotationDataBuilder, AnnotationStore, BuildItem, Offset, Regex, RegexSet,
     SelectorBuilder, Storable, Text,
 };
 use std::fs::File;
@@ -45,8 +45,8 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
                 rules.push(Rule {
                     expression,
                     databuilder: AnnotationDataBuilder::new()
-                        .with_annotationset(Item::Id(fields[1].to_string()))
-                        .with_key(Item::Id(fields[2].to_string()))
+                        .with_annotationset(BuildItem::Id(fields[1].to_string()))
+                        .with_key(BuildItem::Id(fields[2].to_string()))
                         .with_value(fields[3].into()),
                     variable_value,
                 });
@@ -92,8 +92,8 @@ pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bo
             if !textmatch.multi() {
                 //build an annotation with a TextSelector
                 AnnotationBuilder::new()
-                    .with_target(SelectorBuilder::TextSelector(
-                        Item::Handle(textmatch.resource().handle().unwrap()),
+                    .with_target(SelectorBuilder::textselector(
+                        textmatch.resource().handle().unwrap(),
                         Offset::from(textmatch.textselections().first().unwrap()),
                     ))
                     .with_data_builder(databuilder)
@@ -105,8 +105,8 @@ pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bo
                             .textselections()
                             .iter()
                             .map(|textselection| {
-                                SelectorBuilder::TextSelector(
-                                    Item::Handle(textmatch.resource().handle().unwrap()),
+                                SelectorBuilder::textselector(
+                                    textmatch.resource().handle().unwrap(),
                                     Offset::from(textselection),
                                 )
                             })
