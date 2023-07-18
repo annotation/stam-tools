@@ -1,8 +1,5 @@
 use clap::{Arg, ArgAction};
-use stam::{
-    AnnotationDataSetBuilder, AnnotationStore, AnnotationStoreBuilder, Configurable,
-    TextResourceBuilder,
-};
+use stam::{AnnotationDataSet, AnnotationStore, Configurable, Store, StoreFor, TextResource};
 use std::process::exit;
 
 pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
@@ -63,31 +60,28 @@ pub fn annotate(
             exit(1);
         });
     }
-    let mut builder = AnnotationStoreBuilder::default();
     for filename in setfiles {
-        builder = builder.with_annotationset(
-            AnnotationDataSetBuilder::from_file(filename, store.config().clone()).unwrap_or_else(
-                |err| {
-                    eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
-                    exit(1);
-                },
-            ),
-        );
+        let annotationset = AnnotationDataSet::from_file(filename, store.config().clone())
+            .unwrap_or_else(|err| {
+                eprintln!("Error loading AnnotationDataSet {}: {}", filename, err);
+                exit(1);
+            });
+        store.insert(annotationset).unwrap_or_else(|err| {
+            eprintln!("Error adding AnnotationDataSet {}: {}", filename, err);
+            exit(1);
+        });
     }
     for filename in resourcefiles {
-        builder = builder.with_resource(
-            TextResourceBuilder::from_file(filename, store.config().clone()).unwrap_or_else(
-                |err| {
-                    eprintln!("Error loading TextResource {}: {}", filename, err);
-                    exit(1);
-                },
-            ),
-        );
+        let resource =
+            TextResource::from_file(filename, store.config().clone()).unwrap_or_else(|err| {
+                eprintln!("Error loading TextResource {}: {}", filename, err);
+                exit(1);
+            });
+        store.insert(resource).unwrap_or_else(|err| {
+            eprintln!("Error adding TextResource {}: {}", filename, err);
+            exit(1);
+        });
     }
-    store.merge_from_builder(builder).unwrap_or_else(|err| {
-        eprintln!("Error annotating: {}", err);
-        exit(1);
-    });
     for filename in annotationfiles {
         store.annotate_from_file(filename).unwrap_or_else(|err| {
             eprintln!("Error parsing annotations from {}: {}", filename, err);
