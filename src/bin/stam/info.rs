@@ -160,7 +160,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     }
     let mem = humanmem(store.annotations_meminfo());
     println!(
-        "Annotations:            {} ({:.2} {})",
+        "Annotations:            {} (> {:.2} {})",
         store.annotations_len(),
         mem.0,
         mem.1
