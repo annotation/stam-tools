@@ -84,7 +84,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         let mem = humanmem(resource.as_ref().meminfo());
         println!(
             "    - [{}] Resource ID: {:?}; textlength: {}, textsize: {:.2} {}, #positions: {}, #textselections: {}, memory estimate: {:.2} {}",
-            resource.handle().unwrap(),
+            resource.handle().as_usize(),
             resource.id().unwrap_or("(none)"),
             resource.textlen(),
             textsize.0,
@@ -98,7 +98,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             for textselection in resource.textselections() {
                 println!(
                     "        - [{}] TextSelection; begin: {}; end: {}, text: {:?}, #annotations: {}",
-                    textselection.handle().unwrap(),
+                    textselection.handle().as_usize(),
                     textselection.begin(),
                     textselection.end(),
                     //text:
@@ -121,7 +121,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         let mem = humanmem(annotationset.as_ref().meminfo());
         println!(
             "    - [{}] Set ID: {:?}; #keys: {}; #data: {}, memory estimate: {:.2} {}",
-            annotationset.handle().unwrap(),
+            annotationset.handle().as_usize(),
             annotationset.id().unwrap_or("(none)"),
             annotationset.as_ref().keys_len(),
             annotationset.as_ref().data_len(),
@@ -132,7 +132,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             for key in annotationset.as_ref().keys() {
                 println!(
                     "        - [{}] Key ID: {:?}; #data: {}",
-                    key.handle().unwrap(),
+                    key.handle().as_usize(),
                     key.id().unwrap_or("(none)"),
                     annotationset
                         .as_ref()
@@ -145,7 +145,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                 let annotations = store.annotations_by_data(annotationset.handle(), data.handle());
                 println!(
                     "        - [{}] Data ID: {:?}; Key: {:?}; Value: {:?}; #annotations: {}",
-                    data.handle().unwrap(),
+                    data.handle().as_usize(),
                     data.id().unwrap_or("(none)"),
                     data.key().id().unwrap_or("(none)"),
                     data.value(),
@@ -169,7 +169,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         for annotation in store.annotations() {
             println!(
                 "    - [{}] Annotation ID: {:?}; target: {:?}; text: {:?}, #data: {}",
-                annotation.handle().unwrap(),
+                annotation.handle().as_usize(),
                 annotation.id().unwrap_or("(none)"),
                 annotation.as_ref().target(),
                 //text:
@@ -182,7 +182,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             for data in annotation.data() {
                 println!(
                     "        - [{}] Data ID: {:?}; Set ID: {:?}; Key: {:?}; Value: {:?}",
-                    data.handle().unwrap(),
+                    data.handle().as_usize(),
                     data.id().unwrap_or("(none)"),
                     data.set().id().unwrap_or("(none)"),
                     data.key().id().unwrap_or("(none)"),
