@@ -638,7 +638,7 @@ impl Column {
                 let mut found = false;
                 if let Some(annotation) = &context.annotation {
                     for (i, annotationdata) in annotation
-                        .find_data(Some(set.into()), Some(key.into()), DataOperator::Any)
+                        .find_data(Some(set.as_str()), Some(key.as_str()), DataOperator::Any)
                         .into_iter()
                         .flatten()
                         .enumerate()

@@ -28,6 +28,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     if !verbose {
         eprintln!("(Tip: add --verbose for more detailed info output)");
     }
+    let mut totalbytes = 0; //total memory consumption
     if let Some(id) = store.id() {
         println!("ID: {}", id);
     }
@@ -38,41 +39,49 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     let total = store.index_totalcount();
     let bytes = store.index_meminfo();
     println!("Indices:");
+    totalbytes += bytes.0;
     let mem = humanmem(bytes.0);
     println!(
         "    - dataset_data_annotation_map:      {} -> {} -> {} (> {:.2} {})",
         len.0, partial.0, total.0, mem.0, mem.1
     );
+    totalbytes += bytes.1;
     let mem = humanmem(bytes.1);
     println!(
         "    - textrelationmap:                  {} -> {} -> {} (> {:.2} {})",
         len.1, partial.1, total.1, mem.0, mem.1
     );
+    totalbytes += bytes.2;
     let mem = humanmem(bytes.2);
     println!(
         "    - resource_annotation_map:          {} -> {} (> {:.2} {})",
         len.2, total.2, mem.0, mem.1
     );
+    totalbytes += bytes.3;
     let mem = humanmem(bytes.3);
     println!(
         "    - dataset_annotation_map:           {} -> {} (> {:.2} {})",
         len.3, total.3, mem.0, mem.1
     );
+    totalbytes += bytes.4;
     let mem = humanmem(bytes.4);
     println!(
         "    - annotation_annotation_map:        {} -> {} (> {:.2} {})",
         len.4, total.4, mem.0, mem.1
     );
+    totalbytes += bytes.5;
     let mem = humanmem(bytes.5);
     println!(
         "    - resource_idmap:        {} (> {:.2} {})",
         len.5, mem.0, mem.1
     );
+    totalbytes += bytes.6;
     let mem = humanmem(bytes.6);
     println!(
         "    - dataset_idmap:        {} (> {:.2} {})",
         len.6, mem.0, mem.1
     );
+    totalbytes += bytes.7;
     let mem = humanmem(bytes.7);
     println!(
         "    - annotation_idmap:        {} (> {:.2} {})",
@@ -81,7 +90,9 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     println!("Resources:              {}", store.resources_len());
     for resource in store.resources() {
         let textsize = humanmem(resource.text().len());
-        let mem = humanmem(resource.as_ref().meminfo());
+        let bytes = resource.as_ref().meminfo();
+        totalbytes += bytes;
+        let mem = humanmem(bytes);
         println!(
             "    - [{}] Resource ID: {:?}; textlength: {}, textsize: {:.2} {}, #positions: {}, #textselections: {}, memory estimate: {:.2} {}",
             resource.handle().as_usize(),
@@ -118,7 +129,9 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
     }
     println!("Annotation datasets:    {}", store.annotationsets_len());
     for annotationset in store.annotationsets() {
-        let mem = humanmem(annotationset.as_ref().meminfo());
+        let bytes = annotationset.as_ref().meminfo();
+        totalbytes += bytes;
+        let mem = humanmem(bytes);
         println!(
             "    - [{}] Set ID: {:?}; #keys: {}; #data: {}, memory estimate: {:.2} {}",
             annotationset.handle().as_usize(),
@@ -158,7 +171,9 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             }
         }
     }
-    let mem = humanmem(store.annotations_meminfo());
+    let bytes = store.annotations_meminfo();
+    totalbytes += bytes;
+    let mem = humanmem(bytes);
     println!(
         "Annotations:            {} (> {:.2} {})",
         store.annotations_len(),
@@ -191,4 +206,9 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             }
         }
     }
+    let mem = humanmem(totalbytes);
+    println!(
+        "Total estimated memory consumption: > {:.2} {}",
+        mem.0, mem.1
+    );
 }

@@ -256,7 +256,7 @@ The file contains the following columns:
         exit(2);
     };
 
-    let mut store = AnnotationStore::new().with_config(config_from_args(args));
+    let mut store = AnnotationStore::new(config_from_args(args));
 
     if rootargs.subcommand_matches("info").is_some()
         || rootargs.subcommand_matches("export").is_some()
