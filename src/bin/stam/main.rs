@@ -80,6 +80,12 @@ fn config_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Serialize as one file, do not output @include directives nor standoff-files")
             .required(false),
     );
+    args.push(
+        Arg::with_name("strip-ids")
+            .long("strip-ids")
+            .help("Strip public identifiers for annotations and annotation data (may save considerable memory)")
+            .required(false),
+    );
     args
 }
 
@@ -94,10 +100,16 @@ fn load_store(args: &ArgMatches) -> AnnotationStore {
     let filename = args
         .value_of("annotationstore")
         .expect("an annotation store must be provided");
-    AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
-        eprintln!("Error loading annotation store: {}", err);
-        exit(1);
-    })
+    let mut store =
+        AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
+            eprintln!("Error loading annotation store: {}", err);
+            exit(1);
+        });
+    if args.is_present("strip-ids") {
+        store.strip_data_ids();
+        store.strip_annotation_ids();
+    }
+    store
 }
 
 fn main() {
@@ -271,6 +283,11 @@ The file contains the following columns:
                     });
                 }
             }
+        }
+
+        if args.is_present("strip-ids") {
+            store.strip_data_ids();
+            store.strip_annotation_ids();
         }
     }
 
