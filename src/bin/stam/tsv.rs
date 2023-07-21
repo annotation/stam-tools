@@ -765,7 +765,7 @@ pub fn to_tsv(
                         },
                         key: Some(data.key()),
                         data: Some(data.clone()),
-                        set: Some(data.set().wrap_in(store).unwrap()),
+                        set: Some(data.set().as_resultitem(store).unwrap()),
                         value: Some(data.value()),
                         ..Context::default()
                     };
