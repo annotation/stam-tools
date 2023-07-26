@@ -100,7 +100,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             resource.textlen(),
             textsize.0,
             textsize.1,
-            resource.positionindex_len(),
+            resource.as_ref().positionindex_len(),
             resource.textselections_len(),
             mem.0,
             mem.1,
@@ -109,7 +109,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             for textselection in resource.textselections() {
                 println!(
                     "        - [{}] TextSelection; begin: {}; end: {}, text: {:?}, #annotations: {}",
-                    textselection.handle().as_usize(),
+                    textselection.handle().expect("handle must exist").as_usize(),
                     textselection.begin(),
                     textselection.end(),
                     //text:
@@ -122,51 +122,42 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
                         }
                     },
                     //nrannotations:
-                    textselection.annotations_len(store)
+                    textselection.annotations_len()
                 );
             }
         }
     }
     println!("Annotation datasets:    {}", store.annotationsets_len());
-    for annotationset in store.annotationsets() {
-        let bytes = annotationset.as_ref().meminfo();
+    for dataset in store.datasets() {
+        let bytes = dataset.as_ref().meminfo();
         totalbytes += bytes;
         let mem = humanmem(bytes);
         println!(
             "    - [{}] Set ID: {:?}; #keys: {}; #data: {}, memory estimate: {:.2} {}",
-            annotationset.handle().as_usize(),
-            annotationset.id().unwrap_or("(none)"),
-            annotationset.as_ref().keys_len(),
-            annotationset.as_ref().data_len(),
+            dataset.handle().as_usize(),
+            dataset.id().unwrap_or("(none)"),
+            dataset.as_ref().keys_len(),
+            dataset.as_ref().data_len(),
             mem.0,
             mem.1,
         );
         if verbose {
-            for key in annotationset.as_ref().keys() {
+            for key in dataset.keys() {
                 println!(
                     "        - [{}] Key ID: {:?}; #data: {}",
                     key.handle().as_usize(),
                     key.id().unwrap_or("(none)"),
-                    annotationset
-                        .as_ref()
-                        .data_by_key(key)
-                        .unwrap_or(&vec!())
-                        .len()
+                    dataset.as_ref().data_by_key(key).unwrap_or(&vec!()).len()
                 );
             }
-            for data in annotationset.as_ref().data() {
-                let annotations = store.annotations_by_data(annotationset.handle(), data.handle());
+            for data in dataset.data() {
                 println!(
                     "        - [{}] Data ID: {:?}; Key: {:?}; Value: {:?}; #annotations: {}",
                     data.handle().as_usize(),
                     data.id().unwrap_or("(none)"),
                     data.key().id().unwrap_or("(none)"),
                     data.value(),
-                    if let Some(annotations) = annotations {
-                        annotations.len()
-                    } else {
-                        0
-                    }
+                    data.annotations().count()
                 );
             }
         }

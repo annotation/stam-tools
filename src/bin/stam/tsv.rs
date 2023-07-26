@@ -2,8 +2,8 @@ use clap::{Arg, ArgAction};
 use stam::{
     Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
     AnnotationHandle, AnnotationStore, BuildItem, Config, Cursor, DataKey, DataOperator, DataValue,
-    Offset, ResultItem, ResultTextSelection, Selector, Storable, StoreFor, Text, TextResource,
-    TextResourceHandle,
+    FindText, Offset, ResultItem, ResultTextSelection, Selector, Storable, StoreFor, Text,
+    TextResource, TextResourceBuilder, TextResourceHandle,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -638,7 +638,7 @@ impl Column {
                 let mut found = false;
                 if let Some(annotation) = &context.annotation {
                     for (i, annotationdata) in annotation
-                        .find_data(Some(set.as_str()), Some(key.as_str()), DataOperator::Any)
+                        .find_data(set.as_str(), key.as_str(), &DataOperator::Any)
                         .into_iter()
                         .flatten()
                         .enumerate()
@@ -765,7 +765,7 @@ pub fn to_tsv(
                         },
                         key: Some(data.key()),
                         data: Some(data.clone()),
-                        set: Some(data.set().as_resultitem(store).unwrap()),
+                        set: Some(data.set()),
                         value: Some(data.value()),
                         ..Context::default()
                     };
@@ -783,7 +783,7 @@ pub fn to_tsv(
             }
         }
         Type::AnnotationDataSet | Type::AnnotationData | Type::DataKey => {
-            for set in store.annotationsets() {
+            for set in store.datasets() {
                 if !flatten || tp == Type::AnnotationDataSet {
                     let context = Context {
                         id: set.id(),
@@ -793,7 +793,7 @@ pub fn to_tsv(
                     columns.printrow(Type::AnnotationDataSet, &context, delimiter, null);
                 }
                 if tp == Type::AnnotationData {
-                    for data in set.as_ref().data() {
+                    for data in set.data() {
                         let context = Context {
                             id: data.id(),
                             set: Some(set.clone()),
@@ -804,7 +804,7 @@ pub fn to_tsv(
                         columns.printrow(Type::AnnotationData, &context, delimiter, null);
                     }
                 } else if tp == Type::DataKey {
-                    for key in set.as_ref().keys() {
+                    for key in set.keys() {
                         let context = Context {
                             id: key.id(),
                             set: Some(set.clone()),
@@ -1071,12 +1071,21 @@ pub fn from_tsv(
             if verbose {
                 eprintln!("Creating resource {} (length={})", filename, text.len());
             }
-            let resource = TextResource::new(filename.clone(), Config::default())
-                .with_string(text)
-                .with_filename(&filename);
-            if let Err(e) = store.insert(resource) {
-                eprintln!("Error adding reconstructed text to store: {}", e);
-                exit(1);
+            match TextResourceBuilder::new()
+                .with_text(text)
+                .with_filename(&filename)
+                .build()
+            {
+                Ok(resource) => {
+                    if let Err(e) = store.insert(resource) {
+                        eprintln!("Error adding reconstructed text to store: {}", e);
+                        exit(1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error loading resource: {}", e);
+                    exit(1);
+                }
             }
         }
         if verbose {
@@ -1359,7 +1368,7 @@ pub fn build_annotation<'a>(
         }
         if let Some(i) = columns.index(&Column::AnnotationDataSet) {
             let set = cells.get(i).expect("cell must exist");
-            databuilder = databuilder.with_annotationset(BuildItem::Id(set.to_string()));
+            databuilder = databuilder.with_dataset(BuildItem::Id(set.to_string()));
         }
         let key = cells.get(ikey).expect("cell must exist");
         let value = cells.get(ivalue).expect("cell must exist");
@@ -1370,7 +1379,7 @@ pub fn build_annotation<'a>(
                     if let Some(i) = columns.index(&Column::AnnotationDataSet) {
                         let set = cells.get(i).expect("cell must exist");
                         multidatabuilder =
-                            multidatabuilder.with_annotationset(BuildItem::Id(set.to_string()));
+                            multidatabuilder.with_dataset(BuildItem::Id(set.to_string()));
                     }
                     multidatabuilder = multidatabuilder.with_key(BuildItem::from(key.deref()));
                     if escape {
@@ -1404,7 +1413,7 @@ pub fn build_annotation<'a>(
                         value.deref().into()
                     };
                     let databuilder = AnnotationDataBuilder::new()
-                        .with_annotationset(BuildItem::Id(set.clone()))
+                        .with_dataset(BuildItem::Id(set.clone()))
                         .with_key(BuildItem::Id(key.clone()))
                         .with_value(value);
                     annotationbuilder = annotationbuilder.with_data_builder(databuilder);
@@ -1416,7 +1425,7 @@ pub fn build_annotation<'a>(
                     cell.deref().into()
                 };
                 let databuilder = AnnotationDataBuilder::new()
-                    .with_annotationset(BuildItem::Id(set.clone()))
+                    .with_dataset(BuildItem::Id(set.clone()))
                     .with_key(BuildItem::Id(key.clone()))
                     .with_value(value);
                 annotationbuilder = annotationbuilder.with_data_builder(databuilder);

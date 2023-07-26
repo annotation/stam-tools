@@ -45,7 +45,7 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
                 rules.push(Rule {
                     expression,
                     databuilder: AnnotationDataBuilder::new()
-                        .with_annotationset(BuildItem::Id(fields[1].to_string()))
+                        .with_dataset(BuildItem::Id(fields[1].to_string()))
                         .with_key(BuildItem::Id(fields[2].to_string()))
                         .with_value(fields[3].into()),
                     variable_value,
@@ -93,7 +93,7 @@ pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bo
                 //build an annotation with a TextSelector
                 AnnotationBuilder::new()
                     .with_target(SelectorBuilder::textselector(
-                        textmatch.resource().handle().unwrap(),
+                        textmatch.resource().handle(),
                         Offset::from(textmatch.textselections().first().unwrap()),
                     ))
                     .with_data_builder(databuilder)
@@ -106,7 +106,7 @@ pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bo
                             .iter()
                             .map(|textselection| {
                                 SelectorBuilder::textselector(
-                                    textmatch.resource().handle().unwrap(),
+                                    textmatch.resource().handle(),
                                     Offset::from(textselection),
                                 )
                             })
