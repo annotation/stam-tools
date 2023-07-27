@@ -127,7 +127,7 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
             }
         }
     }
-    println!("Annotation datasets:    {}", store.annotationsets_len());
+    println!("Annotation datasets:    {}", store.datasets_len());
     for dataset in store.datasets() {
         let bytes = dataset.as_ref().meminfo();
         totalbytes += bytes;
