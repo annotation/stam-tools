@@ -2,8 +2,8 @@ use clap::{Arg, ArgAction};
 use stam::{
     Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
     AnnotationHandle, AnnotationStore, BuildItem, Config, Cursor, DataKey, DataOperator, DataValue,
-    FindText, Offset, ResultItem, ResultTextSelection, Selector, Storable, StoreFor, Text,
-    TextResource, TextResourceBuilder, TextResourceHandle,
+    FindText, Offset, ResultItem, ResultTextSelection, Selector, SelectorBuilder, Storable,
+    StoreFor, Text, TextResource, TextResourceBuilder, TextResourceHandle,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -1196,7 +1196,7 @@ pub fn parse_row(
         escape,
         nullvalue,
     )?;
-    annotationbuilder = annotationbuilder.with_selector(selector);
+    annotationbuilder = annotationbuilder.with_target(selector);
     match store.annotate(annotationbuilder) {
         Err(e) => return Err(format!("{}", e)),
         Ok(handle) => {
@@ -1210,14 +1210,14 @@ pub fn parse_row(
     Ok(())
 }
 
-pub fn align_with_text(
+pub fn align_with_text<'a>(
     store: &AnnotationStore,
     resource_handle: TextResourceHandle,
     cells: &[&str],
     textcolumn: usize,
     case_sensitive: bool,
     cursors: &mut HashMap<TextResourceHandle, usize>,
-) -> Result<Selector, String> {
+) -> Result<SelectorBuilder<'a>, String> {
     let textfragment = cells[textcolumn];
     if textfragment.is_empty() {
         return Err("Value in text column can not be empty".to_string());
@@ -1238,7 +1238,7 @@ pub fn align_with_text(
         searchtext.find_text_nocase(textfragment).next() //MAYBE TODO: this will be sub-optimal on large texts as it is lowercased each time -> use a smaller text buffer
     } {
         *cursor = foundtextselection.end();
-        Ok(Selector::TextSelector(
+        Ok(SelectorBuilder::textselector(
             resource_handle,
             Offset::simple(foundtextselection.begin(), foundtextselection.end()),
         ))
@@ -1474,14 +1474,14 @@ pub fn get_resource_handle(
         .map_err(|e| format!("Specified resource not found: {}: {}", filename, e))
 }
 
-pub fn build_selector(
+pub fn build_selector<'a>(
     cells: &[&str],
     columns: &Columns,
     resource_handle: TextResourceHandle,
-) -> Result<Selector, String> {
+) -> Result<SelectorBuilder<'a>, String> {
     //TODO: for now this only returns a TextSelector, should be adapted to handle multiple offsets (with subdelimiter) and return a CompositeSelector then
     let offset = parse_offset(cells, columns)?;
-    Ok(Selector::TextSelector(resource_handle, offset))
+    Ok(SelectorBuilder::textselector(resource_handle, offset))
 }
 
 pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String> {
