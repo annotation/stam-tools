@@ -1,5 +1,5 @@
 use clap::{Arg, ArgAction};
-use stam::{AnnotationDataSet, AnnotationStore, Configurable, Store, StoreFor, TextResource};
+use stam::{AnnotationDataSet, AnnotationStore, Configurable, StoreFor, TextResource};
 use std::process::exit;
 
 pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {

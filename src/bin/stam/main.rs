@@ -1,5 +1,5 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
-use stam::{AnnotationStore, AssociatedFile, Config, Configurable};
+use stam::{AnnotationStore, AssociatedFile, Config};
 use std::path::Path;
 use std::process::exit;
 

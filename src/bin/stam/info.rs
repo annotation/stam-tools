@@ -1,4 +1,4 @@
-use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Storable, Text};
+use stam::{AnnotationStore, AssociatedFile, Configurable, Handle, Text};
 
 const BYTES: &str = "bytes";
 const GIB: &str = "GiB";

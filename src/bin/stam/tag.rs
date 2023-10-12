@@ -1,6 +1,6 @@
 use stam::{
     AnnotationBuilder, AnnotationDataBuilder, AnnotationStore, BuildItem, Offset, Regex, RegexSet,
-    SelectorBuilder, Storable, Text,
+    SelectorBuilder, Text,
 };
 use std::fs::File;
 use std::io::{BufRead, BufReader};

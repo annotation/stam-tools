@@ -1,15 +1,14 @@
 use clap::{Arg, ArgAction};
 use stam::{
     Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
-    AnnotationHandle, AnnotationStore, BuildItem, Config, Cursor, DataKey, DataOperator, DataValue,
-    FindText, Offset, ResultItem, ResultTextSelection, Selector, SelectorBuilder, Storable,
-    StoreFor, Text, TextResource, TextResourceBuilder, TextResourceHandle,
+    AnnotationHandle, AnnotationStore, BuildItem, Cursor, DataKey, DataOperator, DataValue,
+    FindText, Offset, ResultItem, ResultTextSelection, SelectorBuilder, StoreFor, Text,
+    TextResource, TextResourceBuilder, TextResourceHandle,
 };
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::ops::Deref;
 use std::process::exit;
 
 pub fn tsv_arguments_common<'a>() -> Vec<clap::Arg<'a>> {
@@ -1370,7 +1369,7 @@ pub fn build_annotation<'a>(
         }
         let key = cells.get(ikey).expect("cell must exist");
         let value = cells.get(ivalue).expect("cell must exist");
-        if !value.is_empty() && value.deref() != nullvalue {
+        if !value.is_empty() && *value != nullvalue {
             if value.find(subdelimiter).is_some() {
                 for value in value.split(subdelimiter) {
                     let mut multidatabuilder = AnnotationDataBuilder::new();
@@ -1379,22 +1378,21 @@ pub fn build_annotation<'a>(
                         multidatabuilder =
                             multidatabuilder.with_dataset(BuildItem::Id(set.to_string()));
                     }
-                    multidatabuilder = multidatabuilder.with_key(BuildItem::from(key.deref()));
+                    multidatabuilder = multidatabuilder.with_key(BuildItem::from(*key));
                     if escape {
                         multidatabuilder =
-                            multidatabuilder.with_value(DataValue::from(unescape(value.deref())));
+                            multidatabuilder.with_value(DataValue::from(unescape(value)));
                     } else {
-                        multidatabuilder =
-                            multidatabuilder.with_value(DataValue::from(value.deref()));
+                        multidatabuilder = multidatabuilder.with_value(DataValue::from(value));
                     }
                     annotationbuilder = annotationbuilder.with_data_builder(multidatabuilder);
                 }
             } else {
-                databuilder = databuilder.with_key(BuildItem::from(key.deref()));
+                databuilder = databuilder.with_key(BuildItem::from(*key));
                 if escape {
-                    databuilder = databuilder.with_value(DataValue::from(unescape(value.deref())));
+                    databuilder = databuilder.with_value(DataValue::from(unescape(value)));
                 } else {
-                    databuilder = databuilder.with_value(DataValue::from(value.deref()));
+                    databuilder = databuilder.with_value(DataValue::from(*value));
                 }
                 annotationbuilder = annotationbuilder.with_data_builder(databuilder);
             }
@@ -1406,9 +1404,9 @@ pub fn build_annotation<'a>(
             if cell.find(subdelimiter).is_some() {
                 for value in cell.split(subdelimiter) {
                     let value: DataValue = if escape {
-                        unescape(value.deref()).into()
+                        unescape(value).into()
                     } else {
-                        value.deref().into()
+                        value.into()
                     };
                     let databuilder = AnnotationDataBuilder::new()
                         .with_dataset(BuildItem::Id(set.clone()))
@@ -1418,9 +1416,9 @@ pub fn build_annotation<'a>(
                 }
             } else {
                 let value: DataValue = if escape {
-                    unescape(cell.deref()).into()
+                    unescape(cell).into()
                 } else {
-                    cell.deref().into()
+                    (*cell).into()
                 };
                 let databuilder = AnnotationDataBuilder::new()
                     .with_dataset(BuildItem::Id(set.clone()))
@@ -1489,8 +1487,8 @@ pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String>
             let delimiterpos = *delimiterpos + 1; //we do 1 rather than 0 to not consider an immediate hyphen after the # , that would indicate a negative begin index
             let begin_str = &cell[0..delimiterpos];
             let end_str = &cell[(delimiterpos + 1)..];
-            let begin: Cursor = begin_str.deref().try_into().map_err(|e| format!("{}", e))?;
-            let end: Cursor = end_str.deref().try_into().map_err(|e| format!("{}", e))?;
+            let begin: Cursor = begin_str.try_into().map_err(|e| format!("{}", e))?;
+            let end: Cursor = end_str.try_into().map_err(|e| format!("{}", e))?;
             return Ok(Offset::new(begin, end));
         }
         Err("Offset must have format: beginoffset-endoffset".to_string())
@@ -1500,8 +1498,8 @@ pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String>
     ) {
         let begin_str = cells.get(b).expect("cell must exist");
         let end_str = cells.get(e).expect("cell must exist");
-        let begin: Cursor = begin_str.deref().try_into().map_err(|e| format!("{}", e))?;
-        let end: Cursor = end_str.deref().try_into().map_err(|e| format!("{}", e))?;
+        let begin: Cursor = (*begin_str).try_into().map_err(|e| format!("{}", e))?;
+        let end: Cursor = (*end_str).try_into().map_err(|e| format!("{}", e))?;
         Ok(Offset::new(begin, end))
     } else if let Some(i) = columns.index(&Column::TextSelection) {
         let textselection = cells.get(i).expect("cell must exist");
@@ -1510,8 +1508,8 @@ pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String>
                 let delimiterpos = *delimiterpos + bytepos + 2; //we do 2 rather than 1 to not consider an immediate hyphen after the # , that would indicate a negative begin index
                 let begin_str = &textselection[(bytepos + 1)..delimiterpos];
                 let end_str = &textselection[(delimiterpos + 1)..];
-                let begin: Cursor = begin_str.deref().try_into().map_err(|e| format!("{}", e))?;
-                let end: Cursor = end_str.deref().try_into().map_err(|e| format!("{}", e))?;
+                let begin: Cursor = (*begin_str).try_into().map_err(|e| format!("{}", e))?;
+                let end: Cursor = (*end_str).try_into().map_err(|e| format!("{}", e))?;
                 return Ok(Offset::new(begin, end));
             }
         }
