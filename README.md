@@ -8,16 +8,16 @@
 
 # STAM Tools
 
-A collection of command-line tools for working with STAM.
+A collection of command-line tools for working with [STAM](https://github.com/annotation/stam), a data-model for stand-off annotations on text.
 
 Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 
-* ``stam annotate``  - Add annotations (or datasets or resource) from STAM JSON files
+* ``stam annotate``  - Add annotations (or datasets or resources) from STAM JSON files
 * ``stam info``      - Return information regarding a STAM model. 
 * ``stam init``      - Initialize a new STAM annotationstore
-* ``stam import``    - Import STAM data in tabular from from a simple TSV (Tab Separated Values) format.
+* ``stam import``    - Import STAM data in tabular from from a simple TSV (Tab Separated Values) format, allows custom columns.
 * ``stam print``     - Output the text of any resources in the model.
-* ``stam export``    - Export STAM data in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns.
+* ``stam export``    - Export STAM data in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
 * ``stam validate``  - Validate a STAM model.  
 * ``stam save``      - Write a STAM model to file(s). This can be used to switch between STAM JSON and STAM CSV output, based on the extension.
 * ``stam tag``       - Regular-expression based tagger on plain text. 
