@@ -166,10 +166,30 @@ Note that `stam import` can not import everything it can itself export. It can o
 exported with ``--type Annotation``  (the default), in which each row
 corresponds with one annotation.
 
+### stam grep
+
+The `stam grep` tool can be used for matching regular expressions in text,
+it will return the resource identifiers, offsets and exact texts of all matching occurrences.
+
+Example:
+
+```
+$ stam grep -e "[hzwHZW]ij" frogdeep.store.stam.json 
+example.deep 690:693 Hij     1/1
+example.deep    799:802 hij     1/1
+```
+
+The tab-seperated columns are as follows:
+
+1. Resource ID
+2. Begin offset and end offset (non-inclusive) in unicode points
+3. The matching text
+4. The current capture group and total number of capture groups (if any)
+
 ### stam tag
 
 The `stam tag` tool can be used for matching regular expressions in text and
-subsequently associated annotations with the found results. It is a tool to do
+subsequently associating annotations with the found results. It is a tool to do
 for example tokenization or other tagging tasks.
 
 The `stam tag` command takes a TSV file ([example](https://github.com/knaw-huc/stam-experiments/blob/main/config/stam-tag/simpletagger.tsv)) containing regular expression rules for the tagger.

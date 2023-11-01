@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::exit;
 
 mod annotate;
+mod grep;
 mod info;
 mod tag;
 mod to_text;
@@ -11,6 +12,7 @@ mod tsv;
 mod validate;
 
 use crate::annotate::*;
+use crate::grep::*;
 use crate::info::*;
 use crate::tag::*;
 use crate::to_text::*;
@@ -231,6 +233,34 @@ The file contains the following columns:
                         .help("Allow regular expression matches to overlap")
                         .required(false),
                 ))
+        .subcommand(
+            SubCommand::with_name("grep")
+                .about("Regular-expression based search on plain text")
+                .args(&common_arguments())
+                .args(&store_argument())
+                .args(&config_arguments())
+                .arg(
+                    Arg::with_name("expression")
+                        .long("expression")
+                        .short('e')
+                        .help(
+                            "A regular expression.",
+                        )
+                        .long_help("
+The regular expressions follow the following syntax: https://docs.rs/regex/latest/regex/#syntax
+The expression may contain one or or more capture groups containing the items that will be
+returned, in that case anything else is considered context and will not be returned.")
+                        .takes_value(true)
+                        .required(true)
+                        .action(ArgAction::Append),
+                )
+                .arg(
+                    Arg::with_name("allow-overlap")
+                        .long("allow-overlap")
+                        .short('O')
+                        .help("Allow regular expression matches to overlap")
+                        .required(false),
+                ))
         .get_matches();
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
@@ -250,6 +280,8 @@ The file contains the following columns:
     } else if let Some(args) = rootargs.subcommand_matches("annotate") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("tag") {
+        args
+    } else if let Some(args) = rootargs.subcommand_matches("grep") {
         args
     } else {
         eprintln!("No command specified, please see stam --help");
@@ -466,5 +498,15 @@ The file contains the following columns:
                 exit(1);
             });
         }
+    } else if rootargs.subcommand_matches("grep").is_some() {
+        //load the store
+        store = load_store(args);
+        grep(
+            &store,
+            args.values_of("expression")
+                .expect("--expression must be provided")
+                .collect(),
+            args.is_present("allow-overlap"),
+        );
     }
 }
