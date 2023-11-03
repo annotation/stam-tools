@@ -1,10 +1,6 @@
 use clap::{Arg, ArgAction};
-use stam::{
-    Annotation, AnnotationBuilder, AnnotationData, AnnotationDataBuilder, AnnotationDataSet,
-    AnnotationHandle, AnnotationStore, BuildItem, Cursor, DataKey, DataOperator, DataValue,
-    FindText, Offset, ResultItem, ResultTextSelection, SelectorBuilder, StoreFor, Text,
-    TextResource, TextResourceBuilder, TextResourceHandle,
-};
+use stam::*;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -368,7 +364,7 @@ impl fmt::Display for Column {
 
 #[derive(Clone)]
 struct Context<'a> {
-    id: Option<&'a str>,
+    id: Option<Cow<'a, str>>,
     textselections: Option<&'a Vec<ResultTextSelection<'a>>>,
     text: Option<&'a str>,
     annotation: Option<ResultItem<'a, Annotation>>,
@@ -433,7 +429,7 @@ impl Column {
         }
         match self {
             Column::Type => print!("{}", tp.as_str()),
-            Column::Id => print!("{}", context.id.unwrap_or(null)),
+            Column::Id => print!("{}", context.id.as_ref().unwrap_or(&Cow::Borrowed(null))),
             Column::TextSelection => {
                 if let Some(textselections) = context.textselections {
                     print!(
@@ -590,8 +586,11 @@ impl Column {
                 context
                     .annotation
                     .as_ref()
-                    .map(|annotation| annotation.id().unwrap_or(null))
-                    .unwrap_or(null)
+                    .map(|annotation| annotation
+                        .id()
+                        .map(|x| x.to_string())
+                        .unwrap_or_else(|| annotation.as_ref().temp_id().unwrap()))
+                    .unwrap_or(null.to_string())
             ),
             Column::AnnotationData => print!(
                 "{}",
@@ -704,8 +703,8 @@ impl Columns {
     }
 }
 
-pub fn to_tsv(
-    store: &AnnotationStore,
+pub fn to_tsv<'a>(
+    store: &'a AnnotationStore,
     columnconfig: &[&str],
     tp: Type,
     flatten: bool,
@@ -713,6 +712,7 @@ pub fn to_tsv(
     null: &str,
     header: bool,
     setdelimiter: &str,
+    filter_annotations: Option<AnnotationsIter<'a>>,
 ) {
     let columns = Columns(
         columnconfig
@@ -736,7 +736,11 @@ pub fn to_tsv(
         Type::Annotation => {
             let want_textselections =
                 columns.0.contains(&Column::TextSelection) || columns.0.contains(&Column::Text);
-            for annotation in store.annotations() {
+            for annotation in if let Some(filter_annotations) = filter_annotations {
+                filter_annotations
+            } else {
+                store.annotations()
+            } {
                 let textselections: Option<Vec<_>> = if want_textselections {
                     Some(annotation.textselections().collect())
                 } else {
@@ -744,8 +748,12 @@ pub fn to_tsv(
                 };
                 if !flatten {
                     let context = Context {
-                        id: annotation.id(),
-                        annotation: Some(annotation.clone()), //clones only the ResultBuildItem::Borrowed(), cheap
+                        id: if let Some(id) = annotation.id() {
+                            Some(Cow::Borrowed(id))
+                        } else {
+                            Some(Cow::Owned(annotation.as_ref().temp_id().unwrap()))
+                        },
+                        annotation: Some(annotation.clone()), //clones only the ResultItem, cheap
                         textselections: textselections.as_ref(),
                         ..Context::default()
                     };
@@ -753,7 +761,15 @@ pub fn to_tsv(
                 }
                 for data in annotation.data() {
                     let context = Context {
-                        id: if flatten { annotation.id() } else { data.id() },
+                        id: if flatten {
+                            if let Some(id) = annotation.id() {
+                                Some(Cow::Borrowed(id))
+                            } else {
+                                Some(Cow::Owned(annotation.as_ref().temp_id().unwrap()))
+                            }
+                        } else {
+                            data.id().map(|x| Cow::Borrowed(x))
+                        },
                         annotation: Some(annotation.clone()),
                         textselections: if flatten {
                             textselections.as_ref()
@@ -783,7 +799,7 @@ pub fn to_tsv(
             for set in store.datasets() {
                 if !flatten || tp == Type::AnnotationDataSet {
                     let context = Context {
-                        id: set.id(),
+                        id: set.id().map(|x| Cow::Borrowed(x)),
                         set: Some(set.clone()),
                         ..Context::default()
                     };
@@ -792,7 +808,7 @@ pub fn to_tsv(
                 if tp == Type::AnnotationData {
                     for data in set.data() {
                         let context = Context {
-                            id: data.id(),
+                            id: data.id().map(|x| Cow::Borrowed(x)),
                             set: Some(set.clone()),
                             key: Some(data.key()),
                             value: Some(data.value()),
@@ -803,7 +819,7 @@ pub fn to_tsv(
                 } else if tp == Type::DataKey {
                     for key in set.keys() {
                         let context = Context {
-                            id: key.id(),
+                            id: key.id().map(|x| Cow::Borrowed(x)),
                             set: Some(set.clone()),
                             key: Some(key.clone()),
                             ..Context::default()
@@ -817,7 +833,7 @@ pub fn to_tsv(
             for res in store.resources() {
                 if !flatten || tp == Type::TextResource {
                     let context = Context {
-                        id: res.id(),
+                        id: res.id().map(|x| Cow::Borrowed(x)),
                         resource: Some(res.clone()),
                         text: if res.text().len() > 1024 || res.text().find("\n").is_some() {
                             Some("[too long to display]")
@@ -839,7 +855,7 @@ pub fn to_tsv(
                         let text = Some(textselection.text());
                         let textselections: Vec<ResultTextSelection> = vec![textselection.into()];
                         let context = Context {
-                            id: Some(id.as_str()),
+                            id: Some(Cow::Owned(id)),
                             resource: Some(res.clone()),
                             textselections: Some(&textselections),
                             text,
