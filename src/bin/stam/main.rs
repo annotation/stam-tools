@@ -394,10 +394,16 @@ returned, in that case anything else is considered context and will not be retur
         );
     } else if rootargs.subcommand_matches("query").is_some() {
         let mut columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
-        let (annotations, _filtered, extra_column) =
-            query(&store, args, args.value_of("setdelimiter").unwrap());
-        if let Some(extra_column) = extra_column.as_ref() {
-            columns.push(extra_column.as_str());
+        let query = query(&store, args);
+        let mut extra_column = String::new();
+        if query.key.is_some() {
+            extra_column = format!(
+                "{}{}{}",
+                query.set.unwrap(),
+                args.value_of("setdelimiter").unwrap(),
+                query.key.unwrap()
+            );
+            columns.push(&extra_column);
         }
         to_tsv(
             &store,
@@ -408,7 +414,7 @@ returned, in that case anything else is considered context and will not be retur
             args.value_of("null").unwrap(),
             !args.is_present("no-header"),
             args.value_of("setdelimiter").unwrap(),
-            Some(annotations),
+            Some(query.annotations),
         );
     } else if rootargs.subcommand_matches("import").is_some() {
         let storefilename = args
@@ -479,17 +485,22 @@ returned, in that case anything else is considered context and will not be retur
         to_text(&store, resource_ids);
     } else if rootargs.subcommand_matches("view").is_some() {
         let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
-        let (annotations, filtered, _extra_column) = query(&store, args, "/");
-        if filtered {
-            to_html(
-                &store,
-                resource_ids,
-                vec![annotations.map(|x| x.handle()).collect()],
-                false,
-            );
-        } else {
-            to_html(&store, resource_ids, Vec::new(), false);
+        let query = query(&store, args);
+        let mut writer = HtmlWriter::new(&store, resource_ids);
+        if query.key.is_some() {
+            if let Some(dataset) =
+                store.dataset(query.set.expect("set must exists when key exists"))
+            {
+                if let Some(key) = dataset.key(query.key.unwrap()) {
+                    writer = writer.with_highlight(
+                        Highlight::new(query.annotations.map(|x| x.handle()).collect())
+                            .with_key(key),
+                    );
+                }
+            }
+            writer = writer.with_prune(true);
         }
+        print!("{}", writer);
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("init").is_some()

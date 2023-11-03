@@ -31,11 +31,13 @@ pub fn query_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
-pub fn query<'a>(
-    store: &'a AnnotationStore,
-    args: &'a ArgMatches,
-    setdelimiter: &str,
-) -> (AnnotationsIter<'a>, bool, Option<String>) {
+pub struct Query<'a> {
+    pub(crate) annotations: AnnotationsIter<'a>,
+    pub(crate) set: Option<&'a str>,
+    pub(crate) key: Option<&'a str>,
+}
+
+pub fn query<'a>(store: &'a AnnotationStore, args: &'a ArgMatches) -> Query<'a> {
     //                     ^-- expresses whether there has been any filtering performed
     if let Some(set) = args.value_of("set") {
         let key: &str = args.value_of("key").expect("Expected argument: --key");
@@ -51,15 +53,19 @@ pub fn query<'a>(
             set, key, operator
         );
         assert!(store.dataset(set).is_some());
-        (
-            store.find_data(set, key, operator).annotations(),
-            true,
-            Some(format!("{}{}{}", set, setdelimiter, key)),
-        )
+        Query {
+            annotations: store.find_data(set, key, operator).annotations(),
+            set: Some(set),
+            key: Some(key),
+        }
     } else if args.is_present("key") || args.is_present("value") {
         eprintln!("Expected argument: --set");
         exit(2);
     } else {
-        (store.annotations(), false, None)
+        Query {
+            annotations: store.annotations(),
+            set: None,
+            key: None,
+        }
     }
 }
