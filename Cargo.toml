@@ -15,3 +15,4 @@ keywords = [ "text-processing", "annotation", "linguistics", "standoff", "nlp"]
 [dependencies]
 stam = "0.8.0"
 clap = "3.2.23"
+html-escape = "0.2.13"

@@ -6,7 +6,9 @@ use std::process::exit;
 mod annotate;
 mod grep;
 mod info;
+mod query;
 mod tag;
+mod to_html;
 mod to_text;
 mod tsv;
 mod validate;
@@ -14,7 +16,9 @@ mod validate;
 use crate::annotate::*;
 use crate::grep::*;
 use crate::info::*;
+use crate::query::*;
 use crate::tag::*;
+use crate::to_html::*;
 use crate::to_text::*;
 use crate::tsv::*;
 use crate::validate::*;
@@ -169,11 +173,39 @@ fn main() {
                 .args(&tsv_arguments_in()),
         )
         .subcommand(
+            SubCommand::with_name("query")
+                .about("Query annotations by data and output results to a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
+                .args(&common_arguments())
+                .args(&multi_store_arguments(true))
+                .args(&config_arguments())
+                .args(&tsv_arguments_out())
+                .args(&query_arguments()),
+        )
+        .subcommand(
             SubCommand::with_name("print")
                 .about("Output the plain text of one or more resource(s). Requires --resource")
                 .args(&common_arguments())
                 .args(&multi_store_arguments(true))
                 .args(&config_arguments())
+                .arg(
+                    Arg::with_name("resource")
+                        .long("resource")
+                        .short('r')
+                        .help(
+                            "The resource ID (not necessarily the filename!) of the text to output",
+                        )
+                        .takes_value(true)
+                        .required(true)
+                        .action(ArgAction::Append),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("view")
+                .about("Output the text and annotations of one or more resource(s) in HTML, suitable for visualisation in a browser. Requires --resource")
+                .args(&common_arguments())
+                .args(&multi_store_arguments(true))
+                .args(&config_arguments())
+                .args(&query_arguments())
                 .arg(
                     Arg::with_name("resource")
                         .long("resource")
@@ -269,9 +301,13 @@ returned, in that case anything else is considered context and will not be retur
         args
     } else if let Some(args) = rootargs.subcommand_matches("export") {
         args
+    } else if let Some(args) = rootargs.subcommand_matches("query") {
+        args
     } else if let Some(args) = rootargs.subcommand_matches("import") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("print") {
+        args
+    } else if let Some(args) = rootargs.subcommand_matches("view") {
         args
     } else if let Some(args) = rootargs.subcommand_matches("validate") {
         args
@@ -292,7 +328,9 @@ returned, in that case anything else is considered context and will not be retur
 
     if rootargs.subcommand_matches("info").is_some()
         || rootargs.subcommand_matches("export").is_some()
+        || rootargs.subcommand_matches("query").is_some()
         || rootargs.subcommand_matches("print").is_some()
+        || rootargs.subcommand_matches("view").is_some()
         || rootargs.subcommand_matches("validate").is_some()
     {
         if args.is_present("annotationstore") {
@@ -352,6 +390,25 @@ returned, in that case anything else is considered context and will not be retur
             args.value_of("null").unwrap(),
             !args.is_present("no-header"),
             args.value_of("setdelimiter").unwrap(),
+            None,
+        );
+    } else if rootargs.subcommand_matches("query").is_some() {
+        let mut columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
+        let (annotations, _filtered, extra_column) =
+            query(&store, args, args.value_of("setdelimiter").unwrap());
+        if let Some(extra_column) = extra_column.as_ref() {
+            columns.push(extra_column.as_str());
+        }
+        to_tsv(
+            &store,
+            &columns,
+            Type::Annotation,
+            !args.is_present("verbose"),
+            args.value_of("subdelimiter").unwrap(),
+            args.value_of("null").unwrap(),
+            !args.is_present("no-header"),
+            args.value_of("setdelimiter").unwrap(),
+            Some(annotations),
         );
     } else if rootargs.subcommand_matches("import").is_some() {
         let storefilename = args
@@ -420,6 +477,19 @@ returned, in that case anything else is considered context and will not be retur
     } else if rootargs.subcommand_matches("print").is_some() {
         let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
         to_text(&store, resource_ids);
+    } else if rootargs.subcommand_matches("view").is_some() {
+        let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
+        let (annotations, filtered, _extra_column) = query(&store, args, "/");
+        if filtered {
+            to_html(
+                &store,
+                resource_ids,
+                vec![annotations.map(|x| x.handle()).collect()],
+                false,
+            );
+        } else {
+            to_html(&store, resource_ids, Vec::new(), false);
+        }
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("init").is_some()

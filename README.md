@@ -108,7 +108,7 @@ list of supported columns.
 One of the more powerful functions is that you can specify custom columns by
 specifying a set ID, a delimiter and a key ID (the delimiter by default is a
 slash), for instance: `my_set/part_of_speech`. This will then output the
-corresponding value in that column, if it exist.
+corresponding value in that column, if it exists.
 
 Example:
 
