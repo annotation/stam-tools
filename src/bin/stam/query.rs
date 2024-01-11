@@ -5,67 +5,42 @@ use std::process::exit;
 pub fn query_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
-        Arg::with_name("set")
-            .long("set")
-            .help("Annotation dataset to query")
-            .takes_value(true),
-    );
-    args.push(
-        Arg::with_name("key")
-            .long("key")
-            .help("Datakey to query")
-            .takes_value(true),
-    );
-    args.push(
-        Arg::with_name("value")
-            .long("value")
-            .help("Exact value to query")
-            .takes_value(true),
-    );
-    args.push(
-        Arg::with_name("value-in")
-            .long("value-in")
-            .help("A disjunction of values")
+        Arg::with_name("query")
+            .long("query")
+            .short('q')
+            .help("A query in STAMQL")
+            .action(ArgAction::Append)
             .takes_value(true),
     );
     args
 }
 
-pub struct Query<'a> {
-    pub(crate) annotations: AnnotationsIter<'a>,
-    pub(crate) set: Option<&'a str>,
-    pub(crate) key: Option<&'a str>,
+pub struct QueryResult<'a> {
+    iter: QueryIter<'a>,
+    names: QueryNames,
 }
 
-pub fn query<'a>(store: &'a AnnotationStore, args: &'a ArgMatches) -> Query<'a> {
-    //                     ^-- expresses whether there has been any filtering performed
-    if let Some(set) = args.value_of("set") {
-        let key: &str = args.value_of("key").expect("Expected argument: --key");
-        let operator: DataOperator = if let Some(value) = args.value_of("value") {
-            value.into()
-        } else if let Some(values) = args.values_of("value-in") {
-            DataOperator::Or(values.map(|x: &str| x.into()).collect())
-        } else {
-            DataOperator::Any
+pub fn query<'a>(store: &'a AnnotationStore, args: &'a ArgMatches) -> Vec<QueryResult<'a>> {
+    let queries = args
+        .values_of("query")
+        .unwrap()
+        .map(|querystr| match querystr.try_into() {
+            Ok(query) => query,
+            Err(e) => {
+                eprintln!("{}", e);
+                exit(2);
+            }
+        })
+        .collect::<Vec<Query<'a>>>();
+
+    let mut results = Vec::new();
+    for query in queries {
+        let iter = store.query(query);
+        let result = QueryResult {
+            names: iter.names(),
+            iter,
         };
-        eprintln!(
-            "Querying set \"{}\", key \"{}\", value {:?}...",
-            set, key, operator
-        );
-        assert!(store.dataset(set).is_some());
-        Query {
-            annotations: store.find_data(set, key, operator).annotations(),
-            set: Some(set),
-            key: Some(key),
-        }
-    } else if args.is_present("key") || args.is_present("value") {
-        eprintln!("Expected argument: --set");
-        exit(2);
-    } else {
-        Query {
-            annotations: store.annotations(),
-            set: None,
-            key: None,
-        }
+        results.push(result);
     }
+    results
 }

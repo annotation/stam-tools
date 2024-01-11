@@ -39,10 +39,7 @@ impl<'a> Highlight<'a> {
             match self.kind {
                 TagKind::Key => Cow::Borrowed(self.label.unwrap_or(key.as_str())),
                 TagKind::KeyAndValue => {
-                    if let Some(data) = annotation
-                        .find_data(key.set(), key, DataOperator::Any)
-                        .next()
-                    {
+                    if let Some(data) = annotation.data().filter_key(key).next() {
                         Cow::Owned(format!(
                             "{}: <em>{}</em>",
                             self.label.unwrap_or(key.as_str()),
@@ -53,10 +50,7 @@ impl<'a> Highlight<'a> {
                     }
                 }
                 TagKind::Value => {
-                    if let Some(data) = annotation
-                        .find_data(key.set(), key, DataOperator::Any)
-                        .next()
-                    {
+                    if let Some(data) = annotation.data().filter_key(key).next() {
                         Cow::Owned(format!("<em>{}</em>", data.value().to_string()))
                     } else {
                         Cow::Borrowed(self.label.unwrap_or(key.as_str()))

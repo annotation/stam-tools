@@ -635,16 +635,15 @@ impl Column {
             Column::Custom { set, key } => {
                 let mut found = false;
                 if let Some(annotation) = &context.annotation {
-                    for (i, annotationdata) in annotation
-                        .find_data(set.as_str(), key.as_str(), DataOperator::Any)
-                        .enumerate()
-                    {
-                        found = true;
-                        print!(
-                            "{}{}",
-                            if i > 0 { delimiter } else { "" },
-                            annotationdata.value()
-                        )
+                    if let Some(key) = annotation.store().key(set.as_str(), key.as_str()) {
+                        for (i, annotationdata) in annotation.data().filter_key(&key).enumerate() {
+                            found = true;
+                            print!(
+                                "{}{}",
+                                if i > 0 { delimiter } else { "" },
+                                annotationdata.value()
+                            )
+                        }
                     }
                 }
                 if !found {
@@ -706,7 +705,7 @@ impl Columns {
 pub fn to_tsv<'a>(
     store: &'a AnnotationStore,
     columnconfig: &[&str],
-    tp: Type,
+    rowtype: Type,
     flatten: bool,
     delimiter: &str,
     null: &str,
@@ -732,7 +731,7 @@ pub fn to_tsv<'a>(
         columns.printheader();
     }
 
-    match tp {
+    match rowtype {
         Type::Annotation => {
             let want_textselections =
                 columns.0.contains(&Column::TextSelection) || columns.0.contains(&Column::Text);
@@ -797,7 +796,7 @@ pub fn to_tsv<'a>(
         }
         Type::AnnotationDataSet | Type::AnnotationData | Type::DataKey => {
             for set in store.datasets() {
-                if !flatten || tp == Type::AnnotationDataSet {
+                if !flatten || rowtype == Type::AnnotationDataSet {
                     let context = Context {
                         id: set.id().map(|x| Cow::Borrowed(x)),
                         set: Some(set.clone()),
@@ -805,7 +804,7 @@ pub fn to_tsv<'a>(
                     };
                     columns.printrow(Type::AnnotationDataSet, &context, delimiter, null);
                 }
-                if tp == Type::AnnotationData {
+                if rowtype == Type::AnnotationData {
                     for data in set.data() {
                         let context = Context {
                             id: data.id().map(|x| Cow::Borrowed(x)),
@@ -816,7 +815,7 @@ pub fn to_tsv<'a>(
                         };
                         columns.printrow(Type::AnnotationData, &context, delimiter, null);
                     }
-                } else if tp == Type::DataKey {
+                } else if rowtype == Type::DataKey {
                     for key in set.keys() {
                         let context = Context {
                             id: key.id().map(|x| Cow::Borrowed(x)),
@@ -831,7 +830,7 @@ pub fn to_tsv<'a>(
         }
         Type::TextResource | Type::TextSelection => {
             for res in store.resources() {
-                if !flatten || tp == Type::TextResource {
+                if !flatten || rowtype == Type::TextResource {
                     let context = Context {
                         id: res.id().map(|x| Cow::Borrowed(x)),
                         resource: Some(res.clone()),
@@ -844,7 +843,7 @@ pub fn to_tsv<'a>(
                     };
                     columns.printrow(Type::TextResource, &context, delimiter, null);
                 }
-                if tp == Type::TextSelection {
+                if rowtype == Type::TextSelection {
                     for textselection in res.textselections() {
                         let id = format!(
                             "{}#{}-{}",
