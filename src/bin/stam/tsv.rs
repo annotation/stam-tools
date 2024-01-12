@@ -40,7 +40,7 @@ pub fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("type")
             .long("type")
-            .help("Select the data type to focus on for the TSV output.")
+            .help("Select the data type to focus on for the TSV output. If you supply a --query then there is no need to supply this as well.")
             .long_help(
                 "Choose one from the following types (case insensitive):
 
@@ -81,16 +81,26 @@ pub fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
 * EndUtf8Offset        - Outputs end offset in UTF8-bytes
 * Ignore               - Always outputs the NULL value
 
-In addition to the above columns, you may also set a *custom* column by  specifying an AnnotationDataSet and DataKey within, seperated by the set/key delimiter (by default a slash). The rows will then be filled with the
-data values corresponding to the data key. Which works great when you set --type Annotation and want specific AnnotationData outputted. Example:
+In addition to the above columns, you may also set a *custom* column by specifying an
+AnnotationDataSet and DataKey within, seperated by the set/key delimiter (by default a slash). The
+rows will then be filled with the data values corresponding to the data key. Example:
 
 * my_set/part_of_speech
 * my_set/lemma
+
+
 
 ",
             )
             .takes_value(true)
             .default_value("Type,Id,AnnotationDataSet,DataKey,DataValue,Text,TextSelection"),
+    );
+    args.push(
+        Arg::with_name("strict-columns")
+            .long("strict-columns")
+            .help(
+            "Do not automatically add columns based on constraints found in the specified query",
+        ),
     );
     args.push(
         Arg::with_name("no-header")
@@ -219,6 +229,8 @@ In addition of the above columns, you may also parse a *custom* column by specif
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Column {
+    SeqNr,
+    VarName,
     Type,
     Id,
     Annotation,
@@ -259,55 +271,6 @@ impl TryFrom<&str> for ValidationMode {
                 val
             )),
         }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Type {
-    Annotation,
-    AnnotationDataSet,
-    AnnotationData,
-    DataKey,
-    TextResource,
-    TextSelection,
-}
-
-impl TryFrom<&str> for Type {
-    type Error = String;
-    fn try_from(val: &str) -> Result<Self, Self::Error> {
-        let val_lower = val.to_lowercase();
-        match val_lower.as_str() {
-            "annotation" | "annotations" => Ok(Self::Annotation),
-            "annotationdataset" | "dataset" | "annotationset" | "annotationdatasets"
-            | "datasets" | "annotationsets" => Ok(Self::AnnotationDataSet),
-            "data" | "annotationdata" | "datavalue" | "datavalues" => Ok(Self::AnnotationData),
-            "datakey" | "datakeys" | "key" | "keys" => Ok(Self::DataKey),
-            "resource" | "textresource" | "resources" | "textresources" => Ok(Self::TextResource),
-            "textselection" | "textselections" => Ok(Self::TextSelection),
-            _ => Err(format!(
-                "Unknown type: {}, see --help for allowed values",
-                val
-            )),
-        }
-    }
-}
-
-impl Type {
-    fn as_str(&self) -> &str {
-        match self {
-            Self::Annotation => "Annotation",
-            Self::AnnotationData => "AnnotationData",
-            Self::AnnotationDataSet => "AnnotationDataSet",
-            Self::DataKey => "DataKey",
-            Self::TextResource => "TextResource",
-            Self::TextSelection => "TextSelection",
-        }
-    }
-}
-
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_str())
     }
 }
 
@@ -365,6 +328,8 @@ impl fmt::Display for Column {
 #[derive(Clone)]
 struct Context<'a> {
     id: Option<Cow<'a, str>>,
+    varname: Option<Cow<'a, str>>,
+    seqnr: usize,
     textselections: Option<&'a Vec<ResultTextSelection<'a>>>,
     text: Option<&'a str>,
     annotation: Option<ResultItem<'a, Annotation>>,
@@ -379,6 +344,8 @@ impl<'a> Default for Context<'a> {
     fn default() -> Self {
         Context {
             id: None,
+            varname: None,
+            seqnr: 0,
             textselections: None, //multiple
             text: None,           //single text reference
             annotation: None,
@@ -394,6 +361,8 @@ impl<'a> Default for Context<'a> {
 impl Column {
     fn to_string(&self) -> String {
         match self {
+            Self::SeqNr => "SeqNr".to_string(),
+            Self::VarName => "Variable".to_string(),
             Self::Type => "Type".to_string(),
             Self::Id => "Id".to_string(),
             Self::Annotation => "Annotation".to_string(),
@@ -428,7 +397,12 @@ impl Column {
             print!("\t");
         }
         match self {
-            Column::Type => print!("{}", tp.as_str()),
+            Column::SeqNr => print!("{}", context.seqnr),
+            Column::VarName => print!(
+                "{}",
+                context.varname.as_ref().unwrap_or(&Cow::Borrowed(null))
+            ),
+            Column::Type => print!("{}", tp),
             Column::Id => print!("{}", context.id.as_ref().unwrap_or(&Cow::Borrowed(null))),
             Column::TextSelection => {
                 if let Some(textselections) = context.textselections {
@@ -700,20 +674,37 @@ impl Columns {
     fn iter(&self) -> std::slice::Iter<Column> {
         self.0.iter()
     }
+
+    fn add_from_query<'a>(&mut self, query: &Query<'a>) {
+        for constraint in query.iter() {
+            match constraint {
+                Constraint::KeyValue { set, key, .. } | Constraint::DataKey { set, key, .. } => {
+                    self.0.push(Column::Custom {
+                        set: set.to_string(),
+                        key: key.to_string(),
+                    })
+                }
+                _ => {}
+            }
+        }
+        if let Some(subquery) = query.subquery() {
+            self.add_from_query(subquery);
+        }
+    }
 }
 
 pub fn to_tsv<'a>(
     store: &'a AnnotationStore,
+    query: Query<'a>,
     columnconfig: &[&str],
-    rowtype: Type,
-    flatten: bool,
+    verbose: bool,
     delimiter: &str,
     null: &str,
     header: bool,
     setdelimiter: &str,
-    filter_annotations: Option<AnnotationsIter<'a>>,
+    autocolumns: bool,
 ) {
-    let columns = Columns(
+    let mut columns = Columns(
         columnconfig
             .iter()
             .map(|col| {
@@ -727,141 +718,156 @@ pub fn to_tsv<'a>(
             .collect(),
     );
 
+    if (verbose || query.subquery().is_some()) && !columns.0.contains(&Column::SeqNr) {
+        //output the sequence (row) number in verbose mode or if we have subqueries
+        columns.0.insert(0, Column::SeqNr);
+    }
+    if query.subquery().is_some() && !columns.0.contains(&Column::VarName) {
+        //output the variable name if we have subqueries
+        columns.0.insert(1, Column::VarName);
+    }
+
+    if autocolumns {
+        columns.add_from_query(&query);
+    }
+
     if header {
         columns.printheader();
     }
 
-    match rowtype {
-        Type::Annotation => {
-            let want_textselections =
-                columns.0.contains(&Column::TextSelection) || columns.0.contains(&Column::Text);
-            for annotation in if let Some(filter_annotations) = filter_annotations {
-                filter_annotations
-            } else {
-                store.annotations()
-            } {
-                let textselections: Option<Vec<_>> = if want_textselections {
-                    Some(annotation.textselections().collect())
-                } else {
-                    None
-                };
-                if !flatten {
+    let want_textselections =
+        columns.0.contains(&Column::TextSelection) || columns.0.contains(&Column::Text);
+
+    let iter = store.query(query);
+    let names = iter.names();
+    let names_ordered = names.enumerate();
+    for (seqnr, resultrow) in iter.enumerate() {
+        let seqnr = seqnr + 1; //1-indexed
+        for (i, result) in resultrow.iter().enumerate() {
+            let varname = names_ordered.get(i).map(|x| Cow::Borrowed(x.1));
+            match result {
+                QueryResultItem::None => {}
+                QueryResultItem::Annotation(annotation) => {
+                    let textselections: Option<Vec<_>> = if want_textselections {
+                        Some(annotation.textselections().collect())
+                    } else {
+                        None
+                    };
                     let context = Context {
                         id: if let Some(id) = annotation.id() {
                             Some(Cow::Borrowed(id))
                         } else {
                             Some(Cow::Owned(annotation.as_ref().temp_id().unwrap()))
                         },
+                        seqnr,
+                        varname,
                         annotation: Some(annotation.clone()), //clones only the ResultItem, cheap
                         textselections: textselections.as_ref(),
                         ..Context::default()
                     };
                     columns.printrow(Type::Annotation, &context, delimiter, null);
+                    if verbose {
+                        for data in annotation.data() {
+                            let context = Context {
+                                id: data.id().map(|x| Cow::Borrowed(x)),
+                                seqnr,
+                                annotation: Some(annotation.clone()),
+                                key: Some(data.key()),
+                                data: Some(data.clone()),
+                                set: Some(data.set()),
+                                value: Some(data.value()),
+                                ..Context::default()
+                            };
+                            columns.printrow(Type::AnnotationData, &context, delimiter, null);
+                        }
+                    }
                 }
-                for data in annotation.data() {
+                QueryResultItem::AnnotationData(data) => {
                     let context = Context {
-                        id: if flatten {
-                            if let Some(id) = annotation.id() {
-                                Some(Cow::Borrowed(id))
-                            } else {
-                                Some(Cow::Owned(annotation.as_ref().temp_id().unwrap()))
-                            }
-                        } else {
-                            data.id().map(|x| Cow::Borrowed(x))
-                        },
-                        annotation: Some(annotation.clone()),
-                        textselections: if flatten {
-                            textselections.as_ref()
-                        } else {
-                            None
-                        },
-                        key: Some(data.key()),
-                        data: Some(data.clone()),
+                        id: data.id().map(|x| Cow::Borrowed(x)),
+                        seqnr,
+                        varname,
                         set: Some(data.set()),
+                        key: Some(data.key()),
                         value: Some(data.value()),
                         ..Context::default()
                     };
-                    columns.printrow(
-                        if flatten {
-                            Type::Annotation
-                        } else {
-                            Type::AnnotationData
-                        },
-                        &context,
-                        delimiter,
-                        null,
-                    );
+                    columns.printrow(Type::AnnotationData, &context, delimiter, null);
                 }
-            }
-        }
-        Type::AnnotationDataSet | Type::AnnotationData | Type::DataKey => {
-            for set in store.datasets() {
-                if !flatten || rowtype == Type::AnnotationDataSet {
+                QueryResultItem::DataKey(key) => {
                     let context = Context {
-                        id: set.id().map(|x| Cow::Borrowed(x)),
-                        set: Some(set.clone()),
+                        id: key.id().map(|x| Cow::Borrowed(x)),
+                        seqnr,
+                        varname,
+                        set: Some(key.set()),
+                        key: Some(key.clone()),
+                        ..Context::default()
+                    };
+                    columns.printrow(Type::DataKey, &context, delimiter, null);
+                }
+                QueryResultItem::AnnotationDataSet(dataset) => {
+                    let context = Context {
+                        id: dataset.id().map(|x| Cow::Borrowed(x)),
+                        seqnr,
+                        varname: varname.clone(),
+                        set: Some(dataset.clone()),
                         ..Context::default()
                     };
                     columns.printrow(Type::AnnotationDataSet, &context, delimiter, null);
-                }
-                if rowtype == Type::AnnotationData {
-                    for data in set.data() {
-                        let context = Context {
-                            id: data.id().map(|x| Cow::Borrowed(x)),
-                            set: Some(set.clone()),
-                            key: Some(data.key()),
-                            value: Some(data.value()),
-                            ..Context::default()
-                        };
-                        columns.printrow(Type::AnnotationData, &context, delimiter, null);
+                    if verbose {
+                        for key in dataset.keys() {
+                            let context = Context {
+                                id: key.id().map(|x| Cow::Borrowed(x)),
+                                seqnr,
+                                varname: varname.clone(),
+                                set: Some(key.set()),
+                                key: Some(key.clone()),
+                                ..Context::default()
+                            };
+                            columns.printrow(Type::DataKey, &context, delimiter, null);
+                        }
+                        for data in dataset.data() {
+                            let context = Context {
+                                id: data.id().map(|x| Cow::Borrowed(x)),
+                                seqnr,
+                                varname: varname.clone(),
+                                set: Some(data.set()),
+                                key: Some(data.key()),
+                                value: Some(data.value()),
+                                ..Context::default()
+                            };
+                            columns.printrow(Type::AnnotationData, &context, delimiter, null);
+                        }
                     }
-                } else if rowtype == Type::DataKey {
-                    for key in set.keys() {
-                        let context = Context {
-                            id: key.id().map(|x| Cow::Borrowed(x)),
-                            set: Some(set.clone()),
-                            key: Some(key.clone()),
-                            ..Context::default()
-                        };
-                        columns.printrow(Type::DataKey, &context, delimiter, null);
-                    }
                 }
-            }
-        }
-        Type::TextResource | Type::TextSelection => {
-            for res in store.resources() {
-                if !flatten || rowtype == Type::TextResource {
+                QueryResultItem::TextResource(resource) => {
                     let context = Context {
-                        id: res.id().map(|x| Cow::Borrowed(x)),
-                        resource: Some(res.clone()),
-                        text: if res.text().len() > 1024 || res.text().find("\n").is_some() {
-                            Some("[too long to display]")
-                        } else {
-                            Some(res.text())
-                        },
+                        id: resource.id().map(|x| Cow::Borrowed(x)),
+                        seqnr,
+                        resource: Some(resource.clone()),
                         ..Context::default()
                     };
                     columns.printrow(Type::TextResource, &context, delimiter, null);
                 }
-                if rowtype == Type::TextSelection {
-                    for textselection in res.textselections() {
-                        let id = format!(
-                            "{}#{}-{}",
-                            res.id().unwrap_or(""),
-                            textselection.begin(),
-                            textselection.end()
-                        );
-                        let text = Some(textselection.text());
-                        let textselections: Vec<ResultTextSelection> = vec![textselection.into()];
-                        let context = Context {
-                            id: Some(Cow::Owned(id)),
-                            resource: Some(res.clone()),
-                            textselections: Some(&textselections),
-                            text,
-                            ..Context::default()
-                        };
-                        columns.printrow(Type::TextSelection, &context, delimiter, null);
-                    }
+                QueryResultItem::TextSelection(textselection) => {
+                    let id = format!(
+                        "{}#{}-{}",
+                        textselection.resource().id().unwrap_or(""),
+                        textselection.begin(),
+                        textselection.end()
+                    );
+                    let text = Some(textselection.text());
+                    let textselections: Vec<ResultTextSelection> = vec![textselection.clone()];
+                    let context = Context {
+                        id: Some(Cow::Owned(id)),
+                        seqnr,
+                        varname,
+                        resource: Some(textselection.resource()),
+                        textselections: Some(&textselections),
+                        text,
+                        ..Context::default()
+                    };
+                    columns.printrow(Type::TextSelection, &context, delimiter, null);
                 }
             }
         }

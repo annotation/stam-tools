@@ -54,7 +54,7 @@ resources (`--resource`, plain text or STAM JSON), annotation data sets
 of annotations in STAM JSON).  
 
 Example, the positional parameter (last one) is the annotation store to output,
-it may be STAM JSON or STAM CSV:
+it may be STAM JSON or STAM CSV, determined by the file extension:
 
 ```
 $ stam init --resource document.txt new.store.stam.json
@@ -142,7 +142,7 @@ world	hello.txt	6	10	noun
 
 The import function has some special abilities. If your TSV data does not
 mention specific offsets in a text resource(s), they will be looked up
-automatically during the import procedure. If the text resources don't even
+automatically during the import procedure! If the text resources don't even
 exist in the first place, they can be reconstructed (within certain
 constraints, the output text will likely be in tokenised form only). If your
 data does not explicitly reference a resource, use the ``--resource`` parameter
@@ -162,7 +162,7 @@ text, these will map to (typically) a newline in the to-be-constructed text
 (this configurable with ``--outputdelimiter2``). Likewise, the delimiter
 between rows is configurable with `--outputdelimiter`, and defaults to a space.
 
-Note that `stam import` can not import everything it can itself export. It can only import rows
+Note that `stam import` can not import everything `stam export` can export. It can only import rows
 exported with ``--type Annotation``  (the default), in which each row
 corresponds with one annotation.
 
@@ -179,7 +179,7 @@ example.deep 690:693 Hij     1/1
 example.deep    799:802 hij     1/1
 ```
 
-The tab-seperated columns are as follows:
+The tab-separated columns are as follows:
 
 1. Resource ID
 2. Begin offset and end offset (non-inclusive) in unicode points

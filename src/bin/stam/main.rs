@@ -162,7 +162,8 @@ fn main() {
                 .args(&common_arguments())
                 .args(&multi_store_arguments(true))
                 .args(&config_arguments())
-                .args(&tsv_arguments_out()),
+                .args(&tsv_arguments_out())
+                .args(&query_arguments()),
         )
         .subcommand(
             SubCommand::with_name("import")
@@ -376,45 +377,45 @@ returned, in that case anything else is considered context and will not be retur
                 exit(1);
             });
         }
-    } else if rootargs.subcommand_matches("export").is_some() {
+    } else if rootargs.subcommand_matches("export").is_some()
+        || rootargs.subcommand_matches("query").is_some()
+    {
         let columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
-        to_tsv(
-            &store,
-            &columns,
-            Type::try_from(args.value_of("type").unwrap()).unwrap_or_else(|err| {
-                eprintln!("Invalid type specified: {}", err);
-                exit(1);
-            }),
-            !args.is_present("verbose"),
-            args.value_of("subdelimiter").unwrap(),
-            args.value_of("null").unwrap(),
-            !args.is_present("no-header"),
-            args.value_of("setdelimiter").unwrap(),
-            None,
+
+        let querystring = args.value_of("query").into_iter().next().unwrap_or(
+            //default in case no query was provided
+            match args
+                .value_of("type")
+                .unwrap_or("Annotation")
+                .to_lowercase()
+                .as_str()
+            {
+                "annotation" => "SELECT ANNOTATION ?annotation;",
+                "key" | "datakey" => "SELECT DATAKEY ?key;",
+                "data" | "annotationdata" => "SELECT DATA ?data;",
+                "resource" | "textresource" => "SELECT RESOURCE ?resource;",
+                "dataset" | "annotationset" => "SELECT DATASET ?dataset;",
+                "text" | "textselection" => "SELECT TEXT ?textselection;",
+                _ => {
+                    eprintln!("Invalid --type specified");
+                    exit(1);
+                }
+            },
         );
-    } else if rootargs.subcommand_matches("query").is_some() {
-        let mut columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
-        let query = query(&store, args);
-        let mut extra_column = String::new();
-        if query.key.is_some() {
-            extra_column = format!(
-                "{}{}{}",
-                query.set.unwrap(),
-                args.value_of("setdelimiter").unwrap(),
-                query.key.unwrap()
-            );
-            columns.push(&extra_column);
-        }
+        let (query, _) = stam::Query::parse(querystring).unwrap_or_else(|err| {
+            eprintln!("Query syntax error: {}", err);
+            exit(1);
+        });
         to_tsv(
             &store,
+            query,
             &columns,
-            Type::Annotation,
-            !args.is_present("verbose"),
+            args.is_present("verbose"),
             args.value_of("subdelimiter").unwrap(),
             args.value_of("null").unwrap(),
             !args.is_present("no-header"),
             args.value_of("setdelimiter").unwrap(),
-            Some(query.annotations),
+            !args.is_present("strict-columns"),
         );
     } else if rootargs.subcommand_matches("import").is_some() {
         let storefilename = args
@@ -487,6 +488,7 @@ returned, in that case anything else is considered context and will not be retur
         let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
         let query = query(&store, args);
         let mut writer = HtmlWriter::new(&store, resource_ids);
+        /*
         if query.key.is_some() {
             if let Some(dataset) =
                 store.dataset(query.set.expect("set must exists when key exists"))
@@ -500,6 +502,7 @@ returned, in that case anything else is considered context and will not be retur
             }
             writer = writer.with_prune(true);
         }
+        */
         print!("{}", writer);
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));
