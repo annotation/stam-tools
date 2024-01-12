@@ -715,16 +715,16 @@ pub fn to_tsv<'a>(
             .collect(),
     );
 
-    if (verbose || query.subquery().is_some()) && !columns.0.contains(&Column::SeqNr) {
-        //output the sequence (row) number in verbose mode or if we have subqueries
-        columns.0.insert(0, Column::SeqNr);
-    }
-    if query.subquery().is_some() && !columns.0.contains(&Column::VarName) {
-        //output the variable name if we have subqueries
-        columns.0.insert(1, Column::VarName);
-    }
-
     if autocolumns {
+        if (verbose || query.subquery().is_some()) && !columns.0.contains(&Column::SeqNr) {
+            //output the sequence (row) number in verbose mode or if we have subqueries
+            columns.0.insert(0, Column::SeqNr);
+        }
+        if query.subquery().is_some() && !columns.0.contains(&Column::VarName) {
+            //output the variable name if we have subqueries
+            columns.0.insert(1, Column::VarName);
+        }
+
         columns.add_from_query(&query);
     }
 
