@@ -61,7 +61,8 @@ pub fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
             .short('C')
             .help("Column Format, comma separated list of column names to output")
             .long_help(
-                "Choose from the following known columns names (case insensitive, comma seperated list):
+                "In most cases, you do not need to explicitly specify this as it will be automatically guessed based on the --type or --query parameter.
+However, if you want full control, you can choose from the following known columns names (case insensitive, comma seperated list):
 
 * Type                 - Outputs the type of the row (Annotation,AnnotationData), useful in Nested mode.
 * Id                   - Outputs the ID of the row item
@@ -87,13 +88,9 @@ rows will then be filled with the data values corresponding to the data key. Exa
 
 * my_set/part_of_speech
 * my_set/lemma
-
-
-
 ",
             )
-            .takes_value(true)
-            .default_value("Type,Id,AnnotationDataSet,DataKey,DataValue,Text,TextSelection"),
+            .takes_value(true),
     );
     args.push(
         Arg::with_name("strict-columns")

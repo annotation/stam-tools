@@ -380,7 +380,7 @@ returned, in that case anything else is considered context and will not be retur
     } else if rootargs.subcommand_matches("export").is_some()
         || rootargs.subcommand_matches("query").is_some()
     {
-        let columns: Vec<&str> = args.value_of("columns").unwrap().split(",").collect();
+        let verbose = args.is_present("verbose");
 
         let querystring = args.value_of("query").into_iter().next().unwrap_or(
             //default in case no query was provided
@@ -406,6 +406,42 @@ returned, in that case anything else is considered context and will not be retur
             eprintln!("Query syntax error: {}", err);
             exit(1);
         });
+
+        let resulttype = query.resulttype().expect("Query has no result type");
+
+        let columns: Vec<&str> = if let Some(columns) = args.value_of("columns") {
+            columns.split(",").collect()
+        } else {
+            match resulttype {
+                stam::Type::Annotation => {
+                    if verbose {
+                        vec![
+                            "Type",
+                            "Id",
+                            "AnnotationDataSet",
+                            "DataKey",
+                            "DataValue",
+                            "Text",
+                            "TextSelection",
+                        ]
+                    } else {
+                        vec!["Type", "Id", "Text", "TextSelection"]
+                    }
+                }
+                stam::Type::DataKey => vec!["Type", "AnnotationDataSet", "Id"],
+                stam::Type::AnnotationData => {
+                    vec!["Type", "Id", "AnnotationDataSet", "DataKey", "DataValue"]
+                }
+                stam::Type::TextResource => vec!["Type", "Id"],
+                stam::Type::AnnotationDataSet => vec!["Type", "Id"],
+                stam::Type::TextSelection => vec!["Type", "TextSelection", "Text"],
+                _ => {
+                    eprintln!("Invalid --type specified");
+                    exit(1);
+                }
+            }
+        };
+
         to_tsv(
             &store,
             query,
