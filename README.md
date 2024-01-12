@@ -15,9 +15,9 @@ Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 * ``stam annotate``  - Add annotations (or datasets or resources) from STAM JSON files
 * ``stam info``      - Return information regarding a STAM model. 
 * ``stam init``      - Initialize a new STAM annotationstore
-* ``stam import``    - Import STAM data in tabular from from a simple TSV (Tab Separated Values) format, allows custom columns.
+* ``stam import``    - Import STAM data in tabular from a simple TSV (Tab Separated Values) format, allows custom columns.
 * ``stam print``     - Output the text of any resources in the model.
-* ``stam export``    - Export STAM data in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
+* ``stam query`` or ``stam export``  -  Query the annotation store and export the output in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
 * ``stam validate``  - Validate a STAM model.  
 * ``stam save``      - Write a STAM model to file(s). This can be used to switch between STAM JSON and STAM CSV output, based on the extension.
 * ``stam tag``       - Regular-expression based tagger on plain text. 
@@ -98,39 +98,82 @@ Example:
 $ stam info my.store.stam.json
 ```
 
-### stam export
+### stam query
 
-The `stam export` tool is used to export STAM data into a tabular data format
-(TSV, tab separated values). You can configure precisely what columns you want
-to export using the ``--colums`` parameter. See ``stam export --help`` for a
-list of supported columns. 
+The `stam query` tool is used to consult the annotation store and export
+selected STAM data into a simple tabular data format (TSV, tab separated
+values). You can configure precisely what columns you want to export using the
+``--columns`` parameter, or simply rely on the defaults that are autodetected.
+See ``stam query --help`` for a list of supported columns. 
+
+A full query is done using the ``--query`` parameter and subsequently a query
+statement in [the STAM Query Language
+(STAMQL)](https://github.com/annotation/stam/blob/master/extensions/stam-query/README.md):
+
+*Example 1) a query in STAMQL:*
+
+```
+$ stam query --query 'SELECTION ANNOTATION ?a WHERE DATA "myset" "pos" = "noun";'
+```
+
+However, if you simply want all annotations, resource, data, and don't want to formulate a query a shortcut is
+available by just the ``--type`` parameter to `annotation`,`key`,`data`,`resource` or `dataset`.
+
+*Example 2) get all annotations (also default behaviour if you omit `--type` and `--query`):*
+
+```
+$ stam query --type annotation my.store.stam.json
+```
+
+For certain types, you can set ``--verbose`` to output more information, e.g.
+when querying for annotations it will also output *all* annotation data
+pertaining to the annotations. Do not that `stam import` can not import
+annotations back when you use this.
+
+*Example 3) get all annotations verbosely with all data:*
+
+```
+$ stam query --verbose --type annotation my.store.stam.json
+```
+
+*Example 4) get all keys:*
+
+```
+$ stam query --type key my.store.stam.json
+```
 
 One of the more powerful functions is that you can specify custom columns by
 specifying a set ID, a delimiter and a key ID (the delimiter by default is a
-slash), for instance: `my_set/part_of_speech`. This will then output the
-corresponding value in that column, if it exists.
+slash), for instance: `my_set/part_of_speech`. Such columns are automatically
+added for you if you have `DATA` or `KEY` constraints in your query (like in
+example 1), if that is not what you want, set `--strict-columns`. This custom column will hold
+the corresponding value if they key exists for the annotation.
 
-Example:
+Example 5) explicitly specified columns including a custom one:
 
 ```
-$ stam export -C Id,Text,TextResource,BeginOffset,EndOffset,my_set/part_of_speech
+$ stam query --columns Id,Text,TextResource,BeginOffset,EndOffset,my_set/part_of_speech my.store.stam.json
 ```
 
-This export function is not lossless, that is, it can not encode everything
+The TSV output produced by this tool is not lossless, that is, it can not encode everything
 that STAM supports, unlike STAM JSON and STAM CSV. It does, however, give you a great
 deal of flexibility to quickly output only the data relevant for whatever your specific purpose is.
+
+### stam export
+
+`stam export` is just an alias for `stam query`, their functionality is identical.
 
 ### stam import
 
 The `stam import` tool is used to import tabular data from a TSV (Tab Separated
-Values) file into STAM. Like `stam export`, you can configure precisely what
+Values) file into STAM. Like `stam query`, you can configure precisely what
 columns you want to import, using the ``--columns`` parameter. By default, the
 import function will attempt to parse the first line of your TSV file as the
 header and use that to figure out the column configuration.  You will often
 want to set ``--annotationset`` to set a default annotation set to use for
 custom columns. If you set ``--annotationset my_set`` then a column like
 `part_of_speech` will be interpreted in that set (same as if you wrote
-`2my_set/part_of_speech` explicitly).
+`my_set/part_of_speech` explicitly).
 
 Here is a simple example of a possible import TSV file (with ``--annotationset my_set``):
 
@@ -162,7 +205,7 @@ text, these will map to (typically) a newline in the to-be-constructed text
 (this configurable with ``--outputdelimiter2``). Likewise, the delimiter
 between rows is configurable with `--outputdelimiter`, and defaults to a space.
 
-Note that `stam import` can not import everything `stam export` can export. It can only import rows
+Note that `stam import` can not import everything `stam query` can export. It can only import rows
 exported with ``--type Annotation``  (the default), in which each row
 corresponds with one annotation.
 
