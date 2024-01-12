@@ -121,7 +121,7 @@ fn load_store(args: &ArgMatches) -> AnnotationStore {
 fn main() {
     let rootargs = App::new("STAM Tools")
         .version(VERSION)
-        .author("Maarten van Gompel (proycon) <proycon@anaproy.nl>")
+        .author("Maarten van Gompel (proycon) <proycon@anaproy.nl>, KNAW Humanities Cluster")
         .about("CLI tool to work with standoff text annotation (STAM)")
         .subcommand(
             SubCommand::with_name("info")
