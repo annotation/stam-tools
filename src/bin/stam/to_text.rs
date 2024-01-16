@@ -1,17 +1,32 @@
-use stam::{AnnotationStore, Text};
+use crate::query::textselection_from_queryresult;
+use stam::{AnnotationStore, Query, Text};
 use std::process::exit;
 
-pub fn to_text(store: &AnnotationStore, resource_ids: Vec<&str>) {
-    for resource_id in resource_ids {
-        if let Some(resource) = store.resource(resource_id) {
-            eprintln!(
-                "--------------------------- {} ---------------------------",
-                resource_id
-            );
-            println!("{}", resource.text());
-        } else {
-            eprintln!("Error: Resource with ID {} does not exist", resource_id);
-            exit(1);
+pub fn to_text<'a>(store: &'a AnnotationStore, query: Query<'a>, varname: Option<&'a str>) {
+    let results = store.query(query);
+    let names = results.names();
+    for selectionresult in results {
+        match textselection_from_queryresult(&selectionresult, varname, &names) {
+            Err(msg) => {
+                eprintln!("Error: {}", msg);
+                exit(1);
+            }
+            Ok((textselection, whole_resource)) => {
+                if whole_resource {
+                    eprintln!(
+                        "--------------------------- {} ---------------------------",
+                        textselection.resource().id().unwrap_or("undefined"),
+                    );
+                } else {
+                    eprintln!(
+                        "--------------------------- {}#{}-{} ---------------------------",
+                        textselection.resource().id().unwrap_or("undefined"),
+                        textselection.begin(),
+                        textselection.end(),
+                    );
+                }
+                println!("{}", textselection.text());
+            }
         }
     }
 }
