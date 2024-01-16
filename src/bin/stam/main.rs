@@ -184,21 +184,11 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("print")
-                .about("Output the plain text of one or more resource(s). Requires --resource")
+                .about("Output the plain text of given a query, or of all resources if no query was provided")
                 .args(&common_arguments())
                 .args(&multi_store_arguments(true))
                 .args(&config_arguments())
-                .arg(
-                    Arg::with_name("resource")
-                        .long("resource")
-                        .short('r')
-                        .help(
-                            "The resource ID (not necessarily the filename!) of the text to output",
-                        )
-                        .takes_value(true)
-                        .required(true)
-                        .action(ArgAction::Append),
-                ),
+                .args(&query_arguments())
         )
         .subcommand(
             SubCommand::with_name("view")
@@ -208,16 +198,40 @@ fn main() {
                 .args(&config_arguments())
                 .args(&query_arguments())
                 .arg(
-                    Arg::with_name("resource")
-                        .long("resource")
-                        .short('r')
+                    Arg::with_name("highlight")
+                        .long("highlight")
+                        .short('H')
                         .help(
-                            "The resource ID (not necessarily the filename!) of the text to output",
+                            "Define an annotation set and key which you want to highlight in the results. This will highlight text pertaining to annotations that have this data.
+                             This option can be provided multiple times. The set and key are delimited by the set delimiter (by default a /), which is configurable via --setdelimiter"
+                        )
+                        .action(ArgAction::Append)
+                        .takes_value(true)
+                )
+                .arg(
+                    Arg::with_name("setdelimiter")
+                        .long("setdelimiter")
+                        .help(
+                            "The delimiter between the annotation set and the key when specifying highlights (--highlight). If the delimiter occurs multiple times, only the rightmost one is considered (the others are part of the set)"
                         )
                         .takes_value(true)
-                        .required(true)
-                        .action(ArgAction::Append),
-                ),
+                        .default_value("/")
+                )
+                .arg(
+                    Arg::with_name("strict-highlights")
+                        .long("strict-highlights")
+                        .short('x')
+                        .help(
+                        "Do not automatically add highlights based on constraints found in the specified query",
+                    ),
+                )
+                .arg(
+                    Arg::with_name("prune")
+                        .long("prune")
+                        .help(
+                        "Prune results to show only the highlights",
+                    ),
+                )
         )
         .subcommand(
             SubCommand::with_name("init")
@@ -518,27 +532,76 @@ returned, in that case anything else is considered context and will not be retur
             });
         }
     } else if rootargs.subcommand_matches("print").is_some() {
-        let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
-        to_text(&store, resource_ids);
+        let querystring = args
+            .value_of("query")
+            .into_iter()
+            .next()
+            .unwrap_or("SELECT RESOURCE ?res;");
+        let (query, _) = stam::Query::parse(querystring).unwrap_or_else(|err| {
+            eprintln!("[error] Query syntax error: {}", err);
+            exit(1);
+        });
+        to_text(&store, query, args.value_of("use"));
     } else if rootargs.subcommand_matches("view").is_some() {
-        let resource_ids = args.values_of("resource").unwrap().collect::<Vec<&str>>();
-        let query = query(&store, args);
-        let mut writer = HtmlWriter::new(&store, resource_ids);
-        /*
-        if query.key.is_some() {
-            if let Some(dataset) =
-                store.dataset(query.set.expect("set must exists when key exists"))
+        let queries: Vec<&str> = args.values_of("query").unwrap_or_default().collect();
+        let mut queries_iter = queries.into_iter();
+        let querystring = queries_iter.next().unwrap_or("SELECT RESOURCE ?res;");
+        let (query, _) = stam::Query::parse(querystring).unwrap_or_else(|err| {
+            eprintln!("[error] Query syntax error in first query: {}", err);
+            exit(1);
+        });
+
+        let mut writer = HtmlWriter::new(&store, query);
+        for (i, highlightquery) in queries_iter.enumerate() {
+            let (highlightquery, _) = stam::Query::parse(highlightquery).unwrap_or_else(|err| {
+                eprintln!("[error] Syntax error in query {}: {}", i + 1, err);
+                exit(1);
+            });
+            writer = writer.with_highlight(if let Some(label) = highlightquery.name() {
+                eprintln!("[info] Added highlight query {}...", label);
+                Highlight::default()
+                    .with_query(highlightquery)
+                    .with_label(label)
+            } else {
+                eprintln!("[info] Added highlight query...");
+                Highlight::default().with_query(highlightquery)
+            });
+        }
+
+        let setdelimiter = args.value_of("setdelimiter").unwrap();
+        if let Some(highlights) = args.values_of("highlight") {
+            for highlight in highlights
+                .filter_map(|set_and_key: &str| {
+                    if set_and_key.find(setdelimiter).is_some() {
+                        let (set, key) = set_and_key.rsplit_once(setdelimiter).unwrap();
+                        if let Some(key) = store.key(set, key) {
+                            Some(Highlight::default().with_key(key))
+                        } else {
+                            eprintln!(
+                                "[error] Key specified in highlight not found: {}{}{}",
+                                set, setdelimiter, key
+                            );
+                            exit(1);
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<Highlight>>()
             {
-                if let Some(key) = dataset.key(query.key.unwrap()) {
-                    writer = writer.with_highlight(
-                        Highlight::new(query.annotations.map(|x| x.handle()).collect())
-                            .with_key(key),
-                    );
-                }
+                writer = writer.with_highlight(highlight);
             }
+        }
+        if !args.is_present("strict-highlights") {
+            writer.add_highlights_from_query();
+        }
+        if args.is_present("prune") {
             writer = writer.with_prune(true);
         }
-        */
+        if let Some(var) = args.value_of("use") {
+            eprintln!("[info] Selecting variable ?{}...", var);
+            writer = writer.with_selectionvar(var);
+        }
         print!("{}", writer);
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));

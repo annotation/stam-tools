@@ -95,6 +95,7 @@ rows will then be filled with the data values corresponding to the data key. Exa
     args.push(
         Arg::with_name("strict-columns")
             .long("strict-columns")
+            .short('x')
             .help(
             "Do not automatically add columns based on constraints found in the specified query",
         ),
@@ -816,7 +817,6 @@ pub fn to_tsv<'a>(
                             let context = Context {
                                 id: key.id().map(|x| Cow::Borrowed(x)),
                                 seqnr,
-                                varname: varname.clone(),
                                 set: Some(key.set()),
                                 key: Some(key.clone()),
                                 ..Context::default()
@@ -827,7 +827,6 @@ pub fn to_tsv<'a>(
                             let context = Context {
                                 id: data.id().map(|x| Cow::Borrowed(x)),
                                 seqnr,
-                                varname: varname.clone(),
                                 set: Some(data.set()),
                                 key: Some(data.key()),
                                 value: Some(data.value()),
@@ -840,6 +839,7 @@ pub fn to_tsv<'a>(
                 QueryResultItem::TextResource(resource) => {
                     let context = Context {
                         id: resource.id().map(|x| Cow::Borrowed(x)),
+                        varname: varname.clone(),
                         seqnr,
                         resource: Some(resource.clone()),
                         ..Context::default()
