@@ -200,10 +200,10 @@ fn main() {
                 .arg(
                     Arg::with_name("highlight")
                         .long("highlight")
-                        .short('H')
                         .help(
-                            "Define an annotation set and key which you want to highlight in the results. This will highlight text pertaining to annotations that have this data.
-                             This option can be provided multiple times. The set and key are delimited by the set delimiter (by default a /), which is configurable via --setdelimiter"
+                            "Define an annotation set and key which you want to highlight in the results. This will highlight text pertaining to annotations that have this data and output the key and value in a tag.
+
+                             This option can be provided multiple times and is essentialy a shortcut for a certain type of --query. The set and key are delimited by the set delimiter (by default a /), which is configurable via --setdelimiter"
                         )
                         .action(ArgAction::Append)
                         .takes_value(true)
@@ -565,19 +565,12 @@ returned, in that case anything else is considered context and will not be retur
 
         let mut writer = HtmlWriter::new(&store, query);
         for (i, highlightquery) in queries_iter.enumerate() {
-            let (highlightquery, _) = stam::Query::parse(highlightquery).unwrap_or_else(|err| {
-                eprintln!("[error] Syntax error in query {}: {}", i + 1, err);
-                exit(1);
-            });
-            writer = writer.with_highlight(if let Some(label) = highlightquery.name() {
-                eprintln!("[info] Added highlight query {}...", label);
-                Highlight::default()
-                    .with_query(highlightquery)
-                    .with_label(label)
-            } else {
-                eprintln!("[info] Added highlight query...");
-                Highlight::default().with_query(highlightquery)
-            });
+            let highlight =
+                Highlight::parse_query(highlightquery, &store, i + 1).unwrap_or_else(|err| {
+                    eprintln!("[error] Syntax error in query {}: {}", i + 1, err);
+                    exit(1);
+                });
+            writer = writer.with_highlight(highlight);
         }
 
         let setdelimiter = args.value_of("setdelimiter").unwrap();
@@ -587,7 +580,7 @@ returned, in that case anything else is considered context and will not be retur
                     if set_and_key.find(setdelimiter).is_some() {
                         let (set, key) = set_and_key.rsplit_once(setdelimiter).unwrap();
                         if let Some(key) = store.key(set, key) {
-                            Some(Highlight::default().with_key(key))
+                            Some(Highlight::default().with_key_tag(key))
                         } else {
                             eprintln!(
                                 "[error] Key specified in highlight not found: {}{}{}",

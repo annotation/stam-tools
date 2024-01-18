@@ -6,35 +6,103 @@ use std::process::exit;
 
 use crate::query::textselection_from_queryresult;
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
-pub enum TagKind {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Tag<'a> {
+    ///Highlight only, no tag
     None,
-    Key,         //or label if set
-    KeyAndValue, //or label if set
-    Value,
+
+    ///Show tag with key
+    Key(ResultItem<'a, DataKey>), //or label if set
+
+    ///Show tag with key and value
+    KeyAndValue(ResultItem<'a, DataKey>), //or label if set
+
+    ///Show tag with value (for a given key)
+    Value(ResultItem<'a, DataKey>),
 }
 
 pub struct Highlight<'a> {
-    key: Option<ResultItem<'a, DataKey>>,
+    tag: Tag<'a>,
     query: Option<Query<'a>>,
     label: Option<&'a str>,
-    kind: TagKind,
 }
 
 impl<'a> Default for Highlight<'a> {
     fn default() -> Self {
         Self {
-            key: None,
             label: None,
             query: None,
-            kind: TagKind::KeyAndValue,
+            tag: Tag::None,
         }
     }
 }
 
 impl<'a> Highlight<'a> {
-    pub fn with_key(mut self, key: ResultItem<'a, DataKey>) -> Self {
-        self.key = Some(key);
+    pub fn parse_query(
+        mut query: &'a str,
+        store: &'a AnnotationStore,
+        seqnr: usize,
+    ) -> Result<Self, String> {
+        let mut attribs: Vec<&str> = Vec::new();
+        while query.starts_with("@") {
+            let pos = query
+                .find(' ')
+                .ok_or("query syntax error: expected space after @ATTRIBUTE")?;
+            attribs.push(&query[0..pos]);
+            query = &query[pos..query.len()];
+        }
+        let (query, _) = stam::Query::parse(query).map_err(|err| err.to_string())?;
+
+        let mut tag = Tag::None;
+        let key = get_key_from_query(&query, store);
+
+        //prepared for a future in which we may have multiple attribs
+        for attrib in attribs.iter() {
+            match *attrib {
+                "@KEY" => {
+                    if let Some(key) = key.as_ref() {
+                        tag = Tag::Key(key.clone())
+                    } else {
+                        eprintln!("Warning: Query has @KEY attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
+                    }
+                }
+                "@KEYVALUE" => {
+                    if let Some(key) = key.as_ref() {
+                        tag = Tag::KeyAndValue(key.clone())
+                    } else {
+                        eprintln!("Warning: Query has @KEYVALUE attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
+                    }
+                }
+                "@VALUE" => {
+                    if let Some(key) = key.as_ref() {
+                        tag = Tag::Value(key.clone())
+                    } else {
+                        eprintln!("Warning: Query has @VALUE attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(Highlight {
+            tag,
+            query: Some(query),
+            label: None,
+        })
+    }
+
+    pub fn with_key_tag(mut self, key: ResultItem<'a, DataKey>) -> Self {
+        self.tag = Tag::Key(key);
+        self
+    }
+
+    pub fn with_value_tag(mut self, key: ResultItem<'a, DataKey>) -> Self {
+        self.tag = Tag::Value(key);
+        self
+    }
+
+    pub fn with_keyvalue_tag(mut self, key: ResultItem<'a, DataKey>) -> Self {
+        self.tag = Tag::KeyAndValue(key);
         self
     }
 
@@ -48,32 +116,29 @@ impl<'a> Highlight<'a> {
         self
     }
 
+    /// Serializes the tag to string, given an annotation
     pub fn get_tag(&self, annotation: ResultItem<'a, Annotation>) -> Cow<'a, str> {
-        if let Some(key) = &self.key {
-            match self.kind {
-                TagKind::Key => Cow::Borrowed(self.label.unwrap_or(key.as_str())),
-                TagKind::KeyAndValue => {
-                    if let Some(data) = annotation.data().filter_key(key).next() {
-                        Cow::Owned(format!(
-                            "{}: <em>{}</em>",
-                            self.label.unwrap_or(key.as_str()),
-                            data.value()
-                        ))
-                    } else {
-                        Cow::Borrowed(self.label.unwrap_or(key.as_str()))
-                    }
+        match &self.tag {
+            Tag::Key(key) => Cow::Borrowed(self.label.unwrap_or(key.as_str())),
+            Tag::KeyAndValue(key) => {
+                if let Some(data) = annotation.data().filter_key(key).next() {
+                    Cow::Owned(format!(
+                        "{}: <em>{}</em>",
+                        self.label.unwrap_or(key.as_str()),
+                        data.value()
+                    ))
+                } else {
+                    Cow::Borrowed(self.label.unwrap_or(key.as_str()))
                 }
-                TagKind::Value => {
-                    if let Some(data) = annotation.data().filter_key(key).next() {
-                        Cow::Owned(format!("<em>{}</em>", data.value().to_string()))
-                    } else {
-                        Cow::Borrowed(self.label.unwrap_or(key.as_str()))
-                    }
-                }
-                _ => Cow::Borrowed(""),
             }
-        } else {
-            Cow::Borrowed("")
+            Tag::Value(key) => {
+                if let Some(data) = annotation.data().filter_key(key).next() {
+                    Cow::Owned(format!("<em>{}</em>", data.value().to_string()))
+                } else {
+                    Cow::Borrowed(self.label.unwrap_or(key.as_str()))
+                }
+            }
+            Tag::None => Cow::Borrowed(""),
         }
     }
 }
@@ -333,20 +398,29 @@ impl<'a> HtmlWriter<'a> {
     }
 }
 
+fn get_key_from_query<'a>(
+    query: &Query<'a>,
+    store: &'a AnnotationStore,
+) -> Option<ResultItem<'a, DataKey>> {
+    for constraint in query.iter() {
+        if let Constraint::DataKey { set, key, .. } | Constraint::KeyValue { set, key, .. } =
+            constraint
+        {
+            if let Some(key) = store.key(*set, *key) {
+                return Some(key);
+            }
+        }
+    }
+    None
+}
+
 fn helper_add_highlights_from_query<'a>(
     highlights: &mut Vec<Highlight<'a>>,
     query: &Query<'a>,
     store: &'a AnnotationStore,
 ) {
-    for constraint in query.iter() {
-        match constraint {
-            Constraint::KeyValue { set, key, .. } | Constraint::DataKey { set, key, .. } => {
-                if let Some(key) = store.key(*set, *key) {
-                    highlights.push(Highlight::default().with_key(key))
-                }
-            }
-            _ => {}
-        }
+    if let Some(key) = get_key_from_query(query, store) {
+        highlights.push(Highlight::default().with_keyvalue_tag(key))
     }
     if let Some(subquery) = query.subquery() {
         helper_add_highlights_from_query(highlights, subquery, store);
@@ -548,7 +622,11 @@ impl<'a> Display for HtmlWriter<'a> {
                                         )
                                         .map(|x| x.handle())
                                         .collect();
-                                    } else if let Some(key) = &highlights.key {
+                                    } else if let Tag::Key(key)
+                                    | Tag::KeyAndValue(key)
+                                    | Tag::Value(key) = &highlights.tag
+                                    {
+                                        //no query defined, only a tagkey, that's ok, we obtain the annotations directly:
                                         highlights_results[j] = FromHandles::new(
                                             span_annotations.iter().copied(),
                                             self.store,
