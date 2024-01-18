@@ -97,8 +97,12 @@ pub struct HtmlWriter<'a> {
     output_data: bool,
     /// html header
     header: Option<&'a str>,
-    /// html header
+    /// html footer
     footer: Option<&'a str>,
+    /// Output legend?
+    legend: bool,
+    /// Output titles (identifiers) for the primary selection?
+    titles: bool,
 }
 
 const HTML_HEADER: &str = "<html>
@@ -216,6 +220,30 @@ span.hi13 {
 span.hi14 {
     background: #b9a161; /*orange*/
 }
+div#legend {
+    width: 40%;
+    min-width: 320px;
+    margin-left: auto;
+    margin-right: auto;
+    font-family: sans-serif;
+    padding: 5px;
+    border: 1px dashed #ccc;
+    border-radius: 20px;
+}
+div#legend ul {
+    list-style: none;
+}
+div#legend ul li span {
+    display: inline-block;
+    width: 15px;
+    border-radius: 15px;
+    border: 1px #555 solid;
+    min-height: 15px;
+}
+body>h2 {
+    font-size: 1.1em;
+    font-family: sans-serif;
+}
 </style>
 <body>";
 
@@ -236,11 +264,21 @@ impl<'a> HtmlWriter<'a> {
             prune: false,
             header: Some(HTML_HEADER),
             footer: Some(HTML_FOOTER),
+            legend: true,
+            titles: true,
         }
     }
 
     pub fn with_highlight(mut self, highlight: Highlight<'a>) -> Self {
         self.highlights.push(highlight);
+        self
+    }
+    pub fn with_legend(mut self, value: bool) -> Self {
+        self.legend = value;
+        self
+    }
+    pub fn with_titles(mut self, value: bool) -> Self {
+        self.titles = value;
         self
     }
 
@@ -318,19 +356,38 @@ fn helper_add_highlights_from_query<'a>(
 impl<'a> Display for HtmlWriter<'a> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let mut highlights_results: Vec<BTreeSet<AnnotationHandle>> = Vec::new();
-        for i in 0..self.highlights.len() {
+        for _ in 0..self.highlights.len() {
             highlights_results.push(BTreeSet::new());
         }
         if let Some(header) = self.header {
             write!(f, "{}", header)?;
         }
+        if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
+            write!(f, "<div id=\"legend\"><ul>")?;
+            for (i, highlight) in self.highlights.iter().enumerate() {
+                if let Some(hlq) = highlight.query.as_ref() {
+                    write!(
+                        f,
+                        "<li><span class=\"hi{}\"></span> {}</li>",
+                        i + 1,
+                        hlq.name().unwrap_or("(untitled)").replace("_", " ")
+                    )?;
+                }
+            }
+            write!(f, "</ul></div>")?;
+        }
         let results = self.store.query(self.selectionquery.clone());
         let names = results.names();
-        for selectionresult in results {
+        for (resultnr, selectionresult) in results.enumerate() {
             //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
                 Err(msg) => return self.output_error(f, msg),
-                Ok((resulttextselection, whole_resource)) => {
+                Ok((resulttextselection, whole_resource, id)) => {
+                    if self.titles {
+                        if let Some(id) = id {
+                            write!(f, "<h2>{}. <span>{}</span></h2>\n", resultnr + 1, id,)?;
+                        }
+                    }
                     if whole_resource {
                         write!(
                             f,
@@ -432,7 +489,6 @@ impl<'a> Display for HtmlWriter<'a> {
                                             .unwrap_or(self.selectionquery.name().expect(
                                             "you must name the variables in your SELECT statements",
                                         ));
-                                        eprintln!("DEBUG: {}", varname);
                                         if let Some(parentresult) =
                                             selectionresult.get_by_name(&names, varname).ok()
                                         {

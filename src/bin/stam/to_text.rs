@@ -11,11 +11,11 @@ pub fn to_text<'a>(store: &'a AnnotationStore, query: Query<'a>, varname: Option
                 eprintln!("Error: {}", msg);
                 exit(1);
             }
-            Ok((textselection, whole_resource)) => {
-                if whole_resource {
+            Ok((textselection, _, id)) => {
+                if let Some(id) = id {
                     eprintln!(
                         "--------------------------- {} ---------------------------",
-                        textselection.resource().id().unwrap_or("undefined"),
+                        id
                     );
                 } else {
                     eprintln!(

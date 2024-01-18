@@ -232,6 +232,18 @@ fn main() {
                         "Prune results to show only the highlights",
                     ),
                 )
+                .arg(
+                    Arg::with_name("no-legend")
+                        .long("no-legend")
+                        .help("Do not output a legend",
+                    )
+                )
+                .arg(
+                    Arg::with_name("no-titles")
+                        .long("no-titles")
+                        .help("Do not output titles (identifiers) for the primary selected items",
+                    )
+                )
         )
         .subcommand(
             SubCommand::with_name("init")
@@ -594,6 +606,12 @@ returned, in that case anything else is considered context and will not be retur
         }
         if !args.is_present("strict-highlights") {
             writer.add_highlights_from_query();
+        }
+        if args.is_present("no-legend") {
+            writer = writer.with_legend(false)
+        }
+        if args.is_present("no-titles") {
+            writer = writer.with_titles(false)
         }
         if args.is_present("prune") {
             writer = writer.with_prune(true);
