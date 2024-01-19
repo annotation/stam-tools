@@ -218,11 +218,11 @@ fn main() {
                         .default_value("/")
                 )
                 .arg(
-                    Arg::with_name("strict-highlights")
-                        .long("strict-highlights")
-                        .short('x')
+                    Arg::with_name("auto-highlight")
+                        .long("auto")
+                        .short('a')
                         .help(
-                        "Do not automatically add highlights based on constraints found in the specified query",
+                        "Automatically add highlights based on DATA constraints found in the main (first) query",
                     ),
                 )
                 .arg(
@@ -597,9 +597,9 @@ returned, in that case anything else is considered context and will not be retur
                 writer = writer.with_highlight(highlight);
             }
         }
-        /*if !args.is_present("strict-highlights") {
+        if args.is_present("auto-highlight") {
             writer.add_highlights_from_query();
-        }*/
+        }
         if args.is_present("no-legend") {
             writer = writer.with_legend(false)
         }
