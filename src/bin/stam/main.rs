@@ -208,7 +208,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
 * @KEYVALUE - Outputs a tag with the key and the value, pertaining to the first DATA/KEY constraint in the query
 * @VALUE - Outputs a tag with the value only, pertaining to the first DATA/KEY constraint in the query
 
-If no attribute is provided, there will be no tags shown for that query, only a highlight underline.
+If no attribute is provided, there will be no tags shown for that query, only a highlight underline. In the highlight queries, the variable from the main selection query is available and you *should* use it in a constraint, otherwise performance will be sub-optimal.
 " ))
                 .arg(
                     Arg::with_name("highlight")
