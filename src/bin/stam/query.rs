@@ -2,13 +2,13 @@ use clap::{Arg, ArgAction, ArgMatches};
 use stam::*;
 use std::process::exit;
 
-pub fn query_arguments<'a>() -> Vec<clap::Arg<'a>> {
+pub fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
         Arg::with_name("query")
             .long("query")
             .short('q')
-            .help("A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.")
+            .help(help)
             .action(ArgAction::Append)
             .takes_value(true),
     );
