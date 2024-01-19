@@ -113,7 +113,7 @@ statement in [the STAM Query Language
 *Example 1) a query in STAMQL:*
 
 ```
-$ stam query --query 'SELECTION ANNOTATION ?a WHERE DATA "myset" "pos" = "noun";'
+$ stam query --query 'SELECT ANNOTATION ?a WHERE DATA "myset" "pos" = "noun";'
 ```
 
 However, if you simply want all annotations, resource, data, and don't want to formulate a query a shortcut is
@@ -154,6 +154,14 @@ Example 5) explicitly specified columns including a custom one:
 ```
 $ stam query --columns Id,Text,TextResource,BeginOffset,EndOffset,my_set/part_of_speech my.store.stam.json
 ```
+
+Example 6) Subqueries and multiple result variables
+
+```
+$ stam query --query 'SELECT ANNOTATION ?sentence WHERE DATA "myset" "type" = "sentence"; { SELECT ANNOTATION ?word WHERE RELATION ?sentence EMBEDS; DATA "myset" "type" = "word"; }'
+```
+
+This will result in a TSV file where the sentence will be repeated for each word that is found in it, a result number will be returned in a column, as well as the variable name.
 
 The TSV output produced by this tool is not lossless, that is, it can not encode everything
 that STAM supports, unlike STAM JSON and STAM CSV. It does, however, give you a great
@@ -265,3 +273,52 @@ $ stam init --resource sometext.txt my.store.stam.json
 # then we start the tagging
 $ stam tag --rules rules.tsv my.store.stam.json 
 ```
+
+### stam view
+
+The `stam view` tool is used to visualize annotations as HTML. It will output a
+self-contained static HTML document to standard output (the document does not
+reference any external assets). The annotations you want to visualise are
+requested via queries in
+[STAMQL](https://github.com/annotation/stam/tree/master/extensions/stam-query),
+using the `--query` parameter.
+
+The `--query` can be specified multiple times. The first query is always the
+*selection query*, it determines what the main selection is and can be anything
+you can query that has text (i.e. resources, annotations, text selections).
+
+Any subsequent queries are *highlight queries*, they determine what parts of
+the selections produces by the selection query you want to highlight.
+Highlighting is done by drawing a line underneath the text and optionally by a *tag* that shows extra information.
+
+![STAM view example](stamvis1.png)
+
+Example with tags: 
+
+![STAM view example with tags](stamvis2.png)
+
+Tags can be enabled by prepending the query with one of the following *attributes*:
+
+* `@KEY` - Outputs a tag with the key, pertaining to the first DATA constraint in the query
+* `@KEYVALUE` - Outputs a tag with the key and the value, pertaining to the first DATA constraint in the query
+* `@VALUE` - Outputs a tag with the value only, pertaining to the first DATA constraint in the query
+
+If no attribute is provided, there will be no tags shown for that query, only a
+highlight underline. In the highlight queries, the variable from the main
+selection query is available and you *should* use it in a constraint, otherwise
+performance will be sub-optimal. All your queries *should* have variable names
+and these will appear in the legend (unless you pass `--no-legend`).
+
+Various real examples of visualisation and queries are shown here: <https://github.com/knaw-huc/stam-experiments/tree/main/exp6>
+
+
+
+
+
+
+
+
+
+
+
+
