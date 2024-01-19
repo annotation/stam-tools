@@ -597,9 +597,9 @@ returned, in that case anything else is considered context and will not be retur
                 writer = writer.with_highlight(highlight);
             }
         }
-        if !args.is_present("strict-highlights") {
+        /*if !args.is_present("strict-highlights") {
             writer.add_highlights_from_query();
-        }
+        }*/
         if args.is_present("no-legend") {
             writer = writer.with_legend(false)
         }

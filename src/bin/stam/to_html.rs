@@ -333,9 +333,11 @@ body>h2 {
     font-family: sans-serif;
 }
 </style>
-<body>";
+<body>
+";
 
-const HTML_FOOTER: &str = "</body></html>";
+const HTML_FOOTER: &str = "
+</body></html>";
 
 impl<'a> HtmlWriter<'a> {
     pub fn new(store: &'a AnnotationStore, selectionquery: Query<'a>) -> Self {
@@ -458,6 +460,23 @@ impl<'a> Display for HtmlWriter<'a> {
         }
         if let Some(header) = self.header {
             write!(f, "{}", header)?;
+        }
+        write!(
+            f,
+            "<!-- Selection Query:\n\n{}\n\n-->\n",
+            self.selectionquery
+                .to_string()
+                .unwrap_or_else(|err| format!("{}", err))
+        )?;
+        for (i, highlight) in self.highlights.iter().enumerate() {
+            if let Some(query) = highlight.query.as_ref() {
+                write!(
+                    f,
+                    "<!-- Highlight Query #{}:\n\n{}\n\n-->\n",
+                    i + 1,
+                    query.to_string().unwrap_or_else(|err| format!("{}", err))
+                )?;
+            }
         }
         if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
             write!(f, "<div id=\"legend\"><ul>")?;
@@ -627,7 +646,6 @@ impl<'a> Display for HtmlWriter<'a> {
                                             match parentresult {
                                                 QueryResultItem::None => {}
                                                 QueryResultItem::Annotation(x) => {
-                                                    eprintln!("DEBUG: binding {}", varname);
                                                     hlquery.bind_annotationvar(varname, x.clone());
                                                 }
                                                 QueryResultItem::TextSelection(x) => {
