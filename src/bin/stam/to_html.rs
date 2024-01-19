@@ -184,86 +184,59 @@ div.resource, div.textselection {
     line-height: 1.5em;
 }
 .a { /* annotation */
-    background: #dedede; /* light gray */
+    /* background: #dedede;  light gray */
+    vertical-align: bottom;
 }
 label {
+    display: inline-block;
+    margin-top: 10px;
+    border-radius: 0px 20px 0px 0px;
+}
+label em {
+    display: inline-block;
     font-size: 70%;
-    background: #ddd !important;
-    border-radius: 0px 10px 0px 0px;
-    font-weight: bold;
-    padding-left: 2px;
-    padding-right: 2px;
+    padding-left: 5px;
+    padding-right: 5px;
+    vertical-align: bottom;
 }
-/* highlights */
-span.hi1 {
-    background: #b4e0aa; /*green*/
-}
-label.hi1 {
+/* highlights for labels/tags */
+label.tag1 {
     color: #1d610d;
-    border-bottom: 2px solid #b4e0aa;
     border-right: 5px solid #b4e0aa;
     background: #b4e0aa77;
 }
-span.hi2 {
-    background: #aaace0; /*blue */
-}
-label.hi2 {
+label.tag2 {
     color: #181c6b;
-    border-bottom: 2px solid #aaace0;
     border-right: 5px solid #aaace0;
     background: #aaace077;
 }
-span.hi3 {
-    background: #e19898; /*red*/
-}
-label.hi3 {
+label.tag3 {
     color: #661818;
-    border-bottom: 2px solid #e19898;
     border-right: 5px solid #e19898;
     background: #e1989877;
 }
-span.hi4 {
-    background: #e1e098; /*yellow */
-}
-label.hi4 {
+label.tag4 {
     color: #585712;
-    border-bottom: 2px solid #e1e098;
     border-right: 5px solid #e1e098;
     background: #e1e09877;
 }
-span.hi5 {
-    background: #98e1dd; /*cyan*/
-}
-label.hi5 {
+label.tag5 {
     color: #126460;
-    border-bottom: 2px solid #126460;
     border-right: 5px solid #126460;
     background: #12646077;
 }
-span.hi6 {
-    background: #dcc6da; /*pink*/
-}
-label.hi6 {
+label.tag6 {
     color: #5e1457;
-    border-bottom: 2px solid #dcc6da;
     border-right: 5px solid #dcc6da;
     background: #dcc6da77;
 }
-span.hi7 {
-    background: #e1c398; /*orange*/
-}
-label.hi7 {
+label.tag7 {
     color: #5d3f14;
-    border-bottom: 2px solid #e1c398;
     border-right: 5px solid #e1c398;
     background: #e1c39877;
 }
-span.hi8 {
-    background: #6faa61; /*green*/
-}
-label.hi8 {
+label.tag8 {
     color: #1a570b;
-    border-bottom: 2px solid #6faa61;
     border-right: 5px solid #6faa61;
     background: #6faa6177;
 }
@@ -285,6 +258,32 @@ span.hi13 {
 span.hi14 {
     background: #b9a161; /*orange*/
 }
+span.l1, span.l2, span.l3, span.l4, span.l5, span.l6, span.l7, span.l8, span.l9, span.l10, span.l11, span.l12, span.l13, span.l14 {
+    display: inline-block;
+    border-bottom: 3px solid white;
+}
+.hi1 span.l1 {
+    border-bottom: 3px solid #b4e0aa; /* green */
+}
+.hi2 span.l2 {
+    border-bottom: 3px solid #aaace0; /* blueish/purple */
+}
+.hi3 span.l3 {
+    border-bottom: 3px solid #e19898; /* red */
+}
+.hi4 span.l4 {
+    border-bottom: 3px solid #e1e098; /* yellow */
+}
+.hi5 span.l5 {
+    border-bottom: 3px solid #98e1dd; /* cyan */
+}
+.hi6 span.l6 {
+    border-bottom: 3px solid #dcc6da; /* pink */
+}
+.hi7 span.l7 {
+    border-bottom: 3px solid #e1c398; /* orange */
+}
+
 div#legend {
     width: 40%;
     min-width: 320px;
@@ -304,6 +303,30 @@ div#legend ul li span {
     border-radius: 15px;
     border: 1px #555 solid;
     min-height: 15px;
+}
+div#legend span.hi1 {
+    background: #b4e0aa; /* green */
+}
+div#legend span.hi2 {
+    background: #aaace0; /* blueish/purple */
+}
+div#legend span.hi3 {
+    background: #e19898; /*red*/
+}
+div#legend span.hi4 {
+    background: #e1e098; /*yellow */
+}
+div#legend span.hi5 {
+    background: #98e1dd; /*cyan*/
+}
+div#legend span.hi6 {
+    background: #dcc6da; /*pink*/
+}
+div#legend span.hi7 {
+    background: #e1c398; /*orange*/
+}
+div#legend span.hi8 {
+    background: #6faa61; /*green*/
 }
 body>h2 {
     font-size: 1.1em;
@@ -485,14 +508,21 @@ impl<'a> Display for HtmlWriter<'a> {
                             let text = resource
                                 .text_by_offset(&Offset::simple(begin, *i))
                                 .expect("offset should be valid");
-                            write!(
-                                f,
-                                "{}",
-                                html_escape::encode_text(text.replace("\n", "<br/>").as_str())
-                            )?;
+                            if text == " " {
+                                write!(f, "&ensp;")?;
+                            } else {
+                                write!(
+                                    f,
+                                    "{}",
+                                    html_escape::encode_text(text.replace("\n", "<br/>").as_str())
+                                )?;
+                            }
                             begin = *i;
                         }
                         if !span_annotations.is_empty() {
+                            for _ in 0..self.highlights.len() {
+                                write!(f, "</span>")?;
+                            }
                             write!(f, "</span>")?;
                         }
 
@@ -505,6 +535,21 @@ impl<'a> Display for HtmlWriter<'a> {
                                     .as_resultitem(resource.as_ref(), self.store);
                                 let close: Vec<_> =
                                     textselection.annotations().map(|a| a.handle()).collect();
+                                let mut classes = vec![];
+                                for (j, (_, highlights_annotations)) in self
+                                    .highlights
+                                    .iter()
+                                    .zip(highlights_results.iter())
+                                    .enumerate()
+                                {
+                                    if span_annotations
+                                        .intersection(&highlights_annotations)
+                                        .next()
+                                        .is_some()
+                                    {
+                                        classes.push(format!("hi{}", j + 1));
+                                    }
+                                }
                                 span_annotations.retain(|a| {
                                     if close.contains(a) {
                                         //close tags and add labels
@@ -521,11 +566,24 @@ impl<'a> Display for HtmlWriter<'a> {
                                                     if !tag.is_empty() {
                                                         write!(
                                                             f,
-                                                            "<label class=\"hi{}\">{}</label>",
+                                                            "<label class=\"tag{} {}\">",
                                                             j + 1,
-                                                            tag
+                                                            classes.join(" ")
                                                         )
                                                         .ok();
+                                                        for i in 0..self.highlights.len() {
+                                                            write!(
+                                                                f,
+                                                                "<span class=\"l{}\">",
+                                                                i + 1
+                                                            )
+                                                            .ok();
+                                                        }
+                                                        write!(f, "{}", tag,).ok();
+                                                        for _ in 0..self.highlights.len() {
+                                                            write!(f, "</span>").ok();
+                                                        }
+                                                        write!(f, "</label>",).ok();
                                                     }
                                                 }
                                             }
@@ -692,6 +750,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                     write!(f, " data-offset=\"{}\"", i)?;
                                 }
                                 write!(f, ">")?;
+                                for i in 0..self.highlights.len() {
+                                    write!(f, "<span class=\"l{}\">", i + 1)?;
+                                }
                             }
                         }
                     }
