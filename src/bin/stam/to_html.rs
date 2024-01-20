@@ -527,21 +527,25 @@ impl<'a> Display for HtmlWriter<'a> {
                     let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
                     let resource = resulttextselection.resource();
                     let mut begin: usize = resulttextselection.begin();
-                    for i in resulttextselection.positions(stam::PositionMode::Both) {
-                        if *i > begin {
+                    let mut positions: Vec<_> = resulttextselection
+                        .positions(stam::PositionMode::Both)
+                        .copied()
+                        .collect();
+                    positions.push(resulttextselection.end());
+                    for i in positions {
+                        if i > begin {
+                            //output text
                             let text = resource
-                                .text_by_offset(&Offset::simple(begin, *i))
+                                .text_by_offset(&Offset::simple(begin, i))
                                 .expect("offset should be valid");
-                            if text == " " {
-                                write!(f, "&ensp;")?;
-                            } else {
-                                write!(
-                                    f,
-                                    "{}",
-                                    html_escape::encode_text(text.replace("\n", "<br/>").as_str())
-                                )?;
-                            }
-                            begin = *i;
+                            write!(
+                                f,
+                                "{}",
+                                html_escape::encode_text(text.replace("\n", "<br/>").as_str())
+                                    .replace(" ", "&ensp;")
+                                    .as_str()
+                            )?;
+                            begin = i;
                         }
                         if !span_annotations.is_empty() {
                             for _ in 0..self.highlights.len() {
@@ -550,7 +554,7 @@ impl<'a> Display for HtmlWriter<'a> {
                             write!(f, "</span>")?;
                         }
 
-                        if let Some(position) = resource.as_ref().position(*i) {
+                        if let Some(position) = resource.as_ref().position(i) {
                             for (_, textselectionhandle) in position.iter_end2begin() {
                                 let textselection = resource
                                     .as_ref()
@@ -619,102 +623,110 @@ impl<'a> Display for HtmlWriter<'a> {
                                 });
                             }
 
-                            //find and add annotations that begin here
-                            for (_, textselectionhandle) in position.iter_begin2end() {
-                                let textselection = resource
-                                    .as_ref()
-                                    .get(*textselectionhandle)
-                                    .unwrap()
-                                    .as_resultitem(resource.as_ref(), self.store);
-                                let new_span_annotations: BTreeSet<AnnotationHandle> =
-                                    textselection.annotations().map(|a| a.handle()).collect();
-                                span_annotations.extend(new_span_annotations.iter());
-                                if self.output_data {
-                                    //all_annotations.extend(new_span_annotations.iter());
+                            if i != resulttextselection.end() {
+                                //find and add annotations that begin here
+                                for (_, textselectionhandle) in position.iter_begin2end() {
+                                    let textselection = resource
+                                        .as_ref()
+                                        .get(*textselectionhandle)
+                                        .unwrap()
+                                        .as_resultitem(resource.as_ref(), self.store);
+                                    let new_span_annotations: BTreeSet<AnnotationHandle> =
+                                        textselection.annotations().map(|a| a.handle()).collect();
+                                    span_annotations.extend(new_span_annotations.iter());
+                                    if self.output_data {
+                                        //all_annotations.extend(new_span_annotations.iter());
+                                    }
                                 }
-                            }
 
-                            if self.prune || !span_annotations.is_empty() {
-                                //gather annotations for the textselection under consideration
-                                for (j, highlights) in self.highlights.iter().enumerate() {
-                                    if let Some(mut hlquery) = highlights.query.clone() {
-                                        let mut annotations = BTreeSet::new();
-                                        //make variable from selection query available in the highlight query:
-                                        let varname = self
+                                if self.prune || !span_annotations.is_empty() {
+                                    //gather annotations for the textselection under consideration
+                                    for (j, highlights) in self.highlights.iter().enumerate() {
+                                        if let Some(mut hlquery) = highlights.query.clone() {
+                                            let mut annotations = BTreeSet::new();
+                                            //make variable from selection query available in the highlight query:
+                                            let varname = self
                                             .selectionvar
                                             .unwrap_or(self.selectionquery.name().expect(
                                             "you must name the variables in your SELECT statements",
                                         ));
-                                        if let Some(parentresult) =
-                                            selectionresult.get_by_name(&names, varname).ok()
+                                            if let Some(parentresult) =
+                                                selectionresult.get_by_name(&names, varname).ok()
+                                            {
+                                                match parentresult {
+                                                    QueryResultItem::None => {}
+                                                    QueryResultItem::Annotation(x) => {
+                                                        hlquery
+                                                            .bind_annotationvar(varname, x.clone());
+                                                    }
+                                                    QueryResultItem::TextSelection(x) => {
+                                                        hlquery.bind_textvar(varname, x.clone());
+                                                    }
+                                                    QueryResultItem::AnnotationData(x) => {
+                                                        hlquery.bind_datavar(varname, x.clone());
+                                                    }
+                                                    QueryResultItem::TextResource(x) => {
+                                                        hlquery
+                                                            .bind_resourcevar(varname, x.clone());
+                                                    }
+                                                    QueryResultItem::AnnotationDataSet(x) => {
+                                                        hlquery.bind_datasetvar(varname, x.clone());
+                                                    }
+                                                    QueryResultItem::DataKey(x) => {
+                                                        hlquery.bind_keyvar(varname, x.clone());
+                                                    }
+                                                }
+                                            } else {
+                                                eprintln!("WARNING: unable to retrieve variable {} from main query", varname);
+                                            }
+                                            //process result of highlight query and extra annotations
+                                            for results in self.store.query(hlquery) {
+                                                if let Some(result) = results.iter().last() {
+                                                    match result {
+                                                        &QueryResultItem::Annotation(
+                                                            ref annotation,
+                                                        ) => {
+                                                            annotations.insert(annotation.handle());
+                                                        }
+                                                        &QueryResultItem::TextSelection(ref ts) => {
+                                                            annotations.extend(
+                                                                ts.annotations()
+                                                                    .map(|x| x.handle()),
+                                                            );
+                                                        }
+                                                        &QueryResultItem::AnnotationData(
+                                                            ref data,
+                                                        ) => {
+                                                            annotations.extend(
+                                                                data.annotations()
+                                                                    .map(|x| x.handle()),
+                                                            );
+                                                        }
+                                                        _ => {
+                                                            eprintln!("WARNING: query for highlight {} has invalid resulttype", j+1)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            highlights_results[j] = FromHandles::new(
+                                                annotations.iter().copied(),
+                                                self.store,
+                                            )
+                                            .map(|x| x.handle())
+                                            .collect();
+                                        } else if let Tag::Key(key)
+                                        | Tag::KeyAndValue(key)
+                                        | Tag::Value(key) = &highlights.tag
                                         {
-                                            match parentresult {
-                                                QueryResultItem::None => {}
-                                                QueryResultItem::Annotation(x) => {
-                                                    hlquery.bind_annotationvar(varname, x.clone());
-                                                }
-                                                QueryResultItem::TextSelection(x) => {
-                                                    hlquery.bind_textvar(varname, x.clone());
-                                                }
-                                                QueryResultItem::AnnotationData(x) => {
-                                                    hlquery.bind_datavar(varname, x.clone());
-                                                }
-                                                QueryResultItem::TextResource(x) => {
-                                                    hlquery.bind_resourcevar(varname, x.clone());
-                                                }
-                                                QueryResultItem::AnnotationDataSet(x) => {
-                                                    hlquery.bind_datasetvar(varname, x.clone());
-                                                }
-                                                QueryResultItem::DataKey(x) => {
-                                                    hlquery.bind_keyvar(varname, x.clone());
-                                                }
-                                            }
-                                        } else {
-                                            eprintln!("WARNING: unable to retrieve variable {} from main query", varname);
+                                            //no query defined, only a tagkey, that's ok, we obtain the annotations directly:
+                                            highlights_results[j] = FromHandles::new(
+                                                span_annotations.iter().copied(),
+                                                self.store,
+                                            )
+                                            .filter_key(key)
+                                            .map(|x| x.handle())
+                                            .collect();
                                         }
-                                        //process result of highlight query and extra annotations
-                                        for results in self.store.query(hlquery) {
-                                            if let Some(result) = results.iter().last() {
-                                                match result {
-                                                    &QueryResultItem::Annotation(
-                                                        ref annotation,
-                                                    ) => {
-                                                        annotations.insert(annotation.handle());
-                                                    }
-                                                    &QueryResultItem::TextSelection(ref ts) => {
-                                                        annotations.extend(
-                                                            ts.annotations().map(|x| x.handle()),
-                                                        );
-                                                    }
-                                                    &QueryResultItem::AnnotationData(ref data) => {
-                                                        annotations.extend(
-                                                            data.annotations().map(|x| x.handle()),
-                                                        );
-                                                    }
-                                                    _ => {
-                                                        eprintln!("WARNING: query for highlight {} has invalid resulttype", j+1)
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        highlights_results[j] = FromHandles::new(
-                                            annotations.iter().copied(),
-                                            self.store,
-                                        )
-                                        .map(|x| x.handle())
-                                        .collect();
-                                    } else if let Tag::Key(key)
-                                    | Tag::KeyAndValue(key)
-                                    | Tag::Value(key) = &highlights.tag
-                                    {
-                                        //no query defined, only a tagkey, that's ok, we obtain the annotations directly:
-                                        highlights_results[j] = FromHandles::new(
-                                            span_annotations.iter().copied(),
-                                            self.store,
-                                        )
-                                        .filter_key(key)
-                                        .map(|x| x.handle())
-                                        .collect();
                                     }
                                 }
                             }
@@ -731,6 +743,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                 })
                             }
                             if !span_annotations.is_empty() {
+                                //output the opening tags
                                 let mut classes = vec!["a".to_string()];
                                 for (j, (highlights, highlights_annotations)) in self
                                     .highlights
@@ -776,6 +789,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                 for i in 0..self.highlights.len() {
                                     write!(f, "<span class=\"l{}\">", i + 1)?;
                                 }
+                                //the text is outputted alongside the closing tag
                             }
                         }
                     }
