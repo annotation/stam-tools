@@ -59,25 +59,25 @@ impl<'a> Highlight<'a> {
         //prepared for a future in which we may have multiple attribs
         for attrib in attribs.iter() {
             match *attrib {
-                "@KEY" => {
+                "@KEYTAG" | "@KEY" => {
                     if let Some(key) = key.as_ref() {
                         tag = Tag::Key(key.clone())
                     } else {
-                        eprintln!("Warning: Query has @KEY attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
+                        eprintln!("Warning: Query has @KEYTAG attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
                     }
                 }
-                "@KEYVALUE" => {
+                "@KEYVALUETAG" | "@KEYVALUE" => {
                     if let Some(key) = key.as_ref() {
                         tag = Tag::KeyAndValue(key.clone())
                     } else {
-                        eprintln!("Warning: Query has @KEYVALUE attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
+                        eprintln!("Warning: Query has @KEYVALUETAG attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
                     }
                 }
-                "@VALUE" => {
+                "@VALUETAG" | "@VALUE" => {
                     if let Some(key) = key.as_ref() {
                         tag = Tag::Value(key.clone())
                     } else {
-                        eprintln!("Warning: Query has @VALUE attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
+                        eprintln!("Warning: Query has @VALUETAG attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
                     }
                 }
                 _ => {}

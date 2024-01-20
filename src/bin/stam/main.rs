@@ -204,9 +204,9 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
                 .args(&config_arguments())
                 .args(&query_arguments("One or more queries in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. You can specify multiple queries here by repeating the parameter, the first query is the primary selection query and determines what text is shown. Any subsequent queries are highlight queries and determine what is highlighted. You can prepend the following *attributes* to the query (before the SELECT statement), to determine how things are visualised:
 
-* @KEY - Outputs a tag with the key, pertaining to the first DATA/KEY constraint in the query
-* @KEYVALUE - Outputs a tag with the key and the value, pertaining to the first DATA/KEY constraint in the query
-* @VALUE - Outputs a tag with the value only, pertaining to the first DATA/KEY constraint in the query
+* @KEYTAG - Outputs a tag with the key, pertaining to the first DATA/KEY constraint in the query
+* @KEYVALUETAG - Outputs a tag with the key and the value, pertaining to the first DATA/KEY constraint in the query
+* @VALUETAG - Outputs a tag with the value only, pertaining to the first DATA/KEY constraint in the query
 
 If no attribute is provided, there will be no tags shown for that query, only a highlight underline. In the highlight queries, the variable from the main selection query is available and you *should* use it in a constraint, otherwise performance will be sub-optimal.
 " ))

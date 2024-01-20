@@ -299,9 +299,9 @@ Example with tags:
 
 Tags can be enabled by prepending the query with one of the following *attributes*:
 
-* `@KEY` - Outputs a tag with the key, pertaining to the first DATA constraint in the query
-* `@KEYVALUE` - Outputs a tag with the key and the value, pertaining to the first DATA constraint in the query
-* `@VALUE` - Outputs a tag with the value only, pertaining to the first DATA constraint in the query
+* `@KEYTAG` - Outputs a tag with the key, pertaining to the first DATA constraint in the query
+* `@KEYVALUETAG` - Outputs a tag with the key and the value, pertaining to the first DATA constraint in the query
+* `@VALUETAG` - Outputs a tag with the value only, pertaining to the first DATA constraint in the query
 
 If no attribute is provided, there will be no tags shown for that query, only a
 highlight underline. In the highlight queries, the variable from the main
