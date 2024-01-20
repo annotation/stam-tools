@@ -11,6 +11,9 @@ pub enum Tag<'a> {
     ///Highlight only, no tag
     None,
 
+    //Show tag with public identifier
+    Id,
+
     ///Show tag with key
     Key(ResultItem<'a, DataKey>), //or label if set
 
@@ -80,6 +83,7 @@ impl<'a> Highlight<'a> {
                         eprintln!("Warning: Query has @VALUETAG attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
                     }
                 }
+                "@IDTAG" | "ID" => tag = Tag::Id,
                 _ => {}
             }
         }
@@ -138,6 +142,7 @@ impl<'a> Highlight<'a> {
                     Cow::Borrowed(self.label.unwrap_or(key.as_str()))
                 }
             }
+            Tag::Id => Cow::Borrowed(annotation.id().unwrap_or("")),
             Tag::None => Cow::Borrowed(""),
         }
     }

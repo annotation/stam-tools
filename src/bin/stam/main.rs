@@ -207,6 +207,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
 * @KEYTAG - Outputs a tag with the key, pertaining to the first DATA/KEY constraint in the query
 * @KEYVALUETAG - Outputs a tag with the key and the value, pertaining to the first DATA/KEY constraint in the query
 * @VALUETAG - Outputs a tag with the value only, pertaining to the first DATA/KEY constraint in the query
+* @IDTAG - Outputs a tag with the public identifier of the ANNOTATION that has been selected
 
 If no attribute is provided, there will be no tags shown for that query, only a highlight underline. In the highlight queries, the variable from the main selection query is available and you *should* use it in a constraint, otherwise performance will be sub-optimal.
 " ))
