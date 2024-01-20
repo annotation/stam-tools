@@ -127,7 +127,7 @@ impl<'a> Highlight<'a> {
             Tag::KeyAndValue(key) => {
                 if let Some(data) = annotation.data().filter_key(key).next() {
                     Cow::Owned(format!(
-                        "{}: <em>{}</em>",
+                        "{}: {}",
                         self.label.unwrap_or(key.as_str()),
                         data.value()
                     ))
@@ -137,7 +137,7 @@ impl<'a> Highlight<'a> {
             }
             Tag::Value(key) => {
                 if let Some(data) = annotation.data().filter_key(key).next() {
-                    Cow::Owned(format!("<em>{}</em>", data.value().to_string()))
+                    Cow::Owned(data.value().to_string())
                 } else {
                     Cow::Borrowed(self.label.unwrap_or(key.as_str()))
                 }
@@ -603,7 +603,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                                             )
                                                             .ok();
                                                         }
-                                                        write!(f, "{}", tag,).ok();
+                                                        write!(f, "<em>{}</em>", tag,).ok();
                                                         for _ in 0..self.highlights.len() {
                                                             write!(f, "</span>").ok();
                                                         }
