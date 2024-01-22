@@ -169,8 +169,8 @@ pub struct HtmlWriter<'a> {
 const HTML_HEADER: &str = "<html>
 <head>
     <meta charset=\"UTF-8\" />
-</head>
-<style>
+    <meta name=\"generator\" content=\"stam view\" />
+    <style type=\"text/css\">
 div.resource, div.textselection {
     background: white;
     font-family: monospace;
@@ -328,7 +328,8 @@ body>h2 {
     font-size: 1.1em;
     font-family: sans-serif;
 }
-</style>
+    </style>
+</head>
 <body>
 ";
 
@@ -740,7 +741,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                     false
                                 })
                             }
-                            if !span_annotations.is_empty() {
+                            if !span_annotations.is_empty() && i != resulttextselection.end() {
                                 //output the opening tags
                                 let mut classes = vec!["a".to_string()];
                                 for (j, highlights_annotations) in
@@ -788,7 +789,7 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
                         }
                     }
-                    write!(f, "</div>")?;
+                    writeln!(f, "\n</div>")?;
                     if self.output_data {
                         //TODO: call data_to_json()
                     }
