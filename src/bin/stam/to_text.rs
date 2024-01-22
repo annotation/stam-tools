@@ -5,6 +5,7 @@ use std::process::exit;
 pub fn to_text<'a>(store: &'a AnnotationStore, query: Query<'a>, varname: Option<&'a str>) {
     let results = store.query(query);
     let names = results.names();
+    let mut prevresult = None;
     for selectionresult in results {
         match textselection_from_queryresult(&selectionresult, varname, &names) {
             Err(msg) => {
@@ -12,6 +13,11 @@ pub fn to_text<'a>(store: &'a AnnotationStore, query: Query<'a>, varname: Option
                 exit(1);
             }
             Ok((textselection, _, id)) => {
+                if prevresult == Some(textselection.clone()) {
+                    //prevent duplicates (especially relevant when --use is set)
+                    continue;
+                }
+                prevresult = Some(textselection.clone());
                 if let Some(id) = id {
                     eprintln!(
                         "--------------------------- {} ---------------------------",

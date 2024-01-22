@@ -491,11 +491,17 @@ impl<'a> Display for HtmlWriter<'a> {
         }
         let results = self.store.query(self.selectionquery.clone());
         let names = results.names();
+        let mut prevresult = None;
         for (resultnr, selectionresult) in results.enumerate() {
             //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
                 Err(msg) => return self.output_error(f, msg),
                 Ok((resulttextselection, whole_resource, id)) => {
+                    if prevresult == Some(resulttextselection.clone()) {
+                        //prevent duplicates (especially relevant when --use is set)
+                        continue;
+                    }
+                    prevresult = Some(resulttextselection.clone());
                     if self.titles {
                         if let Some(id) = id {
                             write!(f, "<h2>{}. <span>{}</span></h2>\n", resultnr + 1, id,)?;
