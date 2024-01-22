@@ -1,6 +1,5 @@
-use clap::{Arg, ArgAction, ArgMatches};
+use clap::{Arg, ArgAction};
 use stam::*;
-use std::process::exit;
 
 pub fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();

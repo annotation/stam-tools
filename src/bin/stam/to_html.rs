@@ -2,7 +2,6 @@ use stam::*;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
-use std::process::exit;
 
 use crate::query::textselection_from_queryresult;
 
@@ -95,26 +94,18 @@ impl<'a> Highlight<'a> {
         })
     }
 
-    pub fn with_key_tag(mut self, key: ResultItem<'a, DataKey>) -> Self {
-        self.tag = Tag::Key(key);
+    pub fn with_tag(mut self, tag: Tag<'a>) -> Self {
+        self.tag = tag;
         self
     }
 
-    pub fn with_value_tag(mut self, key: ResultItem<'a, DataKey>) -> Self {
-        self.tag = Tag::Value(key);
-        self
-    }
-
-    pub fn with_keyvalue_tag(mut self, key: ResultItem<'a, DataKey>) -> Self {
-        self.tag = Tag::KeyAndValue(key);
-        self
-    }
-
+    #[allow(dead_code)]
     pub fn with_query(mut self, query: Query<'a>) -> Self {
         self.query = Some(query);
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_label(mut self, label: &'a str) -> Self {
         self.label = Some(label);
         self
@@ -344,6 +335,7 @@ body>h2 {
 const HTML_FOOTER: &str = "
 </body></html>";
 
+#[allow(dead_code)] //TODO: remove this at a later point when more of this is exposed as a library
 impl<'a> HtmlWriter<'a> {
     pub fn new(store: &'a AnnotationStore, selectionquery: Query<'a>) -> Self {
         Self {
@@ -450,7 +442,7 @@ fn helper_add_highlights_from_query<'a>(
     store: &'a AnnotationStore,
 ) {
     if let Some(key) = get_key_from_query(query, store) {
-        highlights.push(Highlight::default().with_keyvalue_tag(key))
+        highlights.push(Highlight::default().with_tag(Tag::KeyAndValue(key)))
     }
     if let Some(subquery) = query.subquery() {
         helper_add_highlights_from_query(highlights, subquery, store);
@@ -745,11 +737,8 @@ impl<'a> Display for HtmlWriter<'a> {
                             if !span_annotations.is_empty() {
                                 //output the opening tags
                                 let mut classes = vec!["a".to_string()];
-                                for (j, (highlights, highlights_annotations)) in self
-                                    .highlights
-                                    .iter()
-                                    .zip(highlights_results.iter())
-                                    .enumerate()
+                                for (j, highlights_annotations) in
+                                    highlights_results.iter().enumerate()
                                 {
                                     if span_annotations
                                         .intersection(&highlights_annotations)

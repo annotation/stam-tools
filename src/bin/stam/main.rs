@@ -594,7 +594,7 @@ returned, in that case anything else is considered context and will not be retur
                     if set_and_key.find(setdelimiter).is_some() {
                         let (set, key) = set_and_key.rsplit_once(setdelimiter).unwrap();
                         if let Some(key) = store.key(set, key) {
-                            Some(Highlight::default().with_key_tag(key))
+                            Some(Highlight::default().with_tag(Tag::Key(key)))
                         } else {
                             eprintln!(
                                 "[error] Key specified in highlight not found: {}{}{}",

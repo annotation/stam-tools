@@ -13,6 +13,6 @@ repository = "https://github.com/annotation/stam-tools"
 keywords = [ "text-processing", "annotation", "linguistics", "standoff", "nlp"]
 
 [dependencies]
-stam = "0.8.0"
+stam = { version = "0.9.0", path = "../stam-rust" } #TODO: remove path before release!
 clap = "3.2.23"
 html-escape = "0.2.13"
