@@ -166,7 +166,8 @@ pub struct HtmlWriter<'a> {
     titles: bool,
 }
 
-const HTML_HEADER: &str = "<html>
+const HTML_HEADER: &str = "<!DOCTYPE html>
+<html>
 <head>
     <meta charset=\"UTF-8\" />
     <meta name=\"generator\" content=\"stam view\" />
