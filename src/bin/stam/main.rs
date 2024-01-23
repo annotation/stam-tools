@@ -223,6 +223,16 @@ If no attribute is provided, there will be no tags shown for that query, only a 
                         .takes_value(true)
                 )
                 .arg(
+                    Arg::with_name("format")
+                        .long("format")
+                        .short('F')
+                        .help(
+                            "The output format, can be set to 'html' (default) or 'ansi' (coloured terminal output)"
+                        )
+                        .takes_value(true)
+                        .default_value("html")
+                )
+                .arg(
                     Arg::with_name("setdelimiter")
                         .long("setdelimiter")
                         .help(
@@ -576,58 +586,88 @@ returned, in that case anything else is considered context and will not be retur
             eprintln!("[error] Query syntax error in first query: {}", err);
             exit(1);
         });
-
-        let mut writer = HtmlWriter::new(&store, query);
+        let mut highlights = Vec::new();
         for (i, highlightquery) in queries_iter.enumerate() {
             let highlight =
                 Highlight::parse_query(highlightquery, &store, i + 1).unwrap_or_else(|err| {
                     eprintln!("[error] Syntax error in query {}: {}", i + 1, err);
                     exit(1);
                 });
-            writer = writer.with_highlight(highlight);
+            highlights.push(highlight);
+        }
+        let setdelimiter = args.value_of("setdelimiter").unwrap();
+        if let Some(extrahighlights) = args.values_of("highlight") {
+            highlights.extend(extrahighlights.filter_map(|set_and_key: &str| {
+                if set_and_key.find(setdelimiter).is_some() {
+                    let (set, key) = set_and_key.rsplit_once(setdelimiter).unwrap();
+                    if let Some(key) = store.key(set, key) {
+                        Some(Highlight::default().with_tag(Tag::Key(key)))
+                    } else {
+                        eprintln!(
+                            "[error] Key specified in highlight not found: {}{}{}",
+                            set, setdelimiter, key
+                        );
+                        exit(1);
+                    }
+                } else {
+                    None
+                }
+            }));
         }
 
-        let setdelimiter = args.value_of("setdelimiter").unwrap();
-        if let Some(highlights) = args.values_of("highlight") {
-            for highlight in highlights
-                .filter_map(|set_and_key: &str| {
-                    if set_and_key.find(setdelimiter).is_some() {
-                        let (set, key) = set_and_key.rsplit_once(setdelimiter).unwrap();
-                        if let Some(key) = store.key(set, key) {
-                            Some(Highlight::default().with_tag(Tag::Key(key)))
-                        } else {
-                            eprintln!(
-                                "[error] Key specified in highlight not found: {}{}{}",
-                                set, setdelimiter, key
-                            );
-                            exit(1);
-                        }
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<Highlight>>()
-            {
-                writer = writer.with_highlight(highlight);
+        match args.value_of("format") {
+            Some("html") => {
+                let mut writer = HtmlWriter::new(&store, query);
+                for highlight in highlights {
+                    writer = writer.with_highlight(highlight);
+                }
+
+                if args.is_present("auto-highlight") {
+                    writer.add_highlights_from_query();
+                }
+                if args.is_present("no-legend") {
+                    writer = writer.with_legend(false)
+                }
+                if args.is_present("no-titles") {
+                    writer = writer.with_titles(false)
+                }
+                if args.is_present("prune") {
+                    writer = writer.with_prune(true);
+                }
+                if let Some(var) = args.value_of("use") {
+                    eprintln!("[info] Selecting variable ?{}...", var);
+                    writer = writer.with_selectionvar(var);
+                }
+                print!("{}", writer);
             }
+            Some("ansi") => {
+                let mut writer = AnsiWriter::new(&store, query);
+                for highlight in highlights {
+                    writer = writer.with_highlight(highlight);
+                }
+                if args.is_present("auto-highlight") {
+                    writer.add_highlights_from_query();
+                }
+                if args.is_present("no-legend") {
+                    writer = writer.with_legend(false)
+                }
+                if args.is_present("no-titles") {
+                    writer = writer.with_titles(false)
+                }
+                if args.is_present("prune") {
+                    writer = writer.with_prune(true);
+                }
+                if let Some(var) = args.value_of("use") {
+                    eprintln!("[info] Selecting variable ?{}...", var);
+                    writer = writer.with_selectionvar(var);
+                }
+                writer.print();
+            }
+            Some(s) => {
+                eprintln!("[error] Unknown output format: {}", s);
+            }
+            None => unreachable!(),
         }
-        if args.is_present("auto-highlight") {
-            writer.add_highlights_from_query();
-        }
-        if args.is_present("no-legend") {
-            writer = writer.with_legend(false)
-        }
-        if args.is_present("no-titles") {
-            writer = writer.with_titles(false)
-        }
-        if args.is_present("prune") {
-            writer = writer.with_prune(true);
-        }
-        if let Some(var) = args.value_of("use") {
-            eprintln!("[info] Selecting variable ?{}...", var);
-            writer = writer.with_selectionvar(var);
-        }
-        print!("{}", writer);
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("init").is_some()

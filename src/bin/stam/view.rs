@@ -3,9 +3,12 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 
+use std::io::Write;
 use std::str::Chars;
 
 use crate::query::textselection_from_queryresult;
+
+const WRITEFAILURE: &'static str = "ERROR: Buffer write failure";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tag<'a> {
@@ -540,7 +543,6 @@ impl<'a> Display for HtmlWriter<'a> {
                         .collect();
                     positions.push(resulttextselection.end());
                     for i in positions {
-                        // at the moment we only handle trailing linebreaks, linebreaks inside or at the beginning of text selections are not rendered yet!
                         let mut needclosure = true;
                         if i > begin {
                             //output text
@@ -676,93 +678,16 @@ impl<'a> Display for HtmlWriter<'a> {
 
                                 if self.prune || !span_annotations.is_empty() {
                                     //gather annotations for the textselection under consideration
-                                    for (j, highlights) in self.highlights.iter().enumerate() {
-                                        if let Some(mut hlquery) = highlights.query.clone() {
-                                            let mut annotations = BTreeSet::new();
-                                            //make variable from selection query available in the highlight query:
-                                            let varname = self
-                                            .selectionvar
-                                            .unwrap_or(self.selectionquery.name().expect(
-                                            "you must name the variables in your SELECT statements",
-                                        ));
-                                            if let Some(parentresult) =
-                                                selectionresult.get_by_name(&names, varname).ok()
-                                            {
-                                                match parentresult {
-                                                    QueryResultItem::None => {}
-                                                    QueryResultItem::Annotation(x) => {
-                                                        hlquery
-                                                            .bind_annotationvar(varname, x.clone());
-                                                    }
-                                                    QueryResultItem::TextSelection(x) => {
-                                                        hlquery.bind_textvar(varname, x.clone());
-                                                    }
-                                                    QueryResultItem::AnnotationData(x) => {
-                                                        hlquery.bind_datavar(varname, x.clone());
-                                                    }
-                                                    QueryResultItem::TextResource(x) => {
-                                                        hlquery
-                                                            .bind_resourcevar(varname, x.clone());
-                                                    }
-                                                    QueryResultItem::AnnotationDataSet(x) => {
-                                                        hlquery.bind_datasetvar(varname, x.clone());
-                                                    }
-                                                    QueryResultItem::DataKey(x) => {
-                                                        hlquery.bind_keyvar(varname, x.clone());
-                                                    }
-                                                }
-                                            } else {
-                                                eprintln!("WARNING: unable to retrieve variable {} from main query", varname);
-                                            }
-                                            //process result of highlight query and extra annotations
-                                            for results in self.store.query(hlquery) {
-                                                if let Some(result) = results.iter().last() {
-                                                    match result {
-                                                        &QueryResultItem::Annotation(
-                                                            ref annotation,
-                                                        ) => {
-                                                            annotations.insert(annotation.handle());
-                                                        }
-                                                        &QueryResultItem::TextSelection(ref ts) => {
-                                                            annotations.extend(
-                                                                ts.annotations()
-                                                                    .map(|x| x.handle()),
-                                                            );
-                                                        }
-                                                        &QueryResultItem::AnnotationData(
-                                                            ref data,
-                                                        ) => {
-                                                            annotations.extend(
-                                                                data.annotations()
-                                                                    .map(|x| x.handle()),
-                                                            );
-                                                        }
-                                                        _ => {
-                                                            eprintln!("WARNING: query for highlight {} has invalid resulttype", j+1)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            highlights_results[j] = FromHandles::new(
-                                                annotations.iter().copied(),
-                                                self.store,
-                                            )
-                                            .map(|x| x.handle())
-                                            .collect();
-                                        } else if let Tag::Key(key)
-                                        | Tag::KeyAndValue(key)
-                                        | Tag::Value(key) = &highlights.tag
-                                        {
-                                            //no query defined, only a tagkey, that's ok, we obtain the annotations directly:
-                                            highlights_results[j] = FromHandles::new(
-                                                span_annotations.iter().copied(),
-                                                self.store,
-                                            )
-                                            .filter_key(key)
-                                            .map(|x| x.handle())
-                                            .collect();
-                                        }
-                                    }
+                                    highlights_results = get_highlights_results(
+                                        &self.selectionquery,
+                                        &selectionresult,
+                                        self.selectionvar,
+                                        self.store,
+                                        &self.highlights,
+                                        &names,
+                                        &span_annotations,
+                                        highlights_results,
+                                    );
                                 }
                             }
 
@@ -846,6 +771,346 @@ impl<'a> Display for HtmlWriter<'a> {
         }
         Ok(())
     }
+}
+
+pub struct AnsiWriter<'a> {
+    store: &'a AnnotationStore,
+    selectionquery: Query<'a>,
+    selectionvar: Option<&'a str>,
+    highlights: Vec<Highlight<'a>>,
+    /// Prune the data so only the highlights are expressed, nothing else
+    prune: bool,
+    /// Output legend?
+    legend: bool,
+    /// Output titles (identifiers) for the primary selection?
+    titles: bool,
+}
+
+impl<'a> AnsiWriter<'a> {
+    pub fn new(store: &'a AnnotationStore, selectionquery: Query<'a>) -> Self {
+        Self {
+            store,
+            selectionquery,
+            selectionvar: None,
+            highlights: Vec::new(),
+            prune: false,
+            legend: true,
+            titles: true,
+        }
+    }
+
+    pub fn with_highlight(mut self, highlight: Highlight<'a>) -> Self {
+        self.highlights.push(highlight);
+        self
+    }
+    pub fn with_legend(mut self, value: bool) -> Self {
+        self.legend = value;
+        self
+    }
+    pub fn with_titles(mut self, value: bool) -> Self {
+        self.titles = value;
+        self
+    }
+
+    pub fn with_prune(mut self, value: bool) -> Self {
+        self.prune = value;
+        self
+    }
+
+    pub fn with_selectionvar(mut self, var: &'a str) -> Self {
+        self.selectionvar = Some(var);
+        self
+    }
+
+    fn output_error(&self, msg: &str) {
+        eprintln!("ERROR: {}", msg);
+    }
+
+    pub fn add_highlights_from_query(&mut self) {
+        helper_add_highlights_from_query(&mut self.highlights, &self.selectionquery, self.store);
+    }
+
+    fn writeansicol(&self, i: usize, s: &str) {
+        let color = if i > 6 { 30 } else { 30 + i };
+        let mut stdout = std::io::stdout();
+        stdout.write(b"\x1b[").expect(WRITEFAILURE);
+        stdout
+            .write(&format!("{}", color).into_bytes())
+            .expect(WRITEFAILURE);
+        stdout.write(b"m").expect(WRITEFAILURE);
+        stdout.flush().expect(WRITEFAILURE);
+        print!("{}", s);
+        stdout.write(b"\x1b[m").expect(WRITEFAILURE);
+        stdout.flush().expect(WRITEFAILURE);
+    }
+
+    fn writeansicol_bold(&self, i: usize, s: &str) {
+        let color = if i > 6 { 30 } else { 30 + i };
+        let mut stdout = std::io::stdout();
+        stdout.write(b"\x1b[").expect(WRITEFAILURE);
+        stdout
+            .write(&format!("{}", color).into_bytes())
+            .expect(WRITEFAILURE);
+        stdout.write(b";1m").expect(WRITEFAILURE);
+        stdout.flush().expect(WRITEFAILURE);
+        print!("{}", s);
+        stdout.write(b"\x1b[m").expect(WRITEFAILURE);
+        stdout.flush().expect(WRITEFAILURE);
+    }
+
+    fn writeheader(&self, s: &str) {
+        let mut stdout = std::io::stdout();
+        stdout.write(b"\x1b[37;1m").expect(WRITEFAILURE);
+        stdout.flush().expect(WRITEFAILURE);
+        print!("{}", s);
+        stdout.write(b"\x1b[m").expect(WRITEFAILURE);
+        stdout.flush().expect(WRITEFAILURE);
+    }
+
+    pub fn print(&self) {
+        let mut highlights_results: Vec<BTreeSet<AnnotationHandle>> = Vec::new();
+        for _ in 0..self.highlights.len() {
+            highlights_results.push(BTreeSet::new());
+        }
+        if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
+            println!("Legend:");
+            for (i, highlight) in self.highlights.iter().enumerate() {
+                if let Some(hlq) = highlight.query.as_ref() {
+                    let s = format!(
+                        "       {}. {}\n",
+                        i + 1,
+                        hlq.name().unwrap_or("(untitled)").replace("_", " ")
+                    );
+                    self.writeansicol_bold(i + 1, s.as_str());
+                }
+            }
+            println!();
+        }
+        let results = self.store.query(self.selectionquery.clone());
+        let names = results.names();
+        let mut prevresult = None;
+        for (resultnr, selectionresult) in results.enumerate() {
+            //MAYBE TODO: the clone is a bit unfortunate but no big deal
+            match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
+                Err(msg) => return self.output_error(msg),
+                Ok((resulttextselection, _, id)) => {
+                    if prevresult == Some(resulttextselection.clone()) {
+                        //prevent duplicates (especially relevant when --use is set)
+                        continue;
+                    }
+                    prevresult = Some(resulttextselection.clone());
+                    if self.titles {
+                        if let Some(id) = id {
+                            let s = format!("----------------------------------- {}. {} -----------------------------------\n", resultnr + 1, id,);
+                            self.writeheader(s.as_str());
+                        }
+                    }
+                    let resource = resulttextselection.resource();
+                    let mut begin: usize = resulttextselection.begin();
+                    let mut positions: Vec<_> = resulttextselection
+                        .positions(stam::PositionMode::Both)
+                        .copied()
+                        .collect();
+                    positions.push(resulttextselection.end());
+                    let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
+                    for i in positions {
+                        if i > begin {
+                            //output text in buffer
+                            let text = resource
+                                .text_by_offset(&Offset::simple(begin, i))
+                                .expect("offset should be valid");
+                            print!("{}", text);
+                            begin = i;
+                        }
+
+                        if let Some(position) = resource.as_ref().position(i) {
+                            for (_, textselectionhandle) in position.iter_end2begin() {
+                                let textselection = resource
+                                    .as_ref()
+                                    .get(*textselectionhandle)
+                                    .unwrap()
+                                    .as_resultitem(resource.as_ref(), self.store);
+                                let close: Vec<_> =
+                                    textselection.annotations().map(|a| a.handle()).collect();
+                                span_annotations.retain(|a| {
+                                    if close.contains(a) {
+                                        //close tags and add labels
+                                        for (j, (highlights, highlights_results)) in self
+                                            .highlights
+                                            .iter()
+                                            .zip(highlights_results.iter())
+                                            .enumerate()
+                                        {
+                                            if highlights_results.contains(a) {
+                                                if let Some(annotation) = self.store.annotation(*a)
+                                                {
+                                                    //closing highlight after adding tag if needed
+                                                    let tag = highlights.get_tag(annotation);
+                                                    if !tag.is_empty() {
+                                                        self.writeansicol(
+                                                            j + 1,
+                                                            format!("|{}", &tag).as_str(),
+                                                        );
+                                                    }
+                                                    self.writeansicol_bold(j + 1, "]");
+                                                }
+                                            }
+                                        }
+                                        false
+                                    } else {
+                                        true
+                                    }
+                                });
+                            }
+
+                            let mut new_span_annotations: BTreeSet<AnnotationHandle> =
+                                BTreeSet::new();
+
+                            if i != resulttextselection.end() {
+                                //find and add annotations that begin here
+                                for (_, textselectionhandle) in position.iter_begin2end() {
+                                    let textselection = resource
+                                        .as_ref()
+                                        .get(*textselectionhandle)
+                                        .unwrap()
+                                        .as_resultitem(resource.as_ref(), self.store);
+                                    new_span_annotations
+                                        .extend(textselection.annotations().map(|a| a.handle()));
+                                }
+
+                                if self.prune || !new_span_annotations.is_empty() {
+                                    //gather annotations for the textselection under consideration
+                                    highlights_results = get_highlights_results(
+                                        &self.selectionquery,
+                                        &selectionresult,
+                                        self.selectionvar,
+                                        self.store,
+                                        &self.highlights,
+                                        &names,
+                                        &new_span_annotations,
+                                        highlights_results,
+                                    )
+                                }
+                            }
+                            if self.prune {
+                                //prunes everything that is not highlighted
+                                span_annotations.retain(|a| {
+                                    for highlights_annotations in highlights_results.iter() {
+                                        if highlights_annotations.contains(a) {
+                                            return true;
+                                        }
+                                    }
+                                    false
+                                })
+                            }
+                            if !new_span_annotations.is_empty() && i != resulttextselection.end() {
+                                //output the opening tags
+                                for (j, highlights_annotations) in
+                                    highlights_results.iter().enumerate()
+                                {
+                                    if new_span_annotations
+                                        .intersection(&highlights_annotations)
+                                        .next()
+                                        .is_some()
+                                    {
+                                        self.writeansicol_bold(j + 1, "[");
+                                    }
+                                }
+                                //the text is outputted alongside the closing tag
+                            }
+                            span_annotations.extend(new_span_annotations.into_iter());
+                        }
+                    }
+                }
+            }
+            println!();
+        }
+    }
+}
+
+#[inline]
+fn get_highlights_results<'a>(
+    selectionquery: &Query<'a>,
+    selectionresult: &QueryResultItems,
+    selectionvar: Option<&str>,
+    store: &'a AnnotationStore,
+    highlights: &[Highlight],
+    names: &QueryNames,
+    span_annotations: &BTreeSet<AnnotationHandle>,
+    mut highlights_results: Vec<BTreeSet<AnnotationHandle>>,
+) -> Vec<BTreeSet<AnnotationHandle>> {
+    //gather annotations for the textselection under consideration
+    for (j, highlights) in highlights.iter().enumerate() {
+        if let Some(mut hlquery) = highlights.query.clone() {
+            let mut annotations = BTreeSet::new();
+            //make variable from selection query available in the highlight query:
+            let varname = selectionvar.unwrap_or(
+                selectionquery
+                    .name()
+                    .expect("you must name the variables in your SELECT statements"),
+            );
+            if let Some(parentresult) = selectionresult.get_by_name(names, varname).ok() {
+                match parentresult {
+                    QueryResultItem::None => {}
+                    QueryResultItem::Annotation(x) => {
+                        hlquery.bind_annotationvar(varname, x.clone());
+                    }
+                    QueryResultItem::TextSelection(x) => {
+                        hlquery.bind_textvar(varname, x.clone());
+                    }
+                    QueryResultItem::AnnotationData(x) => {
+                        hlquery.bind_datavar(varname, x.clone());
+                    }
+                    QueryResultItem::TextResource(x) => {
+                        hlquery.bind_resourcevar(varname, x.clone());
+                    }
+                    QueryResultItem::AnnotationDataSet(x) => {
+                        hlquery.bind_datasetvar(varname, x.clone());
+                    }
+                    QueryResultItem::DataKey(x) => {
+                        hlquery.bind_keyvar(varname, x.clone());
+                    }
+                }
+            } else {
+                eprintln!(
+                    "WARNING: unable to retrieve variable {} from main query",
+                    varname
+                );
+            }
+            //process result of highlight query and extra annotations
+            for results in store.query(hlquery) {
+                if let Some(result) = results.iter().last() {
+                    match result {
+                        &QueryResultItem::Annotation(ref annotation) => {
+                            annotations.insert(annotation.handle());
+                        }
+                        &QueryResultItem::TextSelection(ref ts) => {
+                            annotations.extend(ts.annotations().map(|x| x.handle()));
+                        }
+                        &QueryResultItem::AnnotationData(ref data) => {
+                            annotations.extend(data.annotations().map(|x| x.handle()));
+                        }
+                        _ => {
+                            eprintln!(
+                                "WARNING: query for highlight {} has invalid resulttype",
+                                j + 1
+                            )
+                        }
+                    }
+                }
+            }
+            highlights_results[j] = FromHandles::new(annotations.iter().copied(), store)
+                .map(|x| x.handle())
+                .collect();
+        } else if let Tag::Key(key) | Tag::KeyAndValue(key) | Tag::Value(key) = &highlights.tag {
+            //no query defined, only a tagkey, that's ok, we obtain the annotations directly:
+            highlights_results[j] = FromHandles::new(span_annotations.iter().copied(), store)
+                .filter_key(key)
+                .map(|x| x.handle())
+                .collect();
+        }
+    }
+    highlights_results
 }
 
 /*
