@@ -277,16 +277,19 @@ $ stam tag --rules rules.tsv my.store.stam.json
 
 ### stam view
 
-The `stam view` tool is used to visualize annotations as HTML. It will output a
-self-contained static HTML document to standard output (the document does not
-reference any external assets). The annotations you want to visualise are
-requested via queries in
+The `stam view` tool is used to visualize annotations. The default
+visualisation is HTML. This will output a self-contained static HTML document
+to standard output (the document does not reference any external assets). An
+alternative visualisation is text with ANSI escape codes for colours (`--format
+ansi`), which is suited for display in a terminal rather than a browser. The
+annotations you want to visualise are requested via queries in
 [STAMQL](https://github.com/annotation/stam/tree/master/extensions/stam-query),
 using the `--query` parameter.
 
-The `--query` can be specified multiple times. The first query is always the
-*selection query*, it determines what the main selection is and can be anything
-you can query that has text (i.e. resources, annotations, text selections).
+The `--query` parameter can be specified multiple times. The first query is
+always the *selection query*, it determines what the main selection is and can
+be anything you can query that has text (i.e. resources, annotations, text
+selections).
 
 Any subsequent queries are *highlight queries*, they determine what parts of
 the selections produces by the selection query you want to highlight.
@@ -297,6 +300,10 @@ Highlighting is done by drawing a line underneath the text and optionally by a *
 Example with tags: 
 
 ![STAM view example with tags](stamvis2.png)
+
+Example of ANSI output rather than HTML:
+
+![STAM view example on the terminal with ANSI colours](stamvis6.jpg)
 
 Tags can be enabled by prepending the query with one of the following *attributes*:
 
@@ -313,6 +320,7 @@ and these will appear in the legend (unless you pass `--no-legend`).
 
 Various real examples of visualisation and queries are shown here: <https://github.com/knaw-huc/stam-experiments/tree/main/exp6>
 
+Example of output with `--format ansi`
 
 
 
