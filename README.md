@@ -301,9 +301,6 @@ Example with tags:
 
 ![STAM view example with tags](stamvis2.png)
 
-Example of ANSI output rather than HTML:
-
-![STAM view example on the terminal with ANSI colours](stamvis6.jpg)
 
 Tags can be enabled by prepending the query with one of the following *attributes*:
 
@@ -320,15 +317,6 @@ and these will appear in the legend (unless you pass `--no-legend`).
 
 Various real examples of visualisation and queries are shown here: <https://github.com/knaw-huc/stam-experiments/tree/main/exp6>
 
-Example of output with `--format ansi`
+Example of ANSI output rather than HTML, using `--format ansi`:
 
-
-
-
-
-
-
-
-
-
-
+![STAM view example on the terminal with ANSI colours](stamvis6.jpg)
