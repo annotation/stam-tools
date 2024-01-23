@@ -173,6 +173,7 @@ const HTML_HEADER: &str = "<!DOCTYPE html>
     <meta name=\"generator\" content=\"stam view\" />
     <style type=\"text/css\">
 div.resource, div.textselection {
+    color: black;
     background: white;
     font-family: monospace;
     border: 1px solid black;
@@ -282,6 +283,7 @@ span.l1, span.l2, span.l3, span.l4, span.l5, span.l6, span.l7, span.l8, span.l9,
 }
 
 div#legend {
+    color: black;
     width: 40%;
     min-width: 320px;
     margin-left: auto;
@@ -326,6 +328,7 @@ div#legend span.hi8 {
     background: #6faa61; /*green*/
 }
 body>h2 {
+    color: black;
     font-size: 1.1em;
     font-family: sans-serif;
 }
@@ -541,7 +544,8 @@ impl<'a> Display for HtmlWriter<'a> {
                             write!(
                                 f,
                                 "{}",
-                                html_escape::encode_text(text.replace("\n", "<br/>").as_str())
+                                html_escape::encode_text(text)
+                                    .replace("\n", "<br>")
                                     .replace(" ", "&ensp;")
                                     .as_str()
                             )?;

@@ -562,7 +562,7 @@ returned, in that case anything else is considered context and will not be retur
             .value_of("query")
             .into_iter()
             .next()
-            .unwrap_or("SELECT RESOURCE ?res;");
+            .unwrap_or("SELECT RESOURCE ?res");
         let (query, _) = stam::Query::parse(querystring).unwrap_or_else(|err| {
             eprintln!("[error] Query syntax error: {}", err);
             exit(1);
