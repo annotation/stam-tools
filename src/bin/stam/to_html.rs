@@ -500,6 +500,7 @@ impl<'a> Display for HtmlWriter<'a> {
         let names = results.names();
         let mut prevresult = None;
         let mut openingtags = String::new();
+        let mut classes = vec![];
         for (resultnr, selectionresult) in results.enumerate() {
             //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
@@ -778,7 +779,8 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
                             if !span_annotations.is_empty() && i != resulttextselection.end() {
                                 //output the opening tags
-                                let mut classes = vec!["a".to_string()];
+                                classes.clear();
+                                classes.push("a".to_string());
                                 for (j, highlights_annotations) in
                                     highlights_results.iter().enumerate()
                                 {
