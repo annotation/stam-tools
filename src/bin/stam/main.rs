@@ -8,20 +8,20 @@ mod grep;
 mod info;
 mod query;
 mod tag;
-mod to_html;
 mod to_text;
 mod tsv;
 mod validate;
+mod view;
 
 use crate::annotate::*;
 use crate::grep::*;
 use crate::info::*;
 use crate::query::*;
 use crate::tag::*;
-use crate::to_html::*;
 use crate::to_text::*;
 use crate::tsv::*;
 use crate::validate::*;
+use crate::view::*;
 
 const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
