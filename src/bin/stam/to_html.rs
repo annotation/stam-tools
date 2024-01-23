@@ -3,6 +3,8 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 
+use std::str::Chars;
+
 use crate::query::textselection_from_queryresult;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -497,6 +499,7 @@ impl<'a> Display for HtmlWriter<'a> {
         let results = self.store.query(self.selectionquery.clone());
         let names = results.names();
         let mut prevresult = None;
+        let mut openingtags = String::new();
         for (resultnr, selectionresult) in results.enumerate() {
             //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
@@ -536,22 +539,49 @@ impl<'a> Display for HtmlWriter<'a> {
                         .collect();
                     positions.push(resulttextselection.end());
                     for i in positions {
+                        // at the moment we only handle trailing linebreaks, linebreaks inside or at the beginning of text selections are not rendered yet!
+                        let mut needclosure = true;
                         if i > begin {
                             //output text
                             let text = resource
                                 .text_by_offset(&Offset::simple(begin, i))
                                 .expect("offset should be valid");
-                            write!(
-                                f,
-                                "{}",
-                                html_escape::encode_text(text)
-                                    .replace("\n", "<br>")
-                                    .replace(" ", "&ensp;")
-                                    .as_str()
-                            )?;
+                            for (subtext, texttype, done) in LinebreakIter::new(text) {
+                                match texttype {
+                                    BufferType::Text => {
+                                        write!(
+                                            f,
+                                            "{}",
+                                            html_escape::encode_text(subtext)
+                                                .replace(" ", "&ensp;")
+                                                .as_str()
+                                        )?;
+                                    }
+                                    BufferType::NewLines => {
+                                        if !span_annotations.is_empty() {
+                                            for _ in 0..self.highlights.len() {
+                                                write!(f, "</span>")?;
+                                            }
+                                            write!(f, "</span>")?;
+                                            write!(
+                                                f,
+                                                "{}",
+                                                subtext.replace("\n", "<br/>").as_str()
+                                            )?;
+                                            if !done {
+                                                //open spans again for the next subtext
+                                                write!(f, "{}", openingtags)?;
+                                            } else {
+                                                needclosure = false;
+                                            }
+                                        }
+                                    }
+                                    BufferType::None => {}
+                                }
+                            }
                             begin = i;
                         }
-                        if !span_annotations.is_empty() {
+                        if !span_annotations.is_empty() && needclosure {
                             for _ in 0..self.highlights.len() {
                                 write!(f, "</span>")?;
                             }
@@ -760,13 +790,14 @@ impl<'a> Display for HtmlWriter<'a> {
                                         classes.push(format!("hi{}", j + 1));
                                     }
                                 }
-                                write!(f, "<span")?;
+                                openingtags.clear();
+                                openingtags += "<span";
                                 if !classes.is_empty() {
-                                    write!(f, " class=\"{}\"", classes.join(" "))?;
+                                    openingtags +=
+                                        format!(" class=\"{}\"", classes.join(" ")).as_str();
                                 }
                                 if self.output_annotation_ids {
-                                    write!(
-                                        f,
+                                    openingtags += format!(
                                         " data-annotations=\"{}\"",
                                         span_annotations
                                             .iter()
@@ -781,14 +812,21 @@ impl<'a> Display for HtmlWriter<'a> {
                                             })
                                             .collect::<Vec<_>>()
                                             .join(" "),
-                                    )?;
+                                    )
+                                    .as_str();
                                 }
+                                //incomplete but we output already
+                                write!(f, "{}", openingtags.as_str())?;
                                 if self.output_offset {
+                                    //we don't want this in the openingtags buffer because it'd be behind if we reuse the opening tags later
                                     write!(f, " data-offset=\"{}\"", i)?;
                                 }
+                                openingtags += ">";
                                 write!(f, ">")?;
                                 for i in 0..self.highlights.len() {
-                                    write!(f, "<span class=\"l{}\">", i + 1)?;
+                                    let layer = format!("<span class=\"l{}\">", i + 1);
+                                    openingtags += layer.as_str();
+                                    write!(f, "{}", layer)?;
                                 }
                                 //the text is outputted alongside the closing tag
                             }
@@ -818,3 +856,74 @@ fn data_to_json(store: &AnnotationStore, annotations: impl Iterator<Item = Annot
         print!("}}");
 }
 */
+
+#[derive(Copy, PartialEq, Clone, Debug)]
+enum BufferType {
+    None,
+    NewLines,
+    Text,
+}
+
+struct LinebreakIter<'a> {
+    iter: Chars<'a>,
+    text: &'a str,
+    curbytepos: usize,
+    beginbytepos: usize,
+    buffertype: BufferType,
+    done: bool,
+}
+
+impl<'a> LinebreakIter<'a> {
+    fn new(text: &'a str) -> Self {
+        Self {
+            iter: text.chars(),
+            text,
+            curbytepos: 0,
+            beginbytepos: 0,
+            buffertype: BufferType::None,
+            done: false,
+        }
+    }
+}
+
+impl<'a> Iterator for LinebreakIter<'a> {
+    type Item = (&'a str, BufferType, bool);
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.done {
+            if let Some(c) = self.iter.next() {
+                if (c == '\n' && self.buffertype == BufferType::NewLines)
+                    || (self.buffertype == BufferType::Text)
+                {
+                    //same type as buffer, carry on
+                    self.curbytepos += c.len_utf8();
+                } else {
+                    //switching buffers, yield result
+                    let resultbuffertype = self.buffertype;
+                    if c == '\n' {
+                        self.buffertype = BufferType::NewLines;
+                    } else {
+                        self.buffertype = BufferType::Text;
+                    }
+                    if self.curbytepos > self.beginbytepos {
+                        let result = &self.text[self.beginbytepos..self.curbytepos];
+                        self.beginbytepos = self.curbytepos;
+                        self.curbytepos += c.len_utf8();
+                        return Some((result, resultbuffertype, self.done));
+                    } else {
+                        self.curbytepos += c.len_utf8();
+                    }
+                }
+            } else {
+                //return last buffer (if any)
+                if self.curbytepos > self.beginbytepos && !self.done {
+                    let result = &self.text[self.beginbytepos..];
+                    self.done = true;
+                    return Some((result, self.buffertype, self.done));
+                } else {
+                    return None;
+                }
+            }
+        }
+        None
+    }
+}
