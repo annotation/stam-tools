@@ -1,0 +1,95 @@
+{
+  "@type": "AnnotationStore",
+  "resources": [
+    {
+      "@type": "TextResource",
+      "@include": "hello2.txt"
+    }
+  ],
+  "annotationsets": [
+    {
+      "@type": "AnnotationDataSet",
+      "@id": "default",
+      "keys": [
+        {
+          "@type": "DataKey",
+          "@id": "pos"
+        }
+      ],
+      "data": [
+        {
+          "@type": "AnnotationData",
+          "@id": "!D0",
+          "key": "pos",
+          "value": {
+            "@type": "String",
+            "value": "interjection"
+          }
+        },
+        {
+          "@type": "AnnotationData",
+          "@id": "!D1",
+          "key": "pos",
+          "value": {
+            "@type": "String",
+            "value": "noun"
+          }
+        }
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "@type": "Annotation",
+      "@id": "!A0",
+      "target": {
+        "@type": "TextSelector",
+        "resource": "hello2.txt",
+        "offset": {
+          "@type": "Offset",
+          "begin": {
+            "@type": "BeginAlignedCursor",
+            "value": 0
+          },
+          "end": {
+            "@type": "BeginAlignedCursor",
+            "value": 5
+          }
+        }
+      },
+      "data": [
+        {
+          "@type": "AnnotationData",
+          "@id": "!D0",
+          "set": "default"
+        }
+      ]
+    },
+    {
+      "@type": "Annotation",
+      "@id": "!A1",
+      "target": {
+        "@type": "TextSelector",
+        "resource": "hello2.txt",
+        "offset": {
+          "@type": "Offset",
+          "begin": {
+            "@type": "BeginAlignedCursor",
+            "value": 6
+          },
+          "end": {
+            "@type": "BeginAlignedCursor",
+            "value": 11
+          }
+        }
+      },
+      "data": [
+        {
+          "@type": "AnnotationData",
+          "@id": "!D1",
+          "set": "default"
+        }
+      ]
+    }
+  ]
+}
