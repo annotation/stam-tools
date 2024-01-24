@@ -13,6 +13,5 @@
         "name": "KNAW Humanities Cluster",
         "url": "https://huc.knaw.nl"
     },
-    "applicationCategory": [ "https://w3id.org/nwo-research-fields#TextualAndLinguisticCorpora", "https://w3id.org/nwo-research-fields#TextualAndContentAnalysis", "https://vocabs.dariah.eu/tadirah/annotating" ],
-    "developmentStatus": [ "https://w3id.org/research-technology-readiness-levels#Stage3Experimental", "https://www.repostatus.org/#active" ]
+    "applicationCategory": [ "https://w3id.org/nwo-research-fields#TextualAndLinguisticCorpora", "https://w3id.org/nwo-research-fields#TextualAndContentAnalysis", "https://vocabs.dariah.eu/tadirah/annotating" ]
 }
