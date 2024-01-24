@@ -21,7 +21,7 @@ Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 * ``stam validate``  - Validate a STAM model.  
 * ``stam save``      - Write a STAM model to file(s). This can be used to switch between STAM JSON and STAM CSV output, based on the extension.
 * ``stam tag``       - Regular-expression based tagger on plain text. 
-* ``stam view``      - View annotations as queried by outputting to HTML 
+* ``stam view``      - View annotations as queried by outputting to HTML (or ANSI coloured text).
 
 For many of these, you can set `--verbose` for extra details in the output.
 
