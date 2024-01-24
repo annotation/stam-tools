@@ -5,7 +5,7 @@
 [![Crate](https://img.shields.io/crates/v/stam-tools.svg)](https://crates.io/crates/stam-tools)
 [![GitHub release](https://img.shields.io/github/release/annotation/stam-tools.svg)](https://GitHub.com/annotation/stam-tools/releases/)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
-![7 - Release Candidate - Technology ready enough and in initial use by end-users in intended scholarly environments. Further validation in progress.](https://w3id.org/research-technology-readiness-levels#Level7ReleaseCandidate)
+![Technology Readiness Level 7/9 - Release Candidate - Technology ready enough and in initial use by end-users in intended scholarly environments. Further validation in progress.](https://w3id.org/research-technology-readiness-levels/Level7ReleaseCandidate.svg)
 
 # STAM Tools
 
