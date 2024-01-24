@@ -296,11 +296,11 @@ Any subsequent queries are *highlight queries*, they determine what parts of
 the selections produces by the selection query you want to highlight.
 Highlighting is done by drawing a line underneath the text and optionally by a *tag* that shows extra information.
 
-![STAM view example](stamvis1.png)
+![STAM view example](https://github.com/annotation/stam-tools/raw/master/stamvis1.png)
 
 Example with tags: 
 
-![STAM view example with tags](stamvis2.png)
+![STAM view example with tags](https://github.com/annotation/stam-tools/raw/master/stamvis2.png)
 
 
 Tags can be enabled by prepending the query with one of the following *attributes*:
@@ -320,4 +320,4 @@ Various real examples of visualisation and queries are shown here: <https://gith
 
 Example of ANSI output rather than HTML, using `--format ansi`:
 
-![STAM view example on the terminal with ANSI colours](stamvis6.jpg)
+![STAM view example on the terminal with ANSI colours](https://github.com/annotation/stam-tools/raw/master/stamvis6.jpg)
