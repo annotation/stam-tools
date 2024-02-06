@@ -5,6 +5,7 @@ const GIB: &str = "GiB";
 const MIB: &str = "MiB";
 const KIB: &str = "KiB";
 
+/// Returns a human readable representation of memory usage. INput is bytes, output is a float and an automatically determined unit string.
 pub fn humanmem(bytes: usize) -> (f64, &'static str) {
     if bytes >= 1024 * 1024 * 1024 {
         let bytes: f64 = bytes as f64;
@@ -24,6 +25,7 @@ pub fn humanmem(bytes: usize) -> (f64, &'static str) {
     }
 }
 
+/// Output information of the annotation store to stdout/stderr
 pub fn info(store: &AnnotationStore, verbose: bool) {
     if !verbose {
         eprintln!("(Tip: add --verbose for more detailed info output)");

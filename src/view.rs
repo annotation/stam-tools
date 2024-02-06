@@ -11,6 +11,8 @@ use crate::query::textselection_from_queryresult;
 const WRITEFAILURE: &'static str = "ERROR: Buffer write failure";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Determines whether to display a Tag when highlighting annotations,
+/// and what information to show in it.
 pub enum Tag<'a> {
     ///Highlight only, no tag
     None,
@@ -28,6 +30,8 @@ pub enum Tag<'a> {
     Value(ResultItem<'a, DataKey>),
 }
 
+#[derive(Clone, Debug)]
+/// Represent a highlight action, represented by a query and a tag to show how to visualize it.
 pub struct Highlight<'a> {
     tag: Tag<'a>,
     query: Option<Query<'a>>,
@@ -45,6 +49,7 @@ impl<'a> Default for Highlight<'a> {
 }
 
 impl<'a> Highlight<'a> {
+    /// Create a highlight by parsing a query from string
     pub fn parse_query(
         mut query: &'a str,
         store: &'a AnnotationStore,
@@ -104,13 +109,11 @@ impl<'a> Highlight<'a> {
         self
     }
 
-    #[allow(dead_code)]
     pub fn with_query(mut self, query: Query<'a>) -> Self {
         self.query = Some(query);
         self
     }
 
-    #[allow(dead_code)]
     pub fn with_label(mut self, label: &'a str) -> Self {
         self.label = Some(label);
         self
@@ -144,6 +147,8 @@ impl<'a> Highlight<'a> {
     }
 }
 
+/// Holds all information necessary to visualize annotations as HTML.
+/// The writer can be run (= output HTML) via the [`Display`] trait.
 pub struct HtmlWriter<'a> {
     store: &'a AnnotationStore,
     selectionquery: Query<'a>,
@@ -345,8 +350,9 @@ body>h2 {
 const HTML_FOOTER: &str = "
 </body></html>";
 
-#[allow(dead_code)] //TODO: remove this at a later point when more of this is exposed as a library
 impl<'a> HtmlWriter<'a> {
+    /// Instantiates an HtmlWriter, uses a builder pattern via the ``with*()`` methods
+    /// to assign data.
     pub fn new(store: &'a AnnotationStore, selectionquery: Query<'a>) -> Self {
         Self {
             store,
@@ -773,6 +779,7 @@ impl<'a> Display for HtmlWriter<'a> {
     }
 }
 
+/// Holds all information necessary to visualize annotations as text with ANSI escape codes, for terminal output
 pub struct AnsiWriter<'a> {
     store: &'a AnnotationStore,
     selectionquery: Query<'a>,
@@ -787,6 +794,8 @@ pub struct AnsiWriter<'a> {
 }
 
 impl<'a> AnsiWriter<'a> {
+    /// Instantiates an AnsiWriter, uses a builder pattern via the ``with*()`` methods
+    /// to assign data.
     pub fn new(store: &'a AnnotationStore, selectionquery: Query<'a>) -> Self {
         Self {
             store,
@@ -867,6 +876,7 @@ impl<'a> AnsiWriter<'a> {
         stdout.flush().expect(WRITEFAILURE);
     }
 
+    /// Print to standard output. This is the main method.
     pub fn print(&self) {
         let mut highlights_results: Vec<BTreeSet<AnnotationHandle>> = Vec::new();
         for _ in 0..self.highlights.len() {

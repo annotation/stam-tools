@@ -3,27 +3,7 @@ use stam::{AnnotationStore, AssociatedFile, Config};
 use std::path::Path;
 use std::process::exit;
 
-mod annotate;
-mod grep;
-mod info;
-mod query;
-mod tag;
-mod to_text;
-mod tsv;
-mod validate;
-mod view;
-
-use crate::annotate::*;
-use crate::grep::*;
-use crate::info::*;
-use crate::query::*;
-use crate::tag::*;
-use crate::to_text::*;
-use crate::tsv::*;
-use crate::validate::*;
-use crate::view::*;
-
-const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+use stamtools::*;
 
 fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
