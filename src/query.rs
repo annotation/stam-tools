@@ -68,3 +68,80 @@ pub fn textselection_from_queryresult<'a>(
     };
     Ok((resulttextselection, whole_resource, id))
 }
+
+pub fn to_json<'a>(store: &'a AnnotationStore, query: Query<'a>) -> Result<(), StamError> {
+    let iter = store.query(query);
+    let names = iter.names();
+    let names_ordered = names.enumerate();
+    print!("[");
+    for (i, resultrow) in iter.enumerate() {
+        if i > 0 {
+            println!(",\n{{\n");
+        } else {
+            println!("{{\n");
+        }
+        for (j, result) in resultrow.iter().enumerate() {
+            let varname = names_ordered.get(j).map(|x| x.1);
+            let json = match result {
+                QueryResultItem::None => "null".to_string(),
+                QueryResultItem::Annotation(annotation) => {
+                    annotation.as_ref().to_json_string(store)?
+                }
+                QueryResultItem::AnnotationData(data) => {
+                    data.as_ref().to_json(data.set().as_ref())?
+                }
+                QueryResultItem::DataKey(key) => key.as_ref().to_json()?,
+                QueryResultItem::TextResource(resource) => resource.as_ref().to_json_string()?,
+                QueryResultItem::AnnotationDataSet(dataset) => dataset.as_ref().to_json_string(
+                    &Config::default().with_dataformat(DataFormat::Json { compact: false }),
+                )?,
+                QueryResultItem::TextSelection(tsel) => tsel.to_json()?,
+            };
+            let varnum = format!("{}", j + 1);
+            println!(
+                "\"{}\": {}{}",
+                if let Some(varname) = varname {
+                    varname
+                } else {
+                    &varnum
+                },
+                json,
+                if i < resultrow.len() - 1 { ",\n" } else { "\n" }
+            );
+        }
+        print!("}}");
+    }
+    println!("]");
+    Ok(())
+}
+
+pub fn to_w3anno<'a>(
+    store: &'a AnnotationStore,
+    query: Query<'a>,
+    use_var: &str,
+    config: WebAnnoConfig,
+) {
+    let iter = store.query(query);
+    let names = iter.names();
+    for resultrow in iter {
+        if let Ok(result) = resultrow.get_by_name(&names, use_var) {
+            match result {
+                QueryResultItem::None => {}
+                QueryResultItem::Annotation(annotation) => {
+                    println!("{}", annotation.to_webannotation(&config));
+                }
+                QueryResultItem::TextSelection(tsel) => {
+                    for annotation in tsel.annotations() {
+                        println!("{}", annotation.to_webannotation(&config));
+                    }
+                }
+                _ => {
+                    eprintln!("Error: Obtained result type can not be serialised to Web Annotation, only ANNOTATION and TEXT work.");
+                }
+            }
+        } else {
+            eprintln!("Error: No result found for variable {}", use_var);
+            return;
+        }
+    }
+}

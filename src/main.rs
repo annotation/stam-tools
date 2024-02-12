@@ -1,5 +1,5 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
-use stam::{AnnotationStore, AssociatedFile, Config};
+use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig};
 use std::path::Path;
 use std::process::exit;
 
@@ -75,6 +75,64 @@ fn config_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn format_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("format")
+            .long("format")
+            .short('F')
+            .help("Output format, can be 'tsv', or 'w3anno' (W3C Web Annotation in JSON Lines output, i.e. one annotation in JSON-LD per line)")
+            .takes_value(true)
+            .default_value("tsv"),
+    );
+    args
+}
+
+fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("annotation-prefix")
+            .long("annotation-prefix")
+            .help("(for Web Annotation output only): default prefix when forming IRIs from STAM public identifiers for annotations")
+            .takes_value(true)
+            .default_value("_:"),
+    );
+    args.push(
+        Arg::with_name("dataset-prefix")
+            .long("dataset-prefix")
+            .help("(for Web Annotation output only): default prefix when forming IRIs from STAM public identifiers for annotation data sets")
+            .takes_value(true)
+            .default_value("_:"),
+    );
+    args.push(
+        Arg::with_name("resource-prefix")
+            .long("resource-prefix")
+            .help("(for Web Annotation output only): default prefix when forming IRIs from STAM public identifiers for text resources")
+            .takes_value(true)
+            .default_value("_:"),
+    );
+    args.push(
+        Arg::with_name("no-generator")
+            .long("no-generator")
+            .help("(for Web Annotation output only) Do not output an automatically generated 'generator' predicate")
+            .required(false),
+    );
+    args.push(
+        Arg::with_name("no-generated")
+            .long("no-generated")
+            .help("(for Web Annotation output only) Do not output an automatically generated 'generated' predicate")
+            .required(false),
+    );
+    args.push(
+        Arg::with_name("add-context")
+            .long("add-context")
+            .help("(for Web Annotation output only) URL to a JSONLD context to include")
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
+    args
+}
+
 /// Translate command line arguments to stam library's configuration structure
 fn config_from_args(args: &ArgMatches) -> Config {
     Config::default()
@@ -142,7 +200,9 @@ fn main() {
                 .args(&common_arguments())
                 .args(&multi_store_arguments(true))
                 .args(&config_arguments())
+                .args(&format_arguments())
                 .args(&tsv_arguments_out())
+                .args(&w3anno_arguments())
                 .args(&query_arguments("
 A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
 "))
@@ -161,7 +221,9 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
                 .args(&common_arguments())
                 .args(&multi_store_arguments(true))
                 .args(&config_arguments())
+                .args(&format_arguments())
                 .args(&tsv_arguments_out())
+                .args(&w3anno_arguments())
                 .args(&query_arguments("
 A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
 "))
@@ -420,12 +482,12 @@ returned, in that case anything else is considered context and will not be retur
                 .to_lowercase()
                 .as_str()
             {
-                "annotation" => "SELECT ANNOTATION ?annotation;",
-                "key" | "datakey" => "SELECT DATAKEY ?key;",
-                "data" | "annotationdata" => "SELECT DATA ?data;",
-                "resource" | "textresource" => "SELECT RESOURCE ?resource;",
-                "dataset" | "annotationset" => "SELECT DATASET ?dataset;",
-                "text" | "textselection" => "SELECT TEXT ?textselection;",
+                "annotation" => "SELECT ANNOTATION ?annotation",
+                "key" | "datakey" => "SELECT DATAKEY ?key",
+                "data" | "annotationdata" => "SELECT DATA ?data",
+                "resource" | "textresource" => "SELECT RESOURCE ?resource",
+                "dataset" | "annotationset" => "SELECT DATASET ?dataset",
+                "text" | "textselection" => "SELECT TEXT ?textselection",
                 _ => {
                     eprintln!("Invalid --type specified");
                     exit(1);
@@ -439,50 +501,82 @@ returned, in that case anything else is considered context and will not be retur
 
         let resulttype = query.resulttype().expect("Query has no result type");
 
-        let columns: Vec<&str> = if let Some(columns) = args.value_of("columns") {
-            columns.split(",").collect()
-        } else {
-            match resulttype {
-                stam::Type::Annotation => {
-                    if verbose {
-                        vec![
-                            "Type",
-                            "Id",
-                            "AnnotationDataSet",
-                            "DataKey",
-                            "DataValue",
-                            "Text",
-                            "TextSelection",
-                        ]
-                    } else {
-                        vec!["Type", "Id", "Text", "TextSelection"]
+        if args.value_of("format") == Some("tsv") {
+            let columns: Vec<&str> = if let Some(columns) = args.value_of("columns") {
+                columns.split(",").collect()
+            } else {
+                match resulttype {
+                    stam::Type::Annotation => {
+                        if verbose {
+                            vec![
+                                "Type",
+                                "Id",
+                                "AnnotationDataSet",
+                                "DataKey",
+                                "DataValue",
+                                "Text",
+                                "TextSelection",
+                            ]
+                        } else {
+                            vec!["Type", "Id", "Text", "TextSelection"]
+                        }
+                    }
+                    stam::Type::DataKey => vec!["Type", "AnnotationDataSet", "Id"],
+                    stam::Type::AnnotationData => {
+                        vec!["Type", "Id", "AnnotationDataSet", "DataKey", "DataValue"]
+                    }
+                    stam::Type::TextResource => vec!["Type", "Id"],
+                    stam::Type::AnnotationDataSet => vec!["Type", "Id"],
+                    stam::Type::TextSelection => vec!["Type", "TextSelection", "Text"],
+                    _ => {
+                        eprintln!("Invalid --type specified");
+                        exit(1);
                     }
                 }
-                stam::Type::DataKey => vec!["Type", "AnnotationDataSet", "Id"],
-                stam::Type::AnnotationData => {
-                    vec!["Type", "Id", "AnnotationDataSet", "DataKey", "DataValue"]
-                }
-                stam::Type::TextResource => vec!["Type", "Id"],
-                stam::Type::AnnotationDataSet => vec!["Type", "Id"],
-                stam::Type::TextSelection => vec!["Type", "TextSelection", "Text"],
-                _ => {
-                    eprintln!("Invalid --type specified");
-                    exit(1);
-                }
-            }
-        };
+            };
 
-        to_tsv(
-            &store,
-            query,
-            &columns,
-            args.is_present("verbose"),
-            args.value_of("subdelimiter").unwrap(),
-            args.value_of("null").unwrap(),
-            !args.is_present("no-header"),
-            args.value_of("setdelimiter").unwrap(),
-            !args.is_present("strict-columns"),
-        );
+            to_tsv(
+                &store,
+                query,
+                &columns,
+                args.is_present("verbose"),
+                args.value_of("subdelimiter").unwrap(),
+                args.value_of("null").unwrap(),
+                !args.is_present("no-header"),
+                args.value_of("setdelimiter").unwrap(),
+                !args.is_present("strict-columns"),
+            );
+        } else if let Some("json") = args.value_of("format") {
+            if let Err(err) = to_json(&store, query) {
+                eprintln!("{}", err);
+                exit(1);
+            }
+        } else if let Some("webanno") | Some("w3anno") | Some("jsonl") = args.value_of("format") {
+            to_w3anno(
+                &store,
+                query,
+                args.value_of("use").unwrap_or(match resulttype {
+                    stam::Type::Annotation => "annotation",
+                    stam::Type::TextSelection => "text",
+                    _ => {
+                        eprintln!("Web Annotation output only supports queries with result type ANNOTATION or TEXT");
+                        exit(1);
+                    }
+                }),
+                WebAnnoConfig {
+                    default_annotation_iri: args.value_of("annotation-prefix").unwrap().to_string(),
+                    default_set_iri: args.value_of("dataset-prefix").unwrap().to_string(),
+                    default_resource_iri: args.value_of("resource-prefix").unwrap().to_string(),
+                    auto_generated: !args.is_present("no-generated"),
+                    auto_generator: !args.is_present("no-generator"),
+                    extra_context: args.values_of("add-context").unwrap_or(clap::Values::default()).map(|x| x.to_string()).collect(),
+                    ..WebAnnoConfig::default()
+                },
+            );
+        } else {
+            eprintln!("Invalid output format, specify 'tsv', 'json' or 'w3anno'");
+            exit(1);
+        }
     } else if rootargs.subcommand_matches("import").is_some() {
         let storefilename = args
             .value_of("annotationstore")
