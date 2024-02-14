@@ -132,6 +132,8 @@ pub fn tsv_arguments_in<'a>() -> Vec<clap::Arg<'a>> {
 * Offset               - Offset in unicode character points (0-indexed, end is non-inclusive) seperated by a hyphen: beginoffset-endoffset
 * BeginOffset          - Begin offset in unicode character points
 * EndOffset            - End offset in unicode character points
+* BeginUtf8Offset      - Begin offset in UTF-8 bytes
+* EndUtf8Offset        - End offset in UTF8-bytes
 
 In addition of the above columns, you may also parse a *custom* column by specifying an AnnotationDataSet and DataKey , separated by the set/key delimiter (by default a slash). Example:
 
