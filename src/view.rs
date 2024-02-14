@@ -191,6 +191,9 @@ div.resource, div.textselection {
     margin: 10px;
     line-height: 1.5em;
 }
+body {
+    background: #b7c8c7;
+}
 .a { /* annotation */
     /* background: #dedede;  light gray */
     vertical-align: bottom;
