@@ -320,34 +320,29 @@ div#legend ul li span {
 }
 div#legend span.hi1 {
     background: #b4e0aa; /* green */
-    cursor: pointer;
 }
 div#legend span.hi2 {
     background: #aaace0; /* blueish/purple */
-    cursor: pointer;
 }
 div#legend span.hi3 {
     background: #e19898; /*red*/
-    cursor: pointer;
 }
 div#legend span.hi4 {
     background: #e1e098; /*yellow */
-    cursor: pointer;
 }
 div#legend span.hi5 {
     background: #98e1dd; /*cyan*/
-    cursor: pointer;
 }
 div#legend span.hi6 {
     background: #dcc6da; /*pink*/
-    cursor: pointer;
 }
 div#legend span.hi7 {
     background: #e1c398; /*orange*/
-    cursor: pointer;
 }
 div#legend span.hi8 {
     background: #6faa61; /*green*/
+}
+div#legend li {
     cursor: pointer;
 }
 body>h2 {
@@ -372,9 +367,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e) {
             e.addEventListener('click', () => {
                 if (tagstate[i]) {
-                    document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.remove("h")} );
-                } else {
                     document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.add("h")} );
+                } else {
+                    document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.remove("h")} );
                 }
                 tagstate[i] = !tagstate[i];
             });
