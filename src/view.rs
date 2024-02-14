@@ -174,6 +174,8 @@ pub struct HtmlWriter<'a> {
     legend: bool,
     /// Output titles (identifiers) for the primary selection?
     titles: bool,
+    /// Use javascript for interactive elements
+    interactive: bool,
 }
 
 const HTML_HEADER: &str = "<!DOCTYPE html>
@@ -318,37 +320,68 @@ div#legend ul li span {
 }
 div#legend span.hi1 {
     background: #b4e0aa; /* green */
+    cursor: pointer;
 }
 div#legend span.hi2 {
     background: #aaace0; /* blueish/purple */
+    cursor: pointer;
 }
 div#legend span.hi3 {
     background: #e19898; /*red*/
+    cursor: pointer;
 }
 div#legend span.hi4 {
     background: #e1e098; /*yellow */
+    cursor: pointer;
 }
 div#legend span.hi5 {
     background: #98e1dd; /*cyan*/
+    cursor: pointer;
 }
 div#legend span.hi6 {
     background: #dcc6da; /*pink*/
+    cursor: pointer;
 }
 div#legend span.hi7 {
     background: #e1c398; /*orange*/
+    cursor: pointer;
 }
 div#legend span.hi8 {
     background: #6faa61; /*green*/
+    cursor: pointer;
 }
 body>h2 {
     color: black;
     font-size: 1.1em;
     font-family: sans-serif;
 }
+label.h {
+    display: none;
+}
     </style>
 </head>
 <body>
 ";
+
+const HTML_SCRIPT: &str = r###"<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let default_tagstate = true;
+    var tagstate = [ default_tagstate, default_tagstate, default_tagstate,default_tagstate,default_tagstate,default_tagstate,default_tagstate,default_tagstate,default_tagstate ];
+    for (let i = 1; i <= 8; i++) {
+        let e = document.getElementById("legend" + i);
+        if (e) {
+            e.addEventListener('click', () => {
+                if (tagstate[i]) {
+                    document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.remove("h")} );
+                } else {
+                    document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.add("h")} );
+                }
+                tagstate[i] = !tagstate[i];
+            });
+        }
+    }
+});
+</script>"###;
 
 const HTML_FOOTER: &str = "
 </body></html>";
@@ -372,6 +405,7 @@ impl<'a> HtmlWriter<'a> {
             footer: Some(HTML_FOOTER),
             legend: true,
             titles: true,
+            interactive: true,
         }
     }
 
@@ -414,6 +448,10 @@ impl<'a> HtmlWriter<'a> {
     }
     pub fn with_footer(mut self, html: Option<&'a str>) -> Self {
         self.footer = html;
+        self
+    }
+    pub fn with_interactive(mut self, value: bool) -> Self {
+        self.interactive = value;
         self
     }
     pub fn with_data_script(mut self, value: bool) -> Self {
@@ -477,6 +515,9 @@ impl<'a> Display for HtmlWriter<'a> {
         if let Some(header) = self.header {
             write!(f, "{}", header)?;
         }
+        if self.interactive {
+            write!(f, "{}", HTML_SCRIPT)?;
+        }
         write!(
             f,
             "<!-- Selection Query:\n\n{}\n\n-->\n",
@@ -500,7 +541,8 @@ impl<'a> Display for HtmlWriter<'a> {
                 if let Some(hlq) = highlight.query.as_ref() {
                     write!(
                         f,
-                        "<li><span class=\"hi{}\"></span> {}</li>",
+                        "<li id=\"legend{}\"><span class=\"hi{}\"></span> {}</li>",
+                        i + 1,
                         i + 1,
                         hlq.name().unwrap_or("(untitled)").replace("_", " ")
                     )?;
