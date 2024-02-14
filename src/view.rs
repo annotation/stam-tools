@@ -191,6 +191,7 @@ div.resource, div.textselection {
     border: 1px solid black;
     padding: 10px;
     margin: 10px;
+    margin-right: 10%;
     line-height: 1.5em;
 }
 body {
@@ -318,6 +319,12 @@ div#legend ul li span {
     border: 1px #555 solid;
     min-height: 15px;
 }
+div#legend li:hover {
+    font-weight: bold;
+}
+div#legend li.hidetags {
+    text-decoration: line-through;
+}
 div#legend span.hi1 {
     background: #b4e0aa; /* green */
 }
@@ -350,8 +357,40 @@ body>h2 {
     font-size: 1.1em;
     font-family: sans-serif;
 }
-label.h {
+label.h em {
     display: none;
+}
+span:hover + label.h em {
+    position: absolute;
+    display: block;
+    padding: 2px;
+    background: black;
+}
+label.h.tag1 em {
+    color: #b4e0aa; /* green */
+    font-weight: bold;
+}
+span:hover + label + label.h em {
+    position: absolute;
+    margin-top: 20px;
+    display: block;
+    padding: 2px;
+    background: black;
+}
+label.h.tag2 em {
+    color: #aaace0; /* blueish/purple */
+    font-weight: bold;
+}
+span:hover + label + label + label.h em {
+    position: absolute;
+    margin-top: 40px;
+    display: block;
+    padding: 2px;
+    background: black;
+}
+label.h.tag3 em {
+    color: #e19898; /*red*/
+    font-weight: bold;
 }
     </style>
 </head>
@@ -360,18 +399,17 @@ label.h {
 
 const HTML_SCRIPT: &str = r###"<script>
 document.addEventListener('DOMContentLoaded', function() {
-    let default_tagstate = true;
-    var tagstate = [ default_tagstate, default_tagstate, default_tagstate,default_tagstate,default_tagstate,default_tagstate,default_tagstate,default_tagstate,default_tagstate ];
     for (let i = 1; i <= 8; i++) {
         let e = document.getElementById("legend" + i);
         if (e) {
             e.addEventListener('click', () => {
-                if (tagstate[i]) {
-                    document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.add("h")} );
-                } else {
+                if (e.classList.contains("hidetags")) {
                     document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.remove("h")} );
+                    e.classList.remove("hidetags");
+                } else {
+                    document.querySelectorAll('label.tag' + i).forEach((tag,i) => { tag.classList.add("h")} );
+                    e.classList.add("hidetags");
                 }
-                tagstate[i] = !tagstate[i];
             });
         }
     }
@@ -531,13 +569,18 @@ impl<'a> Display for HtmlWriter<'a> {
             }
         }
         if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
-            write!(f, "<div id=\"legend\"><ul>")?;
+            write!(f, "<div id=\"legend\" title=\"Click the items in this legend to toggle visibility of tags (if any)\"><ul>")?;
             for (i, highlight) in self.highlights.iter().enumerate() {
                 if let Some(hlq) = highlight.query.as_ref() {
                     write!(
                         f,
-                        "<li id=\"legend{}\"><span class=\"hi{}\"></span> {}</li>",
+                        "<li id=\"legend{}\"{}><span class=\"hi{}\"></span> {}</li>",
                         i + 1,
+                        if self.interactive {
+                            " title=\"Click to toggle visibility of tags (if any)\""
+                        } else {
+                            ""
+                        },
                         i + 1,
                         hlq.name().unwrap_or("(untitled)").replace("_", " ")
                     )?;
