@@ -130,6 +130,13 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true)
             .action(ArgAction::Append),
     );
+    args.push(
+        Arg::with_name("namespaces")
+            .long("ns")
+            .help("(for Web Annotation output only) Add a namespace to the JSON-LD context, syntax is: namespace: uri")
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
     args
 }
 
@@ -570,6 +577,18 @@ returned, in that case anything else is considered context and will not be retur
                     auto_generated: !args.is_present("no-generated"),
                     auto_generator: !args.is_present("no-generator"),
                     extra_context: args.values_of("add-context").unwrap_or(clap::Values::default()).map(|x| x.to_string()).collect(),
+                    context_namespaces: { 
+                        let mut namespaces = Vec::new(); 
+                        for assignment in args.values_of("namespaces").unwrap_or(clap::Values::default()) {
+                            let result: Vec<_> = assignment.splitn(2,":").collect();
+                            if result.len() != 2 {
+                                eprintln!("Syntax for --ns should be `ns: uri_prefix`");
+                                exit(1);
+                            }
+                            namespaces.push((result[1].trim().to_string(), result[0].trim().to_string()));
+                        }
+                        namespaces
+                    },
                     ..WebAnnoConfig::default()
                 },
             );
