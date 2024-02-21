@@ -17,6 +17,7 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("dry-run")
             .long("dry-run")
+            .short('n')
             .help("Dry run, do not write changes to file")
             .required(false),
     );
@@ -395,7 +396,7 @@ returned, in that case anything else is considered context and will not be retur
                 ))
         .subcommand(
             SubCommand::with_name("align")
-                .about("Aligns two texts; computes a transposition annotation that maps the two (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters.")
+                .about("Aligns two texts; computes a transposition annotation that maps the two (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose) and adds it to the store. The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters. In --verbose mode, the alignments will be outputted to standard output as tab separated values with the follows columns: resource 1, offset 1, resource 2, offset 2, text 1, text 2")
                 .args(&common_arguments())
                 .args(&store_argument())
                 .args(&config_arguments())
@@ -925,6 +926,16 @@ You need to specify this parameter twice, the text of first query will be aligne
         ) {
             eprintln!("[error] Alignment failed: {:?}", err);
             exit(1);
+        }
+        if !args.is_present("dry-run") {
+            store.save().unwrap_or_else(|err| {
+                eprintln!(
+                    "Failed to write annotation store {:?}: {}",
+                    store.filename(),
+                    err
+                );
+                exit(1);
+            });
         }
     }
 }

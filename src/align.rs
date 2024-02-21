@@ -214,18 +214,6 @@ struct AlignedFragment {
 }
 
 impl AlignedFragment {
-    fn to_textselections<'a>(
-        &self,
-        text: &ResultTextSelection<'a>,
-        text2: &ResultTextSelection<'a>,
-    ) -> Result<(ResultTextSelection<'a>, ResultTextSelection<'a>), StamError> {
-        Ok((
-            text.textselection_by_offset(&Offset::simple(self.begin1, self.begin1 + self.length))?,
-            text2
-                .textselection_by_offset(&Offset::simple(self.begin2, self.begin2 + self.length))?,
-        ))
-    }
-
     fn to_offsets<'a>(&self) -> (Offset, Offset) {
         (
             Offset::simple(self.begin1, self.begin1 + self.length),
