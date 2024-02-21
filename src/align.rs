@@ -301,13 +301,13 @@ pub fn align_texts<'store>(
                                     text2.resource().id().unwrap_or("-"),
                                     &offset2.begin,
                                     &offset2.end,
-                                    text.textselection_by_offset(&offset1)?
+                                    text.textselection(&offset1)?
                                         .text()
                                         .replace("\"", "\\\"")
                                         .replace("\t", "\\t")
                                         .replace("\n", "\\n"),
                                     text2
-                                        .textselection_by_offset(&offset2)?
+                                        .textselection(&offset2)?
                                         .text()
                                         .replace("\"", "\\\"")
                                         .replace("\t", "\\t")
