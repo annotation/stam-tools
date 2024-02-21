@@ -393,6 +393,16 @@ returned, in that case anything else is considered context and will not be retur
                         .help("Allow regular expression matches to overlap")
                         .required(false),
                 ))
+        .subcommand(
+            SubCommand::with_name("align")
+                .about("Aligns two texts; computes a transposition annotation that maps the two (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters.")
+                .args(&common_arguments())
+                .args(&store_argument())
+                .args(&config_arguments())
+                .args(&query_arguments("A query in STAMQL to retrieve a text. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
+You need to specify this parameter twice, the text of first query will be aligned with text of the second one."))
+                .args(&align_arguments())
+            )
         .get_matches();
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
@@ -419,6 +429,8 @@ returned, in that case anything else is considered context and will not be retur
         args
     } else if let Some(args) = rootargs.subcommand_matches("grep") {
         args
+    } else if let Some(args) = rootargs.subcommand_matches("align") {
+        args
     } else {
         eprintln!("No command specified, please see stam --help");
         exit(2);
@@ -432,6 +444,7 @@ returned, in that case anything else is considered context and will not be retur
         || rootargs.subcommand_matches("print").is_some()
         || rootargs.subcommand_matches("view").is_some()
         || rootargs.subcommand_matches("validate").is_some()
+        || rootargs.subcommand_matches("align").is_some()
     {
         if args.is_present("annotationstore") {
             let storefiles = args
@@ -849,5 +862,69 @@ returned, in that case anything else is considered context and will not be retur
                 .collect(),
             args.is_present("allow-overlap"),
         );
+    } else if rootargs.subcommand_matches("align").is_some() {
+        //load the store
+        store = load_store(args);
+
+        let resources: Vec<String> = args.values_of("resource").unwrap_or_default().map(|x| format!("SELECT RESOURCE WHERE ID \"{}\"",x)).collect();
+        let queries: Vec<&str> = if !resources.is_empty() {
+            resources.iter().map(|x| x.as_str()).collect()
+        } else {
+            args.values_of("query").unwrap_or_default().collect()
+        };
+        let mut queries_iter = queries.into_iter();
+        let (query, query2) = if let (Some(querystring), Some(querystring2)) = (queries_iter.next(), queries_iter.next()) {
+            let (query, _) = stam::Query::parse(querystring).unwrap_or_else(|err| {
+                eprintln!("[error] Query syntax error in first query: {}", err);
+                exit(1);
+            });
+            let (query2, _) = stam::Query::parse(querystring2).unwrap_or_else(|err| {
+                eprintln!("[error] Query syntax error in second query: {}", err);
+                exit(1);
+            });
+            (query, query2)
+        } else {
+            eprintln!("[error] Expected two --query parameters");
+            exit(1);
+        };
+        if let Err(err) = align(
+            &mut store,
+            query,
+            query2,
+            args.value_of("use"),
+            args.value_of("use2"),
+            &AlignmentConfig {
+                case_sensitive: !args.is_present("ignore-case"),
+                algorithm: match args.value_of("algorithm") {
+                    Some("smith_waterman") => AlignmentAlgorithm::SmithWaterman { 
+                        equal: args.value_of("match-score").unwrap().parse().expect("score must be integer"),
+                        align: args.value_of("mismatch-score").unwrap().parse().expect("score must be integer"),
+                        insert: args.value_of("insertion-score").unwrap().parse().expect("score must be integer"),
+                        delete: args.value_of("deletion-score").unwrap().parse().expect("score must be integer")
+                    },
+                    Some("needleman_wunsch") => AlignmentAlgorithm::NeedlemanWunsch  {
+                        equal: args.value_of("match-score").unwrap().parse().expect("score must be integer"),
+                        align: args.value_of("mismatch-score").unwrap().parse().expect("score must be integer"),
+                        insert: args.value_of("insertion-score").unwrap().parse().expect("score must be integer"),
+                        delete: args.value_of("deletion-score").unwrap().parse().expect("score must be integer")
+                    },
+                    Some(x) => {
+                        eprintln!("[error] Not a valid alignment algorithm: {}, set smith_waterman or needleman_wunsch", x);
+                        exit(1);
+                    }
+                    None => unreachable!("No alignment algorithm set")
+                },
+                alignment_scope: if args.is_present("global") {
+                    AlignmentScope::Global
+                } else {
+                    AlignmentScope::Local
+                },
+                annotation_id_prefix: args.value_of("id-prefix").map(|x| x.to_string()),
+                verbose: args.is_present("verbose")
+            }
+        ) {
+            eprintln!("[error] Alignment failed: {:?}", err);
+            exit(1);
+        }
     }
 }

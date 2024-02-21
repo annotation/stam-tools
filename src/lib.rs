@@ -1,3 +1,4 @@
+mod align;
 mod annotate;
 mod grep;
 mod info;
@@ -8,6 +9,7 @@ mod tsv;
 mod validate;
 mod view;
 
+pub use crate::align::*;
 pub use crate::annotate::*;
 pub use crate::grep::*;
 pub use crate::info::*;
