@@ -24,6 +24,11 @@ pub fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .action(ArgAction::Append),
     );
     args.push(
+        Arg::with_name("simple-only")
+            .long("simple-only")
+            .help("Only allow for alignments that consist of one contiguous text selection on either side. This is a so-called simple transposition."),
+    );
+    args.push(
         Arg::with_name("ignore-case")
             .long("ignore-case")
             .help("Do case-insensitive matching, this has more performance overhead"),
@@ -82,6 +87,7 @@ pub struct AlignmentConfig {
     pub algorithm: AlignmentAlgorithm,
     pub alignment_scope: AlignmentScope,
     pub annotation_id_prefix: Option<String>,
+    pub simple_only: bool,
     pub verbose: bool,
 }
 
@@ -92,6 +98,7 @@ impl Default for AlignmentConfig {
             alignment_scope: AlignmentScope::Local,
             algorithm: AlignmentAlgorithm::default(),
             annotation_id_prefix: None,
+            simple_only: false,
             verbose: false,
         }
     }
@@ -342,9 +349,9 @@ pub fn align_texts<'store>(
                 fragment.publish(&mut select1, &mut select2, text, text2, config)?
             }
 
-            if select1.is_empty() {
+            if select1.is_empty() || (config.simple_only && select1.len() > 1) {
                 //no alignment found
-                //TODO: compute a score?
+                //MAYBE TODO: compute and constrain by score?
                 return Ok(builders);
             }
 
