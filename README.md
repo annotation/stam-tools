@@ -332,7 +332,8 @@ from bioinformatics are implemented to accomplish this:
 and [Needleman-Wunsch](https://en.wikipedia.org/wiki/Needleman%E2%80%93Wunsch_algorithm).
 The score parameters to either are fully configurable.
 
-The resulting alignment is added as an annotation according to the [STAM
+The resulting alignment is added as an annotation, a so called transposition,
+according to the [STAM
 Transpose](https://github.com/annotation/stam/tree/master/extensions/stam-transpose)
 extension.
 
