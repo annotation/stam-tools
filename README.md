@@ -13,6 +13,7 @@ A collection of command-line tools for working with [STAM](https://github.com/an
 
 Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 
+* ``stam align``     - Align two similar texts, mapping their coordinate spaces.
 * ``stam annotate``  - Add annotations (or datasets or resources) from STAM JSON files
 * ``stam info``      - Return information regarding a STAM model. 
 * ``stam init``      - Initialize a new STAM annotationstore
