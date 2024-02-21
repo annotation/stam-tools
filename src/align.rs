@@ -353,41 +353,59 @@ pub fn align_texts<'store>(
             } else {
                 generate_id("transposition-", "")
             };
-            let annotation1id = format!("{}-side1", id);
-            builders.push(
-                AnnotationBuilder::new()
-                    .with_id(annotation1id.clone())
-                    .with_data(
-                        "https://w3id.org/stam/extensions/stam-transpose/",
-                        "TranspositionSide",
-                        DataValue::Null,
-                    )
-                    .with_target(SelectorBuilder::DirectionalSelector(select1)),
-            );
-            let annotation2id = format!("{}-side2", id);
-            builders.push(
-                AnnotationBuilder::new()
-                    .with_id(annotation2id.clone())
-                    .with_data(
-                        "https://w3id.org/stam/extensions/stam-transpose/",
-                        "TranspositionSide",
-                        DataValue::Null,
-                    )
-                    .with_target(SelectorBuilder::DirectionalSelector(select2)),
-            );
-            builders.push(
-                AnnotationBuilder::new()
-                    .with_id(id.clone())
-                    .with_data(
-                        "https://w3id.org/stam/extensions/stam-transpose/",
-                        "Transposition",
-                        DataValue::Null,
-                    )
-                    .with_target(SelectorBuilder::DirectionalSelector(vec![
-                        SelectorBuilder::AnnotationSelector(annotation1id.into(), None),
-                        SelectorBuilder::AnnotationSelector(annotation2id.into(), None),
-                    ])),
-            );
+            if select1.len() == 1 {
+                //simple transposition
+                builders.push(
+                    AnnotationBuilder::new()
+                        .with_id(id.clone())
+                        .with_data(
+                            "https://w3id.org/stam/extensions/stam-transpose/",
+                            "Transposition",
+                            DataValue::Null,
+                        )
+                        .with_target(SelectorBuilder::DirectionalSelector(vec![
+                            select1.into_iter().next().unwrap(),
+                            select2.into_iter().next().unwrap(),
+                        ])),
+                );
+            } else {
+                //complex transposition
+                let annotation1id = format!("{}-side1", id);
+                builders.push(
+                    AnnotationBuilder::new()
+                        .with_id(annotation1id.clone())
+                        .with_data(
+                            "https://w3id.org/stam/extensions/stam-transpose/",
+                            "TranspositionSide",
+                            DataValue::Null,
+                        )
+                        .with_target(SelectorBuilder::DirectionalSelector(select1)),
+                );
+                let annotation2id = format!("{}-side2", id);
+                builders.push(
+                    AnnotationBuilder::new()
+                        .with_id(annotation2id.clone())
+                        .with_data(
+                            "https://w3id.org/stam/extensions/stam-transpose/",
+                            "TranspositionSide",
+                            DataValue::Null,
+                        )
+                        .with_target(SelectorBuilder::DirectionalSelector(select2)),
+                );
+                builders.push(
+                    AnnotationBuilder::new()
+                        .with_id(id.clone())
+                        .with_data(
+                            "https://w3id.org/stam/extensions/stam-transpose/",
+                            "Transposition",
+                            DataValue::Null,
+                        )
+                        .with_target(SelectorBuilder::DirectionalSelector(vec![
+                            SelectorBuilder::AnnotationSelector(annotation1id.into(), None),
+                            SelectorBuilder::AnnotationSelector(annotation2id.into(), None),
+                        ])),
+                );
+            }
             Ok(builders)
         }
         Err(error) => {
