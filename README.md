@@ -360,3 +360,6 @@ With the `--verbose` flag, the alignment will be outputted to standard output in
 /tmp/218.txt    1444-1508       /tmp/hoof001hwva02_01_0231.txt  1348-1412       "hem begost ende wijder voor heb te procederen tot alsulke peenen"     "hem begost ende wijder voor heb te procederen tot alsulke peenen"
 ```
 
+You can also output transpositions and other alignments using the `stam export
+--alignments` (or `stam query --alignments`). This will output the same as
+above, except for an extra first column with the annotation (transposition) ID.

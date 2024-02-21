@@ -496,22 +496,26 @@ You need to specify this parameter twice, the text of first query will be aligne
         let verbose = args.is_present("verbose");
 
         let querystring = args.value_of("query").into_iter().next().unwrap_or(
-            //default in case no query was provided
-            match args
-                .value_of("type")
-                .unwrap_or("Annotation")
-                .to_lowercase()
-                .as_str()
-            {
-                "annotation" => "SELECT ANNOTATION ?annotation",
-                "key" | "datakey" => "SELECT DATAKEY ?key",
-                "data" | "annotationdata" => "SELECT DATA ?data",
-                "resource" | "textresource" => "SELECT RESOURCE ?resource",
-                "dataset" | "annotationset" => "SELECT DATASET ?dataset",
-                "text" | "textselection" => "SELECT TEXT ?textselection",
-                _ => {
-                    eprintln!("Invalid --type specified");
-                    exit(1);
+            if args.is_present("alignments") {
+                "SELECT ANNOTATION ?annotation WHERE KEY \"https://w3id.org/stam/extensions/stam-transpose/\" \"Transposition\";"
+            } else {
+                //default in case no query was provided
+                match args
+                    .value_of("type")
+                    .unwrap_or("Annotation")
+                    .to_lowercase()
+                    .as_str()
+                {
+                    "annotation" => "SELECT ANNOTATION ?annotation",
+                    "key" | "datakey" => "SELECT DATAKEY ?key",
+                    "data" | "annotationdata" => "SELECT DATA ?data",
+                    "resource" | "textresource" => "SELECT RESOURCE ?resource",
+                    "dataset" | "annotationset" => "SELECT DATASET ?dataset",
+                    "text" | "textselection" => "SELECT TEXT ?textselection",
+                    _ => {
+                        eprintln!("Invalid --type specified");
+                        exit(1);
+                    }
                 }
             },
         );
@@ -522,7 +526,12 @@ You need to specify this parameter twice, the text of first query will be aligne
 
         let resulttype = query.resulttype().expect("Query has no result type");
 
-        if args.value_of("format") == Some("tsv") {
+        if args.is_present("alignments") {
+            if let Err(err) = alignments_tsv_out(&store, query, args.value_of("use")) {
+                eprintln!("{}", err);
+                exit(1);
+            }
+        } else if args.value_of("format") == Some("tsv") {
             let columns: Vec<&str> = if let Some(columns) = args.value_of("columns") {
                 columns.split(",").collect()
             } else {
@@ -921,6 +930,7 @@ You need to specify this parameter twice, the text of first query will be aligne
                     AlignmentScope::Local
                 },
                 annotation_id_prefix: args.value_of("id-prefix").map(|x| x.to_string()),
+                simple_only: args.is_present("simple-only"),
                 verbose: args.is_present("verbose")
             }
         ) {

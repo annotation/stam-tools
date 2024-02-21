@@ -423,3 +423,56 @@ pub fn align_texts<'store>(
         }
     }
 }
+
+pub fn alignments_tsv_out<'a>(
+    store: &'a AnnotationStore,
+    query: Query<'a>,
+    use_var: Option<&str>,
+) -> Result<(), StamError> {
+    let iter = store.query(query);
+    let names = iter.names();
+    for resultrow in iter {
+        if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
+            if let QueryResultItem::Annotation(annotation) = result {
+                let mut annoiter = annotation.annotations_in_targets(AnnotationDepth::One);
+                if let (Some(text1), Some(text2)) =
+                    if let (Some(left), Some(right)) = (annoiter.next(), annoiter.next()) {
+                        //complex transposition
+                        (left.textselections().next(), right.textselections().next())
+                    } else {
+                        let mut textiter = annotation.textselections();
+                        //simple transposition
+                        (textiter.next(), textiter.next())
+                    }
+                {
+                    //simple transposition
+                    println!(
+                        "{}\t{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
+                        annotation.id().unwrap_or("-"),
+                        text1.resource().id().unwrap_or("-"),
+                        text1.begin(),
+                        text1.end(),
+                        text2.resource().id().unwrap_or("-"),
+                        text2.begin(),
+                        text2.end(),
+                        text1
+                            .text()
+                            .replace("\"", "\\\"")
+                            .replace("\t", "\\t")
+                            .replace("\n", "\\n"),
+                        text2
+                            .text()
+                            .replace("\"", "\\\"")
+                            .replace("\t", "\\t")
+                            .replace("\n", "\\n")
+                    );
+                }
+            } else {
+                return Err(StamError::OtherError(
+                    "Only queries that return ANNOTATION are supported when outputting aligments",
+                ));
+            }
+        }
+    }
+    Ok(())
+}

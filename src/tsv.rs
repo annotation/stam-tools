@@ -107,6 +107,15 @@ rows will then be filled with the data values corresponding to the data key. Exa
             .help("Do not output a header on the first line")
             .takes_value(false),
     );
+    args.push(
+        Arg::with_name("alignments")
+            .long("alignments")
+            .short('A')
+            .alias("transpositions")
+            .help(
+            "Output alignments (transpositions and translations). This overrides the --column specification and outputs the following tab separated columns instead: annotation ID, resource 1, offset 1, resource 2, offset 2, text 1, text 2 ",
+        ),
+    );
     args
 }
 
