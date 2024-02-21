@@ -497,7 +497,7 @@ You need to specify this parameter twice, the text of first query will be aligne
 
         let querystring = args.value_of("query").into_iter().next().unwrap_or(
             if args.is_present("alignments") {
-                "SELECT ANNOTATION ?annotation WHERE KEY \"https://w3id.org/stam/extensions/stam-transpose/\" \"Transposition\";"
+                "SELECT ANNOTATION ?annotation WHERE DATA \"https://w3id.org/stam/extensions/stam-transpose/\" \"Transposition\";"
             } else {
                 //default in case no query was provided
                 match args

@@ -435,37 +435,17 @@ pub fn alignments_tsv_out<'a>(
         if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
             if let QueryResultItem::Annotation(annotation) = result {
                 let mut annoiter = annotation.annotations_in_targets(AnnotationDepth::One);
-                if let (Some(text1), Some(text2)) =
-                    if let (Some(left), Some(right)) = (annoiter.next(), annoiter.next()) {
-                        //complex transposition
-                        (left.textselections().next(), right.textselections().next())
-                    } else {
-                        let mut textiter = annotation.textselections();
-                        //simple transposition
-                        (textiter.next(), textiter.next())
+                if let (Some(left), Some(right)) = (annoiter.next(), annoiter.next()) {
+                    //complex transposition
+                    for (text1, text2) in left.textselections().zip(right.textselections()) {
+                        print_alignment(annotation, &text1, &text2)
                     }
-                {
+                } else {
                     //simple transposition
-                    println!(
-                        "{}\t{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
-                        annotation.id().unwrap_or("-"),
-                        text1.resource().id().unwrap_or("-"),
-                        text1.begin(),
-                        text1.end(),
-                        text2.resource().id().unwrap_or("-"),
-                        text2.begin(),
-                        text2.end(),
-                        text1
-                            .text()
-                            .replace("\"", "\\\"")
-                            .replace("\t", "\\t")
-                            .replace("\n", "\\n"),
-                        text2
-                            .text()
-                            .replace("\"", "\\\"")
-                            .replace("\t", "\\t")
-                            .replace("\n", "\\n")
-                    );
+                    let mut textiter = annotation.textselections();
+                    if let (Some(text1), Some(text2)) = (textiter.next(), textiter.next()) {
+                        print_alignment(annotation, &text1, &text2)
+                    }
                 }
             } else {
                 return Err(StamError::OtherError(
@@ -475,4 +455,31 @@ pub fn alignments_tsv_out<'a>(
         }
     }
     Ok(())
+}
+
+fn print_alignment<'a>(
+    annotation: &ResultItem<'a, Annotation>,
+    text1: &ResultTextSelection<'a>,
+    text2: &ResultTextSelection<'a>,
+) {
+    println!(
+        "{}\t{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
+        annotation.id().unwrap_or("-"),
+        text1.resource().id().unwrap_or("-"),
+        text1.begin(),
+        text1.end(),
+        text2.resource().id().unwrap_or("-"),
+        text2.begin(),
+        text2.end(),
+        text1
+            .text()
+            .replace("\"", "\\\"")
+            .replace("\t", "\\t")
+            .replace("\n", "\\n"),
+        text2
+            .text()
+            .replace("\"", "\\\"")
+            .replace("\t", "\\t")
+            .replace("\n", "\\n")
+    );
 }
