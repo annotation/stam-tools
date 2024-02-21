@@ -321,3 +321,40 @@ Various real examples of visualisation and queries are shown here: <https://gith
 Example of ANSI output rather than HTML, using `--format ansi`:
 
 ![STAM view example on the terminal with ANSI colours](https://github.com/annotation/stam-tools/raw/master/stamvis6.jpg)
+
+### stam align
+
+The `stam align` tool is used to compute an alignment between two texts; it
+identifies which parts of the two texts are identical and computes a mapping
+between the two coordinate systems. Two related sequence alignments algorithms
+from bioinformatics are implemented to accomplish this:
+[Smith-Waterman](https://en.wikipedia.org/wiki/Smith%E2%80%93Waterman_algorithm)
+and [Needleman-Wunsch](https://en.wikipedia.org/wiki/Needleman%E2%80%93Wunsch_algorithm).
+The score parameters to either are fully configurable.
+
+The resulting alignment is added as an annotation according to the [STAM
+Transpose](https://github.com/annotation/stam/tree/master/extensions/stam-transpose)
+extension.
+
+This tool allows the alignment of any two text selections, which are passed via
+two `--query` parameters and take a query in STAMQL. Alternatively, if you want
+to align two resources (a common scenario), you can just use the `--resource`
+parameter, twice, as a more convenient shortcut.
+
+Example invocation:
+
+```
+# first we create a store and add a two resource
+$ stam init --resource text1.txt --resource text2.txt my.store.stam.json
+
+# then we start the alignment (will be written to the annotation store)
+$ stam align --verbose --resource text1.txt --resource text2.txt my.store.stam.json
+```
+
+With the `--verbose` flag, the alignment will be outputted to standard output in a simple TSV format with offsets for either sides, example excerpt:
+
+```tsv
+/tmp/218.txt    1373-1439       /tmp/hoof001hwva02_01_0231.txt  1282-1348       "betoonen als dat van Weesp daer ick bij citatie in persoon tegens "   "betoonen als dat van Weesp daer ick bij citatie in persoon tegens "
+/tmp/218.txt    1444-1508       /tmp/hoof001hwva02_01_0231.txt  1348-1412       "hem begost ende wijder voor heb te procederen tot alsulke peenen"     "hem begost ende wijder voor heb te procederen tot alsulke peenen"
+```
+
