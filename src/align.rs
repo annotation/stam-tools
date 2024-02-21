@@ -220,6 +220,48 @@ impl AlignedFragment {
             Offset::simple(self.begin2, self.begin2 + self.length),
         )
     }
+
+    fn publish<'store>(
+        &self,
+        select1: &mut Vec<SelectorBuilder<'static>>,
+        select2: &mut Vec<SelectorBuilder<'static>>,
+        text: &ResultTextSelection<'store>,
+        text2: &ResultTextSelection<'store>,
+        config: &AlignmentConfig,
+    ) -> Result<(), StamError> {
+        let (offset1, offset2) = self.to_offsets();
+        if config.verbose {
+            println!(
+                "{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
+                text.resource().id().unwrap_or("-"),
+                &offset1.begin,
+                &offset1.end,
+                text2.resource().id().unwrap_or("-"),
+                &offset2.begin,
+                &offset2.end,
+                text.textselection(&offset1)?
+                    .text()
+                    .replace("\"", "\\\"")
+                    .replace("\t", "\\t")
+                    .replace("\n", "\\n"),
+                text2
+                    .textselection(&offset2)?
+                    .text()
+                    .replace("\"", "\\\"")
+                    .replace("\t", "\\t")
+                    .replace("\n", "\\n")
+            );
+        }
+        select1.push(SelectorBuilder::TextSelector(
+            text.resource().handle().into(),
+            offset1,
+        ));
+        select2.push(SelectorBuilder::TextSelector(
+            text2.resource().handle().into(),
+            offset2,
+        ));
+        Ok(())
+    }
 }
 
 /// Find an alignment between two texts and creates a transposition
@@ -291,51 +333,13 @@ pub fn align_texts<'store>(
                     }
                     _ => {
                         if let Some(fragment) = fragment.take() {
-                            let (offset1, offset2) = fragment.to_offsets();
-                            if config.verbose {
-                                println!(
-                                    "{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
-                                    text.resource().id().unwrap_or("-"),
-                                    &offset1.begin,
-                                    &offset1.end,
-                                    text2.resource().id().unwrap_or("-"),
-                                    &offset2.begin,
-                                    &offset2.end,
-                                    text.textselection(&offset1)?
-                                        .text()
-                                        .replace("\"", "\\\"")
-                                        .replace("\t", "\\t")
-                                        .replace("\n", "\\n"),
-                                    text2
-                                        .textselection(&offset2)?
-                                        .text()
-                                        .replace("\"", "\\\"")
-                                        .replace("\t", "\\t")
-                                        .replace("\n", "\\n")
-                                );
-                            }
-                            select1.push(SelectorBuilder::TextSelector(
-                                text.resource().handle().into(),
-                                offset1,
-                            ));
-                            select2.push(SelectorBuilder::TextSelector(
-                                text2.resource().handle().into(),
-                                offset2,
-                            ));
+                            fragment.publish(&mut select1, &mut select2, text, text2, config)?
                         }
                     }
                 }
             }
             if let Some(fragment) = fragment.take() {
-                let (offset1, offset2) = fragment.to_offsets();
-                select1.push(SelectorBuilder::TextSelector(
-                    text.resource().handle().into(),
-                    offset1,
-                ));
-                select2.push(SelectorBuilder::TextSelector(
-                    text2.resource().handle().into(),
-                    offset2,
-                ));
+                fragment.publish(&mut select1, &mut select2, text, text2, config)?
             }
 
             if select1.is_empty() {
