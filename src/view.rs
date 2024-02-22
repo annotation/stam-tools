@@ -164,7 +164,7 @@ pub struct HtmlWriter<'a> {
     output_offset: bool,
     /// Prune the data so only the highlights are expressed, nothing else
     prune: bool,
-    /// Output annotations and data in a <script> block (javascript)
+    /// Output annotations and data in a `<script>` block (javascript)
     output_data: bool,
     /// html header
     header: Option<&'a str>,

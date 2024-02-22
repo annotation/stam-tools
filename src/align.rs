@@ -3,11 +3,22 @@ use stam::*;
 use seal::pair::{AlignmentSet, InMemoryAlignmentMatrix, NeedlemanWunsch, SmithWaterman, Step};
 
 pub struct AlignmentConfig {
+    /// Case-insensitive matching has more performance overhead
     pub case_sensitive: bool,
+
+    // The Alignment algorithm
     pub algorithm: AlignmentAlgorithm,
+
+    /// Alignment scope (Experimental)
     pub alignment_scope: AlignmentScope,
+
+    /// Prefix to use when assigning annotation IDs. The actual ID will have a random component
     pub annotation_id_prefix: Option<String>,
+
+    /// Only allow for alignments that consist of one contiguous text selection on either side. This is a so-called simple transposition.
     pub simple_only: bool,
+
+    /// Output alignments to standard output in a TSV format
     pub verbose: bool,
 }
 

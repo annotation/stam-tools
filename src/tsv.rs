@@ -7,27 +7,69 @@ use std::io::{BufRead, BufReader};
 use std::process::exit;
 
 #[derive(Clone, PartialEq, Debug)]
+/// Represents a column in TSV output or input
 pub enum Column {
+    /// Sequence number, usually a row number but sometimes multiple rows may share the same number if hierarchical relations are expressed
     SeqNr,
+
+    /// Variable name, as used in a STAMQL query
     VarName,
+
+    /// Type of the result on this row
     Type,
+
+    /// ID of this result on this row
     Id,
+
+    /// ID of the annotation
     Annotation,
+
+    /// ID of the text resource
     TextResource,
+
+    /// ID of the annotation data
     AnnotationData,
+
+    /// ID of the annotation dataset
     AnnotationDataSet,
+
+    /// Offset in unicode points (begin-end), 0 indexed, end non-inclusive.
     Offset,
+
+    ///Begin offset in unicode points, 0 indexed.
     BeginOffset,
+
+    ///End offset in unicode points, 0 indexed, non-inclusive.
     EndOffset,
+
     Utf8Offset,
+
+    ///Begin offset in bytes (UTF-8 encoding), 0 indexed
     BeginUtf8Offset,
+
+    ///End offset in bytes (UTF-8 encoding), 0 indexed, non-inclusive
     EndUtf8Offset,
+
+    /// ID of the data key
     DataKey,
+
+    /// Value
     DataValue,
+
+    /// The text
     Text,
+
+    /// The text selection is a combination of `TextResource` and `Offset`, seperated by a '#`
     TextSelection,
+
+    /// Ignore this column
     Ignore,
-    Custom { set: String, key: String },
+
+    /// Custom data column, represents the value for the given set and datakey.
+    Custom {
+        set: String,
+        key: String,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -54,7 +96,8 @@ impl TryFrom<&str> for ValidationMode {
 }
 
 impl Column {
-    fn parse(val: &str, setdelimiter: &str) -> Result<Self, String> {
+    /// Parse a column header into a type
+    pub fn parse(val: &str, setdelimiter: &str) -> Result<Self, String> {
         if val.find(setdelimiter).is_some() {
             let (set, key) = val.rsplit_once(setdelimiter).unwrap();
             Ok(Self::Custom {
@@ -138,7 +181,8 @@ impl<'a> Default for Context<'a> {
 }
 
 impl Column {
-    fn to_string(&self) -> String {
+    /// Output a string for this column, to be used in e.g. a TSV header
+    pub fn to_string(&self) -> String {
         match self {
             Self::SeqNr => "SeqNr".to_string(),
             Self::VarName => "Variable".to_string(),
@@ -412,6 +456,7 @@ impl Column {
 }
 
 #[derive(Debug)]
+/// A column specification, holds one or more [`Column`] instances.
 pub struct Columns(Vec<Column>);
 
 impl Columns {
@@ -653,19 +698,23 @@ pub fn to_tsv<'a>(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// Determines how a TSV file is parsed in relation to references text files (which may or may not exist).
 pub enum ParseMode {
+    /// Normal parse mode, assumes a stand-off text file exists and alignment information is given.
     Simple,
-    /// Align with an existing text resource
+    /// Align with an existing text resource. This is useful when a TSV file holds text and a stand-off file exist, but no alignment is provided. The alignment will be computed.
     AlignWithText,
-    /// Reconstruct a text resource from scratch
+    /// Reconstruct a text resource from scratch. This is useful when a TSV file holds the text and an stand-off file does not exist. It will be created.
     ReconstructText,
-    ///  Tag all occurrences
+    /// Tag all occurrences. This is used when there is stand-off file and the TSV files applies occurrences in that stand-off text file, rather than to any single ones.
     MultiTag,
-    ///
+    /// This is used when a TSV file does not relate to a text at all.
     Metadata,
 }
 
 impl ParseMode {
+    /// Automatically determines a ParseMode from a column configuration and presence or absence of an existing resource
+    /// `sequential`: Is the information in the TSV file sequential/ordered? (e.g. a token or line on each subsequent row)
     pub fn new(
         columns: &Columns,
         existing_resource: Option<&str>,
@@ -713,6 +762,7 @@ impl ParseMode {
     }
 }
 
+/// Reads a TSV, with a flexible column configuration, into an Annotation Store
 pub fn from_tsv(
     store: &mut AnnotationStore,
     filename: &str,
@@ -912,7 +962,7 @@ pub fn from_tsv(
     }
 }
 
-pub fn reconstruct_text(
+fn reconstruct_text(
     line: &str,
     columns: &Columns,
     texts: &mut HashMap<String, String>,
@@ -945,7 +995,8 @@ pub fn reconstruct_text(
     Ok(())
 }
 
-pub fn parse_row(
+/// Parse a row (`line`) of a TSV file (provided as string)
+fn parse_row(
     store: &mut AnnotationStore,
     line: &str,
     columns: &Columns,
@@ -1006,7 +1057,7 @@ pub fn parse_row(
     Ok(())
 }
 
-pub fn align_with_text<'a>(
+fn align_with_text<'a>(
     store: &AnnotationStore,
     resource_handle: TextResourceHandle,
     cells: &[&str],
@@ -1047,7 +1098,7 @@ pub fn align_with_text<'a>(
     }
 }
 
-pub fn validate_text(
+fn validate_text(
     store: &AnnotationStore,
     annotation_handle: AnnotationHandle,
     cells: &[&str],
@@ -1109,7 +1160,7 @@ pub fn validate_text(
     Ok(())
 }
 
-pub fn unescape(s: &str) -> String {
+fn unescape(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut prevc = None;
     let mut do_unescape: bool = false;
@@ -1135,7 +1186,7 @@ pub fn unescape(s: &str) -> String {
     result
 }
 
-pub fn build_annotation<'a>(
+fn build_annotation<'a>(
     cells: &'a [&'a str],
     columns: &Columns,
     default_set: Option<&'a str>,
@@ -1230,7 +1281,7 @@ pub fn build_annotation<'a>(
     Ok(annotationbuilder)
 }
 
-pub fn parse_resource_file<'a>(
+fn parse_resource_file<'a>(
     cells: &[&'a str],
     columns: &Columns,
     existing_resource: Option<&'a str>,
@@ -1257,7 +1308,7 @@ pub fn parse_resource_file<'a>(
     }
 }
 
-pub fn get_resource_handle(
+fn get_resource_handle(
     store: &mut AnnotationStore,
     filename: &str,
 ) -> Result<TextResourceHandle, String> {
@@ -1269,7 +1320,7 @@ pub fn get_resource_handle(
         .map_err(|e| format!("Specified resource not found: {}: {}", filename, e))
 }
 
-pub fn build_selector<'a>(
+fn build_selector<'a>(
     cells: &[&str],
     columns: &Columns,
     resource_handle: TextResourceHandle,
@@ -1279,7 +1330,7 @@ pub fn build_selector<'a>(
     Ok(SelectorBuilder::textselector(resource_handle, offset))
 }
 
-pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String> {
+fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String> {
     if let Some(ioffset) = columns.index(&Column::Offset) {
         let cell = cells.get(ioffset).expect("cell must exist");
         if let Some(delimiterpos) = &cell[1..].find('-') {
@@ -1318,7 +1369,7 @@ pub fn parse_offset(cells: &[&str], columns: &Columns) -> Result<Offset, String>
     }
 }
 
-pub fn parse_column(
+fn parse_column(
     column: &str,
     default_set: Option<&str>,
     setdelimiter: &str,

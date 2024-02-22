@@ -2,6 +2,7 @@ use crate::query::textselection_from_queryresult;
 use stam::{AnnotationStore, Query, Text};
 use std::process::exit;
 
+/// Run a query and outputs the text of the results to standard output. Some extra information (identifiers as headers) will be outputted to standard error output
 pub fn to_text<'a>(store: &'a AnnotationStore, query: Query<'a>, varname: Option<&'a str>) {
     let results = store.query(query);
     let names = results.names();

@@ -56,6 +56,7 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
     rules
 }
 
+/// Tag according to ths specified rule file. This adds new annotations to the store.
 pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bool) {
     let rules = load_tag_rules(rulefile);
     let expressions: Vec<_> = rules.iter().map(|rule| rule.expression.clone()).collect();

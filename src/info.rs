@@ -6,7 +6,7 @@ const MIB: &str = "MiB";
 const KIB: &str = "KiB";
 
 /// Returns a human readable representation of memory usage. Input is bytes, output is a float and an automatically determined unit string.
-pub fn humanmem(bytes: usize) -> (f64, &'static str) {
+fn humanmem(bytes: usize) -> (f64, &'static str) {
     if bytes >= 1024 * 1024 * 1024 {
         let bytes: f64 = bytes as f64;
         let gb = bytes / 1024.0 / 1024.0 / 1024.0;

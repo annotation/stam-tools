@@ -1,6 +1,6 @@
 use stam::*;
 
-pub fn textselection_from_queryresult<'a>(
+pub(crate) fn textselection_from_queryresult<'a>(
     resultitems: &QueryResultItems<'a>,
     var: Option<&str>,
     names: &QueryNames,
@@ -47,6 +47,7 @@ pub fn textselection_from_queryresult<'a>(
     Ok((resulttextselection, whole_resource, id))
 }
 
+/// Run a query and outputs the results as STAM JSON to standard output
 pub fn to_json<'a>(store: &'a AnnotationStore, query: Query<'a>) -> Result<(), StamError> {
     let iter = store.query(query);
     let names = iter.names();
@@ -93,6 +94,8 @@ pub fn to_json<'a>(store: &'a AnnotationStore, query: Query<'a>) -> Result<(), S
     Ok(())
 }
 
+/// Run a query and outputs the results as W3C Web Annotation to standard output.
+/// Each annotation will be formatted in JSON-LD on a single line, so the output is JSONL.
 pub fn to_w3anno<'a>(
     store: &'a AnnotationStore,
     query: Query<'a>,
