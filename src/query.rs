@@ -1,26 +1,4 @@
-use clap::{Arg, ArgAction};
 use stam::*;
-
-pub fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
-    let mut args: Vec<Arg> = Vec::new();
-    args.push(
-        Arg::with_name("query")
-            .long("query")
-            .short('q')
-            .help(help)
-            .action(ArgAction::Append)
-            .takes_value(true),
-    );
-    args.push(
-        Arg::with_name("use")
-            .long("use")
-            .help(
-                "Name of the variable from --query to use for the main output. If not set, the last defined subquery will be used (still pertaining to the first --query statement!)"
-            )
-            .takes_value(true)
-    );
-    args
-}
 
 pub fn textselection_from_queryresult<'a>(
     resultitems: &QueryResultItems<'a>,

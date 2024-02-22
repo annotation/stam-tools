@@ -25,4 +25,5 @@ path = "src/lib.rs"
 [[bin]]
 name = "stam"
 path = "src/main.rs"
+doc = false
 

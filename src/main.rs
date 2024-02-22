@@ -4,6 +4,16 @@ use std::path::Path;
 use std::process::exit;
 
 use stamtools::*;
+use stamtools::align::*;
+use stamtools::view::*;
+use stamtools::grep::*;
+use stamtools::tsv::*;
+use stamtools::query::*;
+use stamtools::tag::*;
+use stamtools::to_text::*;
+use stamtools::validate::*;
+use stamtools::info::*;
+use stamtools::annotate::*;
 
 fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -148,6 +158,380 @@ fn config_from_args(args: &ArgMatches) -> Config {
         .with_debug(args.is_present("debug"))
 }
 
+fn tsv_arguments_common<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("subdelimiter")
+            .long("subdelimiter")
+            .help("Delimiter for multiple values in a single column")
+            .takes_value(true)
+            .default_value("|"),
+    );
+    args.push(
+        Arg::with_name("setdelimiter")
+            .long("setdelimiter")
+            .help(
+                "The delimiter between the annotation set and the key in custom columns. If the delimiter occurs multiple times, only the rightmost one is considered (the others are part of the set)"
+            )
+            .takes_value(true)
+            .default_value("/"),
+    );
+    args.push(
+        Arg::with_name("null")
+            .long("null")
+            .help("Text to use for NULL values")
+            .takes_value(true)
+            .default_value("-"),
+    );
+    args
+}
+
+fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = tsv_arguments_common();
+    args.push(
+        Arg::with_name("type")
+            .long("type")
+            .help("Select the data type to focus on for the TSV output. If you supply a --query then there is no need to supply this as well.")
+            .long_help(
+                "Choose one from the following types (case insensitive):
+
+* Annotation
+* AnnotationData
+* AnnotationDataSet
+* DataKey
+* TextResource
+* TextSelection
+",
+            )
+            .takes_value(true)
+            .default_value("Annotation"),
+    );
+    args.push(
+        Arg::with_name("columns")
+            .long("columns")
+            .short('C')
+            .help("Column Format, comma separated list of column names to output")
+            .long_help(
+                "In most cases, you do not need to explicitly specify this as it will be automatically guessed based on the --type or --query parameter.
+However, if you want full control, you can choose from the following known columns names (case insensitive, comma seperated list):
+
+* Type                 - Outputs the type of the row (Annotation,AnnotationData), useful in Nested mode.
+* Id                   - Outputs the ID of the row item
+* Annotation           - Outputs the ID of the associated Annotation
+* AnnotationData       - Outputs the ID of the associated AnnotationData
+* AnnotationDataSet    - Outputs the ID of the associated AnnotationDataSet
+* TextResource         - Output the associated resource identifier
+* DataKey              - Outputs the ID of the associated DataKey
+* DataValue            - Outputs the data value 
+* TextSelection        - Outputs any associated text selection(s) as a combination of resource identifier(s) with an offset
+* Text                 - Outputs the associated text
+* Offset               - Outputs offset pair in unicode character points (0-indexed, end is non-inclusive)
+* BeginOffset          - Outputs begin offset in unicode character points
+* EndOffset            - Outputs end offset in unicode character points
+* Utf8Offset           - Outputs offset pair in UTF-8 bytes  (0-indexed, end is non inclusive)
+* BeginUtf8Offset      - Outputs begin offset in UTF-8 bytes
+* EndUtf8Offset        - Outputs end offset in UTF8-bytes
+* Ignore               - Always outputs the NULL value
+
+In addition to the above columns, you may also set a *custom* column by specifying an
+AnnotationDataSet and DataKey within, seperated by the set/key delimiter (by default a slash). The
+rows will then be filled with the data values corresponding to the data key. Example:
+
+* my_set/part_of_speech
+* my_set/lemma
+",
+            )
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("strict-columns")
+            .long("strict-columns")
+            .short('x')
+            .help(
+            "Do not automatically add columns based on constraints found in the specified query",
+        ),
+    );
+    args.push(
+        Arg::with_name("no-header")
+            .long("no-header")
+            .short('H')
+            .help("Do not output a header on the first line")
+            .takes_value(false),
+    );
+    args.push(
+        Arg::with_name("alignments")
+            .long("alignments")
+            .short('A')
+            .alias("transpositions")
+            .help(
+            "Output alignments (transpositions and translations). This overrides the --column specification and outputs the following tab separated columns instead: annotation ID, resource 1, offset 1, resource 2, offset 2, text 1, text 2 ",
+        ),
+    );
+    args
+}
+
+fn tsv_arguments_in<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = tsv_arguments_common();
+    args.push(
+        Arg::with_name("columns")
+            .long("columns")
+            .short('C')
+            .help("Column Format, comma separated list of column names to output")
+            .long_help(
+                "Choose from the following known columns names (case insensitive, comma seperated list):
+
+* Id                   - The ID of the annotation item
+* Annotation           - (same as above) 
+* AnnotationData       - The ID of the annotation data, used with `DataKey` and `DataValue`
+* AnnotationDataSet    - The ID of the associated AnnotationDataSet
+* TextResource         - The ID/filename of text resource, IDs are assumed to be filenames by this importer
+* DataKey              - The key
+* DataValue            - The value
+* TextSelection        - A combination of resource identifier(s) with an offset in the following format: resource#beginoffset-endoffset
+* Text                 - The text of the selection, target of the annotation 
+* Offset               - Offset in unicode character points (0-indexed, end is non-inclusive) seperated by a hyphen: beginoffset-endoffset
+* BeginOffset          - Begin offset in unicode character points
+* EndOffset            - End offset in unicode character points
+* BeginUtf8Offset      - Begin offset in UTF-8 bytes
+* EndUtf8Offset        - End offset in UTF8-bytes
+
+In addition of the above columns, you may also parse a *custom* column by specifying an AnnotationDataSet and DataKey , separated by the set/key delimiter (by default a slash). Example:
+
+* my_set/part_of_speech
+* my_set/lemma
+
+",
+            )
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("no-header")
+            .long("no-header")
+            .short('H')
+            .help("Data starts on the first line, there is no header row")
+            .takes_value(false),
+    );
+    args.push(
+        Arg::with_name("no-seq")
+            .long("no-seq")
+            .short('Q')
+            .help("Rows in TSV file are not sequential but in arbitrary order"),
+    );
+    args.push(
+        Arg::with_name("inputfile")
+            .long("inputfile")
+            .short('f')
+            .help("TSV file to import. This option may be specified multiple times.")
+            .action(ArgAction::Append)
+            .required(true)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("resource")
+            .long("resource")
+            .help("Interpret data in the TSV file as pertaining to this existing text resource (a plain text file), unless made explicit in the data otherwise. The file must be present and will be loaded. If necessary, data will be aligned automatically to this resource.")
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("new-resource")
+            .long("new-resource")
+            .help(
+                "Interpret data in the TSV file as pertaining to this text resource, and reconstruct it from the data. Will write a separate txt file unless you provide the --no-include option.",
+            )
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("annotationset")
+            .long("annotationset")
+            .help(
+                "Interpret data in the TSV file as pertaining to this annotation set (unless made explicit in the data otherwise)",
+            )
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("validate")
+            .long("validate")
+            .help(
+                "Do text validation, values: strict, loose (case insensitive testing, this is the default), no"
+            )
+            .default_value("loose")
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("no-case")
+            .long("no-case")
+            .help("Do case insensitive matching when attempting to align text from the TSV input with a text resource"),
+    );
+    args.push(
+        Arg::with_name("no-escape")
+            .long("no-escape")
+            .help("Do not parse escape sequences for tabs (\\t) and newlines (\\n), leave as is"),
+    );
+    args.push(Arg::with_name("no-comments").long("no-comments").help(
+        "Do not allow comments, if not set, all lines starting with # are treated as comments",
+    ));
+    args.push(
+        Arg::with_name("outputdelimiter")
+            .long("outputdelimiter")
+            .help("Output delimiter when reconstructing text, after each row, this string is outputted. In most scenarios, like when having one word per row, you'll want this to be a space (which is the default).")
+            .takes_value(true)
+            .default_value(" "),
+    );
+    args.push(
+        Arg::with_name("outputdelimiter2")
+            .long("outputdelimiter2")
+            .help("Output delimiter when reconstructing text and when an empty line is found in the input data. In most scenarios, you will want this to be a newline (the default)")
+            .takes_value(true)
+            .default_value("\n"),
+    );
+    args
+}
+
+fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("use2")
+            .long("use2")
+            .help(
+                "Name of the variable from the *second* --query to use. If not set, the last defined subquery will be used (still pertaining to the second --query statement!)"
+            )
+            .takes_value(true)
+    );
+    args.push(
+        Arg::with_name("resource")
+            .long("resource")
+            .short('r')
+            .help(
+                "The ID of the resource to align; specify this argument twice. It is an alternative to specifying two full --query parameters"
+            )
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
+    args.push(
+        Arg::with_name("simple-only")
+            .long("simple-only")
+            .help("Only allow for alignments that consist of one contiguous text selection on either side. This is a so-called simple transposition."),
+    );
+    args.push(
+        Arg::with_name("ignore-case")
+            .long("ignore-case")
+            .help("Do case-insensitive matching, this has more performance overhead"),
+    );
+    args.push(
+        Arg::with_name("global")
+            .long("global")
+            .help("Perform global alignment instead of local"),
+    );
+    args.push(
+        Arg::with_name("algorithm")
+            .long("algorithm")
+            .takes_value(true)
+            .default_value("smith_waterman")
+            .help("Alignment algorithm, can be smith_waterman (default) or needleman_wunsch"),
+    );
+    args.push(
+        Arg::with_name("id-prefix")
+            .long("id-prefix")
+            .takes_value(true)
+            .help("Prefix to use when assigning annotation IDs. The actual ID will have a random component."),
+    );
+    args.push(
+        Arg::with_name("match-score")
+            .long("match-score")
+            .takes_value(true)
+            .default_value("2")
+            .help("Score for matching alignments, positive integer"),
+    );
+    args.push(
+        Arg::with_name("mismatch-score")
+            .long("mismatch-score")
+            .takes_value(true)
+            .default_value("-1")
+            .help("Score for mismatching alignments, negative integer"),
+    );
+    args.push(
+        Arg::with_name("insertion-score")
+            .long("insertion-score")
+            .takes_value(true)
+            .default_value("-1")
+            .help("Score for insertions (gap penalty), negative integer"),
+    );
+    args.push(
+        Arg::with_name("deletion-score")
+            .long("deletion-score")
+            .takes_value(true)
+            .default_value("-1")
+            .help("Score for deletions (gap penalty), negative integer"),
+    );
+    args
+}
+
+fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("query")
+            .long("query")
+            .short('q')
+            .help(help)
+            .action(ArgAction::Append)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("use")
+            .long("use")
+            .help(
+                "Name of the variable from --query to use for the main output. If not set, the last defined subquery will be used (still pertaining to the first --query statement!)"
+            )
+            .takes_value(true)
+    );
+    args
+}
+
+fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("annotationsets")
+            .long("annotationset")
+            .short('s')
+            .help("STAM JSON file containing an annotation data set. Set value to - for standard input.")
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
+    args.push(
+        Arg::with_name("resources")
+            .long("resource")
+            .short('r')
+            .help("Plain text or STAM JSON file containing a text resource. Set value to - for standard input.")
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
+    args.push(
+        Arg::with_name("stores")
+            .long("store")
+            .short('i')
+            .help(
+                "STAM JSON or STAM CSV file containing an annotation store, will be merged into the new store. Set value to - for standard input.",
+            )
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
+    args.push(
+        Arg::with_name("annotations")
+            .long("annotations")
+            .short('a')
+            .help("STAM JSON file containing an array of annotations, will be merged into the new store. Set value to - for standard input.")
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
+    args.push(
+        Arg::with_name("id")
+            .long("id")
+            .help("Sets the identifier for the annotation store")
+            .takes_value(true),
+    );
+    args
+}
+
 fn load_store(args: &ArgMatches) -> AnnotationStore {
     let filename = args
         .value_of("annotationstore")
@@ -163,6 +547,7 @@ fn load_store(args: &ArgMatches) -> AnnotationStore {
     }
     store
 }
+
 
 fn main() {
     let rootargs = App::new("STAM Tools")

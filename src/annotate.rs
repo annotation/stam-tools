@@ -1,51 +1,5 @@
-use clap::{Arg, ArgAction};
 use stam::{AnnotationDataSet, AnnotationStore, Configurable, StoreFor, TextResource};
 use std::process::exit;
-
-pub fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
-    let mut args: Vec<Arg> = Vec::new();
-    args.push(
-        Arg::with_name("annotationsets")
-            .long("annotationset")
-            .short('s')
-            .help("STAM JSON file containing an annotation data set. Set value to - for standard input.")
-            .takes_value(true)
-            .action(ArgAction::Append),
-    );
-    args.push(
-        Arg::with_name("resources")
-            .long("resource")
-            .short('r')
-            .help("Plain text or STAM JSON file containing a text resource. Set value to - for standard input.")
-            .takes_value(true)
-            .action(ArgAction::Append),
-    );
-    args.push(
-        Arg::with_name("stores")
-            .long("store")
-            .short('i')
-            .help(
-                "STAM JSON or STAM CSV file containing an annotation store, will be merged into the new store. Set value to - for standard input.",
-            )
-            .takes_value(true)
-            .action(ArgAction::Append),
-    );
-    args.push(
-        Arg::with_name("annotations")
-            .long("annotations")
-            .short('a')
-            .help("STAM JSON file containing an array of annotations, will be merged into the new store. Set value to - for standard input.")
-            .takes_value(true)
-            .action(ArgAction::Append),
-    );
-    args.push(
-        Arg::with_name("id")
-            .long("id")
-            .help("Sets the identifier for the annotation store")
-            .takes_value(true),
-    );
-    args
-}
 
 pub fn annotate(
     mut store: AnnotationStore,
