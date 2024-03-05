@@ -1,7 +1,8 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
-use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig};
+use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig, TransposeConfig};
 use std::path::Path;
 use std::process::exit;
+use std::collections::VecDeque;
 
 use stamtools::*;
 use stamtools::align::*;
@@ -14,6 +15,7 @@ use stamtools::to_text::*;
 use stamtools::validate::*;
 use stamtools::info::*;
 use stamtools::annotate::*;
+use stamtools::transpose::*;
 
 fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -466,6 +468,40 @@ fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("use2")
+            .long("use2")
+            .help(
+                "Name of the variable from the *second or later* --query parametrs to use. If not set, the last defined subquery will be used (still pertaining to the second --query statement!)"
+            )
+            .takes_value(true)
+    );
+    args.push(
+        Arg::with_name("id-prefix")
+            .long("id-prefix")
+            .takes_value(true)
+            .help("Prefix to use when assigning annotation IDs."),
+    );
+    args.push(
+        Arg::with_name("no-transpositions")
+            .long("no-transpositions")
+            .help("Do not produce transpositions. Only the transposed annotations will be produced. This essentially throws away provenance information."),
+    );
+    args.push(
+        Arg::with_name("no-resegmentations")
+            .long("no-resegmentations")
+            .help("Do not produce resegmentations. Only the resegmented annotations will be produced if needed. This essentially throws away provenance information."),
+    );
+    args.push(
+        Arg::with_name("ignore-errors")
+            .long("ignore-errors")
+            .help("Skip annotations that can not be transposed successfully and output a warning, this would produce a hard failure otherwise"),
+    );
+    args
+}
+
 fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
@@ -789,6 +825,16 @@ returned, in that case anything else is considered context and will not be retur
 You need to specify this parameter twice, the text of first query will be aligned with text of the second one."))
                 .args(&align_arguments())
             )
+        .subcommand(
+            SubCommand::with_name("transpose")
+                .about("Transpose annotations over a transposition, effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). The first query corresponds to the transposition, further queries correspond to the annotations to transpose via that transposition. The new transposed annotations (and the transpositions that produced them) will be added to the store.")
+                .args(&common_arguments())
+                .args(&store_argument())
+                .args(&config_arguments())
+                .args(&query_arguments("A query in STAMQL to retrieve a text. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
+The first query should retrieve the transposition to transpose over, it should produce only one result. Subsequent queries are the annotations to transpose."))
+                .args(&transpose_arguments())
+            )
         .get_matches();
 
     let args = if let Some(args) = rootargs.subcommand_matches("info") {
@@ -817,6 +863,8 @@ You need to specify this parameter twice, the text of first query will be aligne
         args
     } else if let Some(args) = rootargs.subcommand_matches("align") {
         args
+    } else if let Some(args) = rootargs.subcommand_matches("transpose") {
+        args
     } else {
         eprintln!("No command specified, please see stam --help");
         exit(2);
@@ -831,6 +879,7 @@ You need to specify this parameter twice, the text of first query will be aligne
         || rootargs.subcommand_matches("view").is_some()
         || rootargs.subcommand_matches("validate").is_some()
         || rootargs.subcommand_matches("align").is_some()
+        || rootargs.subcommand_matches("transpose").is_some()
     {
         if args.is_present("annotationstore") {
             let storefiles = args
@@ -1332,5 +1381,50 @@ You need to specify this parameter twice, the text of first query will be aligne
                 exit(1);
             });
         }
+    } else if rootargs.subcommand_matches("transpose").is_some() {
+        //load the store
+        store = load_store(args);
+        let querystrings: Vec<_> = args.values_of("query").unwrap_or_default().collect();
+
+        let mut queries = VecDeque::new();
+        for (i, querystring) in querystrings.into_iter().enumerate() {
+            queries.push_back(stam::Query::parse(querystring).unwrap_or_else(|err| {
+                eprintln!("[error] Query syntax error query {}: {}", i+1, err);
+                exit(1);
+            }).0);
+        }
+        if queries.len() < 2 {
+            eprintln!("[error] Expected at least two --query parameters");
+            exit(1);
+        }
+        if let Err(err) = transpose(
+            &mut store,
+            queries.pop_front().unwrap(),
+            queries.into_iter().collect(),
+            args.value_of("use"),
+            args.value_of("use2"), 
+            args.value_of("id-prefix").map(|x| x.to_string()),
+            stam::IdStrategy::default(),
+            args.is_present("ignore-errors"),
+            TransposeConfig {
+                existing_source_side: true,
+                no_transposition: args.is_present("no-transpositions"),
+                no_resegmentation: args.is_present("no-resegmentations"),
+                ..Default::default()
+            }) {
+            eprintln!("[error] Transposition failed: {:?}", err);
+            exit(1);
+        }
+        if !args.is_present("dry-run") {
+            store.save().unwrap_or_else(|err| {
+                eprintln!(
+                    "Failed to write annotation store {:?}: {}",
+                    store.filename(),
+                    err
+                );
+                exit(1);
+            });
+        }
+
     }
 }

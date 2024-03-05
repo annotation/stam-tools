@@ -17,6 +17,7 @@ pub mod info;
 pub mod query;
 pub mod tag;
 pub mod to_text;
+pub mod transpose;
 pub mod tsv;
 pub mod validate;
 pub mod view;
