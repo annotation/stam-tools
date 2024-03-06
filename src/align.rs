@@ -80,8 +80,8 @@ pub fn align<'store>(
         for resultrow in iter {
             if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
                 for (i, query2raw) in queries2.iter().enumerate() {
-                    eprintln!("Aligning #{}...", i + 1);
-                    //MAYBE TODO: this could be parallellized
+                    //MAYBE TODO: this could be parallellized (but memory may be a problem then)
+                    eprintln!("Aligning #{}/{}...", i + 1, queries2.len());
                     let (text, query2) = match result {
                         QueryResultItem::TextResource(resource) => ( resource.clone().to_textselection(), query2raw.clone().with_resourcevar(use_var.unwrap_or("resource"), resource.clone())),
                         QueryResultItem::Annotation(annotation) => {
@@ -111,8 +111,8 @@ pub fn align<'store>(
                             QueryResultItem::TextSelection(tsel) => tsel.clone(),
                             _ => return Err(StamError::OtherError("Obtained result type can not by used by stam align, expected ANNOTATION, RESOURCE or TEXT"))
                         };
-
-                            buildtranspositions.extend(align_texts(&text, &text2, config)?);
+                            let builders = align_texts(&text, &text2, config)?;
+                            buildtranspositions.extend(builders);
                         } else if let Some(use_var2) = use_var2 {
                             return Err(StamError::QuerySyntaxError(
                                 format!(
