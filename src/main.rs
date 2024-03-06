@@ -817,12 +817,12 @@ returned, in that case anything else is considered context and will not be retur
                 ))
         .subcommand(
             SubCommand::with_name("align")
-                .about("Aligns two texts; computes a transposition annotation that maps the two (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose) and adds it to the store. The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters. In --verbose mode, the alignments will be outputted to standard output as tab separated values with the follows columns: resource 1, offset 1, resource 2, offset 2, text 1, text 2")
+                .about("Aligns two (or more) texts; computes a transposition annotation that maps the two (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose) and adds it to the store. The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters. In --verbose mode, the alignments will be outputted to standard output as tab separated values with the follows columns: resource 1, offset 1, resource 2, offset 2, text 1, text 2")
                 .args(&common_arguments())
                 .args(&store_argument())
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL to retrieve a text. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
-You need to specify this parameter twice, the text of first query will be aligned with text of the second one."))
+                .args(&query_arguments("A query in STAMQL to retrieve a text. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. 
+You need to specify this parameter twice, the text of first query will be aligned with text of the second one. If specified more than twice, each text will be aligned (independently) with the first one"))
                 .args(&align_arguments())
             )
         .subcommand(
@@ -1315,31 +1315,25 @@ The first query should retrieve the transposition to transpose over, it should p
         //load the store
         store = load_store(args);
 
-        let resources: Vec<String> = args.values_of("resource").unwrap_or_default().map(|x| format!("SELECT RESOURCE WHERE ID \"{}\"",x)).collect();
-        let queries: Vec<&str> = if !resources.is_empty() {
-            resources.iter().map(|x| x.as_str()).collect()
-        } else {
-            args.values_of("query").unwrap_or_default().collect()
-        };
-        let mut queries_iter = queries.into_iter();
-        let (query, query2) = if let (Some(querystring), Some(querystring2)) = (queries_iter.next(), queries_iter.next()) {
-            let (query, _) = stam::Query::parse(querystring).unwrap_or_else(|err| {
-                eprintln!("[error] Query syntax error in first query: {}", err);
+        let mut querystrings: Vec<_> = args.values_of("query").unwrap_or_default().map(|x| x.to_string()).collect();
+        querystrings.extend( args.values_of("resource").unwrap_or_default().map(|x| format!("SELECT RESOURCE WHERE ID \"{}\"",x)) );
+
+        let mut queries = VecDeque::new();
+        for (i, querystring) in querystrings.iter().enumerate() {
+            queries.push_back(stam::Query::parse(querystring.as_str()).unwrap_or_else(|err| {
+                eprintln!("[error] Query syntax error query {}: {}", i+1, err);
                 exit(1);
-            });
-            let (query2, _) = stam::Query::parse(querystring2).unwrap_or_else(|err| {
-                eprintln!("[error] Query syntax error in second query: {}", err);
-                exit(1);
-            });
-            (query, query2)
-        } else {
-            eprintln!("[error] Expected two --query parameters");
+            }).0);
+        }
+        if queries.len() < 2 {
+            eprintln!("[error] Expected at least two --query (or --resource) parameters");
             exit(1);
-        };
+        }
+
         if let Err(err) = align(
             &mut store,
-            query,
-            query2,
+            queries.pop_front().unwrap(),
+            queries.into_iter().collect(),
             args.value_of("use"),
             args.value_of("use2"),
             &AlignmentConfig {

@@ -68,7 +68,7 @@ impl Default for AlignmentAlgorithm {
 pub fn align<'store>(
     store: &'store mut AnnotationStore,
     query: Query<'store>,
-    query2: Query<'store>,
+    queries2: Vec<Query<'store>>,
     use_var: Option<&str>,
     use_var2: Option<&str>,
     config: &AlignmentConfig,
@@ -79,24 +79,27 @@ pub fn align<'store>(
         let names = iter.names();
         for resultrow in iter {
             if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
-                let (text, query2) = match result {
-                    QueryResultItem::TextResource(resource) => ( resource.clone().to_textselection(), query2.clone().with_resourcevar(use_var.unwrap_or("resource"), resource.clone())),
-                    QueryResultItem::Annotation(annotation) => {
-                        if let Some(tsel) = annotation.textselections().next() {
-                            (tsel, query2.clone().with_annotationvar(use_var.unwrap_or("annotation"), annotation.clone()))
-                        } else {
-                            return Err(StamError::OtherError("Annotation references multiple texts, this is not supported yet by stam align"));
+                for (i, query2raw) in queries2.iter().enumerate() {
+                    eprintln!("Aligning #{}...", i + 1);
+                    //MAYBE TODO: this could be parallellized
+                    let (text, query2) = match result {
+                        QueryResultItem::TextResource(resource) => ( resource.clone().to_textselection(), query2raw.clone().with_resourcevar(use_var.unwrap_or("resource"), resource.clone())),
+                        QueryResultItem::Annotation(annotation) => {
+                            if let Some(tsel) = annotation.textselections().next() {
+                                (tsel, query2raw.clone().with_annotationvar(use_var.unwrap_or("annotation"), annotation.clone()))
+                            } else {
+                                return Err(StamError::OtherError("Annotation references multiple texts, this is not supported yet by stam align"));
+                            }
                         }
-                    }
-                    QueryResultItem::TextSelection(tsel) => ( tsel.clone(), query2.clone().with_textvar(use_var.unwrap_or("text"), tsel.clone())),
-                    _ => return Err(StamError::OtherError("Obtained result type can not by used by stam align, expected ANNOTATION, RESOURCE or TEXT"))
-                };
+                        QueryResultItem::TextSelection(tsel) => ( tsel.clone(), query2raw.clone().with_textvar(use_var.unwrap_or("text"), tsel.clone())),
+                        _ => return Err(StamError::OtherError("Obtained result type can not by used by stam align, expected ANNOTATION, RESOURCE or TEXT"))
+                    };
 
-                let iter2 = store.query(query2);
-                let names2 = iter2.names();
-                for resultrow2 in iter2 {
-                    if let Ok(result) = resultrow2.get_by_name_or_last(&names2, use_var2) {
-                        let text2 = match result {
+                    let iter2 = store.query(query2);
+                    let names2 = iter2.names();
+                    for resultrow2 in iter2 {
+                        if let Ok(result) = resultrow2.get_by_name_or_last(&names2, use_var2) {
+                            let text2 = match result {
                             QueryResultItem::TextResource(resource) => resource.clone().to_textselection(),
                             QueryResultItem::Annotation(annotation) => {
                                 if let Some(tsel) = annotation.textselections().next() {
@@ -109,15 +112,16 @@ pub fn align<'store>(
                             _ => return Err(StamError::OtherError("Obtained result type can not by used by stam align, expected ANNOTATION, RESOURCE or TEXT"))
                         };
 
-                        buildtranspositions.extend(align_texts(&text, &text2, config)?);
-                    } else if let Some(use_var2) = use_var2 {
-                        return Err(StamError::QuerySyntaxError(
-                            format!(
-                                "No result found for variable {}, so nothing to align",
-                                use_var2
-                            ),
-                            "(align)",
-                        ));
+                            buildtranspositions.extend(align_texts(&text, &text2, config)?);
+                        } else if let Some(use_var2) = use_var2 {
+                            return Err(StamError::QuerySyntaxError(
+                                format!(
+                                    "No result found for variable {}, so nothing to align",
+                                    use_var2
+                                ),
+                                "(align)",
+                            ));
+                        }
                     }
                 }
             } else if let Some(use_var) = use_var {
