@@ -173,7 +173,7 @@ impl AlignedFragment {
     ) -> Result<bool, StamError> {
         let (offset1, offset2) = self.to_offsets();
         let textstring1 = text.textselection(&offset1)?.text();
-        let textstring2 = text.textselection(&offset2)?.text();
+        let textstring2 = text2.textselection(&offset2)?.text();
         if textstring1 != textstring2 {
             //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
             if config.verbose {
