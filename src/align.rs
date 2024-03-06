@@ -170,8 +170,20 @@ impl AlignedFragment {
         text: &ResultTextSelection<'store>,
         text2: &ResultTextSelection<'store>,
         config: &AlignmentConfig,
-    ) -> Result<(), StamError> {
+    ) -> Result<bool, StamError> {
         let (offset1, offset2) = self.to_offsets();
+        let textstring1 = text.textselection(&offset1)?.text();
+        let textstring2 = text.textselection(&offset2)?.text();
+        if textstring1 != textstring2 {
+            //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
+            if config.verbose {
+                eprintln!(
+                    "Notice: Skipping failed alignment fragment: \"{}\" vs \"{}\"",
+                    textstring1, textstring2
+                );
+            }
+            return Ok(false);
+        }
         if config.verbose {
             println!(
                 "{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
@@ -181,14 +193,11 @@ impl AlignedFragment {
                 text2.resource().id().unwrap_or("-"),
                 &offset2.begin,
                 &offset2.end,
-                text.textselection(&offset1)?
-                    .text()
+                textstring1
                     .replace("\"", "\\\"")
                     .replace("\t", "\\t")
                     .replace("\n", "\\n"),
-                text2
-                    .textselection(&offset2)?
-                    .text()
+                textstring2
                     .replace("\"", "\\\"")
                     .replace("\t", "\\t")
                     .replace("\n", "\\n")
@@ -202,7 +211,7 @@ impl AlignedFragment {
             text2.resource().handle().into(),
             offset2,
         ));
-        Ok(())
+        Ok(true)
     }
 }
 
@@ -275,13 +284,13 @@ pub fn align_texts<'store>(
                     }
                     _ => {
                         if let Some(fragment) = fragment.take() {
-                            fragment.publish(&mut select1, &mut select2, text, text2, config)?
+                            fragment.publish(&mut select1, &mut select2, text, text2, config)?;
                         }
                     }
                 }
             }
             if let Some(fragment) = fragment.take() {
-                fragment.publish(&mut select1, &mut select2, text, text2, config)?
+                fragment.publish(&mut select1, &mut select2, text, text2, config)?;
             }
 
             if select1.is_empty() || (config.simple_only && select1.len() > 1) {
