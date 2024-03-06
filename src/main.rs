@@ -1250,7 +1250,12 @@ The first query should retrieve the transposition to transpose over, it should p
             .unwrap_or_default()
             .collect::<Vec<&str>>();
         eprintln!(
-            "Initializing store with {} annotation(s), {} resource(s), {} annotationset(s), {} additional store(s)",
+            "{} store: {} annotation(s), {} resource(s), {} annotationset(s), {} additional store(s)",
+            if rootargs.subcommand_matches("annotate").is_some() {
+                "Adding to"
+            } else {
+                "Initializing"
+            }, 
             annotationfiles.len(),
             resourcefiles.len(),
             setfiles.len(),
