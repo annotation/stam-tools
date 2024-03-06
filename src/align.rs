@@ -179,7 +179,14 @@ impl AlignedFragment {
             if config.verbose {
                 eprintln!(
                     "Notice: Skipping failed alignment fragment: \"{}\" vs \"{}\"",
-                    textstring1, textstring2
+                    textstring1
+                        .replace("\"", "\\\"")
+                        .replace("\t", "\\t")
+                        .replace("\n", "\\n"),
+                    textstring2
+                        .replace("\"", "\\\"")
+                        .replace("\t", "\\t")
+                        .replace("\n", "\\n")
                 );
             }
             return Ok(false);
