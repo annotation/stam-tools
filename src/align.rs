@@ -149,6 +149,7 @@ pub enum AlignmentScope {
     Global,
 }
 
+#[derive(Clone, PartialEq, Debug)]
 struct AlignedFragment {
     begin1: usize,
     begin2: usize,
@@ -174,9 +175,14 @@ impl AlignedFragment {
         let (offset1, offset2) = self.to_offsets();
         let textstring1 = text.textselection(&offset1)?.text();
         let textstring2 = text2.textselection(&offset2)?.text();
+        //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
         if textstring1 != textstring2 {
-            //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
-            if config.verbose {
+            if self.length > 1 {
+                //ugly patch: try shortening the fragment and rematch (this often works)
+                let mut shorterfragment = self.clone();
+                shorterfragment.length = self.length - 1;
+                return shorterfragment.publish(select1, select2, text, text2, config);
+            } else if config.verbose {
                 eprintln!(
                     "Notice: Skipping failed alignment fragment: \"{}\" vs \"{}\"",
                     textstring1
