@@ -424,7 +424,7 @@ fn print_alignment<'a>(
     text2: &ResultTextSelection<'a>,
 ) {
     println!(
-        "{}\t{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
+        "{}\t{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"\t{}",
         annotation.id().unwrap_or("-"),
         text1.resource().id().unwrap_or("-"),
         text1.begin(),
@@ -441,6 +441,13 @@ fn print_alignment<'a>(
             .text()
             .replace("\"", "\\\"")
             .replace("\t", "\\t")
-            .replace("\n", "\\n")
+            .replace("\n", "\\n"),
+        {
+            let ids: Vec<_> = annotation
+                .annotations_in_targets(AnnotationDepth::One)
+                .map(|a| a.id().unwrap_or("-"))
+                .collect();
+            ids.join("|")
+        }
     );
 }

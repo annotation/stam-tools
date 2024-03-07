@@ -365,4 +365,6 @@ With the `--verbose` flag, the alignment will be outputted to standard output in
 
 You can also output transpositions and other alignments using the `stam export
 --alignments` (or `stam query --alignments`). This will output the same as
-above, except for an extra first column with the annotation (transposition) ID.
+above, except for an extra first column with the annotation (transposition) ID,
+and an extra final column with all annotations ID underlying the transposition
+(separated by a pipe character).

@@ -1444,6 +1444,7 @@ The first query should retrieve the transposition annotation to transpose over, 
                 existing_source_side: true,
                 no_transposition: args.is_present("no-transpositions"),
                 no_resegmentation: args.is_present("no-resegmentations"),
+                debug: args.is_present("debug"),
                 ..Default::default()
             }) {
             eprintln!("[error] Transposition failed: {:?}", err);
