@@ -391,19 +391,7 @@ pub fn alignments_tsv_out<'a>(
     for resultrow in iter {
         if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
             if let QueryResultItem::Annotation(annotation) = result {
-                let mut annoiter = annotation.annotations_in_targets(AnnotationDepth::One);
-                if let (Some(left), Some(right)) = (annoiter.next(), annoiter.next()) {
-                    //complex transposition
-                    for (text1, text2) in left.textselections().zip(right.textselections()) {
-                        print_alignment(annotation, &text1, &text2)
-                    }
-                } else {
-                    //simple transposition
-                    let mut textiter = annotation.textselections();
-                    if let (Some(text1), Some(text2)) = (textiter.next(), textiter.next()) {
-                        print_alignment(annotation, &text1, &text2)
-                    }
-                }
+                print_transposition(annotation);
             } else {
                 return Err(StamError::OtherError(
                     "Only queries that return ANNOTATION are supported when outputting aligments",
@@ -412,6 +400,22 @@ pub fn alignments_tsv_out<'a>(
         }
     }
     Ok(())
+}
+
+pub fn print_transposition<'a>(annotation: &ResultItem<'a, Annotation>) {
+    let mut annoiter = annotation.annotations_in_targets(AnnotationDepth::One);
+    if let (Some(left), Some(right)) = (annoiter.next(), annoiter.next()) {
+        //complex transposition
+        for (text1, text2) in left.textselections().zip(right.textselections()) {
+            print_alignment(annotation, &text1, &text2)
+        }
+    } else {
+        //simple transposition
+        let mut textiter = annotation.textselections();
+        if let (Some(text1), Some(text2)) = (textiter.next(), textiter.next()) {
+            print_alignment(annotation, &text1, &text2)
+        }
+    }
 }
 
 fn print_alignment<'a>(

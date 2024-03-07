@@ -471,10 +471,22 @@ fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
 fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
-        Arg::with_name("use2")
-            .long("use2")
+        Arg::with_name("transposition")
+            .long("transposition")
+            .short('T')
+            .help("A query in STAMQL to retrieve the transposition annotation, or the exact transposition ID. See
+                https://github.com/annotation/stam/tree/master/extensions/stam-query for an
+                explanation of the query language's syntax. The query should produce only one result (if
+                not only the first is taken). If you have the exact ID of the transposition already, then
+                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --transposition parameter for each --query parameter (in the same order).")
+            .action(ArgAction::Append)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("use-transposition")
+            .long("use-transposition")
             .help(
-                "Name of the variable from the *second or later* --query parametrs to use. If not set, the last defined subquery will be used (still pertaining to the second --query statement!)"
+                "Name of the variable from the  --transposition queries to use (must be the same for all). If not set, the last defined subquery will be used"
             )
             .takes_value(true)
     );
@@ -831,8 +843,8 @@ You need to specify this parameter twice, the text of first query will be aligne
                 .args(&common_arguments())
                 .args(&store_argument())
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL to retrieve a text. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
-The first query should retrieve the transposition to transpose over, it should produce only one result. Subsequent queries are the annotations to transpose."))
+                .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
+The first query should retrieve the transposition annotation to transpose over, it should produce only one result. Subsequent queries are the annotations to transpose."))
                 .args(&transpose_arguments())
             )
         .get_matches();
@@ -1383,28 +1395,51 @@ The first query should retrieve the transposition to transpose over, it should p
     } else if rootargs.subcommand_matches("transpose").is_some() {
         //load the store
         store = load_store(args);
+        let transposition_querystrings: Vec<_> = args.values_of("transposition").unwrap_or_default().map(|q|
+            if q.find(" ").is_some() {
+                //already a query
+                q.to_string()
+            } else {
+                //probably an ID, transform to query
+                format!("SELECT ANNOTATION WHERE ID \"{}\";", q)
+            }
+        ).collect();
+
         let querystrings: Vec<_> = args.values_of("query").unwrap_or_default().collect();
 
-        let mut queries = VecDeque::new();
-        for (i, querystring) in querystrings.into_iter().enumerate() {
-            queries.push_back(stam::Query::parse(querystring).unwrap_or_else(|err| {
+        let mut transposition_queries = Vec::new();
+        for (i, querystring) in transposition_querystrings.iter().enumerate() {
+            transposition_queries.push(stam::Query::parse(querystring).unwrap_or_else(|err| {
                 eprintln!("[error] Query syntax error query {}: {}", i+1, err);
                 exit(1);
             }).0);
         }
-        if queries.len() < 2 {
-            eprintln!("[error] Expected at least two --query parameters");
+        if transposition_queries.len() < 1 {
+            eprintln!("[error] Expected at least one --transposition parameter");
+            exit(1);
+        }
+
+        let mut queries = Vec::new();
+        for (i, querystring) in querystrings.into_iter().enumerate() {
+            queries.push(stam::Query::parse(querystring).unwrap_or_else(|err| {
+                eprintln!("[error] Query syntax error query {}: {}", i+1, err);
+                exit(1);
+            }).0);
+        }
+        if queries.len() < 1 {
+            eprintln!("[error] Expected at least one --query parameter");
             exit(1);
         }
         if let Err(err) = transpose(
             &mut store,
-            queries.pop_front().unwrap(),
-            queries.into_iter().collect(),
-            args.value_of("use"),
-            args.value_of("use2"), 
+            transposition_queries,
+            queries,
+            args.value_of("use-transposition"),
+            args.value_of("use"), 
             args.value_of("id-prefix").map(|x| x.to_string()),
             stam::IdStrategy::default(),
             args.is_present("ignore-errors"),
+            args.is_present("verbose"),
             TransposeConfig {
                 existing_source_side: true,
                 no_transposition: args.is_present("no-transpositions"),
