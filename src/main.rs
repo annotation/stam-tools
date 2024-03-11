@@ -43,21 +43,6 @@ const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an anno
 
 fn store_arguments<'a>(input_required: bool, outputs: bool) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
-    args.push(
-        Arg::with_name("annotationstore")
-            .help(
-                if !input_required && outputs {
-                    HELP_OUTPUT_OPTIONAL_INPUT
-                } else if outputs {
-                    HELP_INPUT_OUTPUT
-                } else {
-                    HELP_INPUT
-                }
-            )
-            .takes_value(true)
-            .required(input_required)
-            .action(ArgAction::Append),
-    );
     if outputs {
         args.push(
             Arg::with_name("outputstore")
@@ -78,6 +63,21 @@ fn store_arguments<'a>(input_required: bool, outputs: bool) -> Vec<clap::Arg<'a>
                 .required(false),
         );
     }
+    args.push(
+        Arg::with_name("annotationstore")
+            .help(
+                if !input_required && outputs {
+                    HELP_OUTPUT_OPTIONAL_INPUT
+                } else if outputs {
+                    HELP_INPUT_OUTPUT
+                } else {
+                    HELP_INPUT
+                }
+            )
+            .takes_value(true)
+            .multiple(true)
+            .required(input_required)
+    );
     args
 }
 
@@ -616,7 +616,7 @@ fn load_store(args: &ArgMatches) -> AnnotationStore {
     let mut store: AnnotationStore = AnnotationStore::new(config_from_args(args));
     for (i,filename) in args
         .values_of("annotationstore")
-        .expect("an annotation store must be provided").enumerate() {
+        .expect("an annotation store must be provided").into_iter().enumerate() {
         if i == 0 {
             store =
                 AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
