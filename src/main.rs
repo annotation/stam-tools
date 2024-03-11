@@ -661,25 +661,6 @@ fn main() {
                 .args(&config_arguments()),
         )
         .subcommand(
-            SubCommand::with_name("save")
-                .about("Save the annotation store and all underlying files to the the specified location and data format (detected by extension).")
-                .args(&common_arguments())
-                .args(&store_arguments(true,true))
-                .args(&config_arguments())
-                .arg(
-                    Arg::with_name("outputfile")
-                        .long("outputfile")
-                        .short('o')
-                        .help(
-                            "Output filename for the annotation store, other filenames will be derived automatically. You can use the following extensions:
-                                * .json (recommended: .store.json) - STAM JSON - Very verbose but also more interopable.
-                                * .csv (recommended: .store.csv) - STAM CSV - Not very verbose, less interoperable",
-                        )
-                        .takes_value(true)
-                        .required(true)
-                ),
-        )
-        .subcommand(
             SubCommand::with_name("export")
                 .about("Export annotations (or other data structures) as tabular data to a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
                 .args(&common_arguments())
@@ -896,7 +877,7 @@ The first query should retrieve the transposition annotation to transpose over, 
 
 
     let mut args: Option<&ArgMatches> = None;
-    for subcommand in ["info","save","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose"] {
+    for subcommand in ["info","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose"] {
         if let Some(matchedargs) = rootargs.subcommand_matches(subcommand) {
             args = Some(matchedargs);
         }
@@ -908,7 +889,8 @@ The first query should retrieve the transposition annotation to transpose over, 
     let args = args.unwrap();
 
     let mut store = if rootargs.subcommand_matches("import").is_some() || rootargs.subcommand_matches("init").is_some(){
-        if !args.is_present("force-new") && store_exists(args) {
+        let force_new = args.is_present("force-new") || rootargs.subcommand_matches("init").is_some();
+        if !force_new && store_exists(args) {
             eprintln!("Existing annotation store found, loading");
             load_store(args)
         } else {
@@ -926,18 +908,6 @@ The first query should retrieve the transposition annotation to transpose over, 
 
     if rootargs.subcommand_matches("info").is_some() {
         info(&store, args.is_present("verbose"));
-    } else if rootargs.subcommand_matches("save").is_some() {
-        store.set_filename(args.value_of("outputfile").unwrap());
-        if !args.is_present("dry-run") {
-            store.save().unwrap_or_else(|err| {
-                eprintln!(
-                    "Failed to write annotation store {:?}: {}",
-                    store.filename(),
-                    err
-                );
-                exit(1);
-            });
-        }
     } else if rootargs.subcommand_matches("export").is_some()
         || rootargs.subcommand_matches("query").is_some()
     {

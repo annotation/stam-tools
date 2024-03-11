@@ -22,7 +22,6 @@ Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 * ``stam print``     - Output the text of any resources in the model.
 * ``stam query`` or ``stam export``  -  Query the annotation store and export the output in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
 * ``stam validate``  - Validate a STAM model.  
-* ``stam save``      - Write a STAM model to file(s). This can be used to switch between STAM JSON and STAM CSV output, based on the extension.
 * ``stam tag``       - Regular-expression based tagger on plain text. 
 * ``stam view``      - View annotations as queried by outputting to HTML (or ANSI coloured text).
 
@@ -42,8 +41,13 @@ $ cargo install stam-tools
 
 Add the ``--help`` flag after the subcommand for extensive usage instructions.
 
-Most tools take as input a STAM JSON file containing an annotation store. Any
-files mentioned via the `@include` mechanism are loaded automatically.
+Most tools take as input a STAM JSON or CSV file containing an annotation store. You
+may also specify multiple stores which will be merged into one. Any files
+mentioned via the `@include` mechanism are loaded automatically.
+
+When output is written, the first store file used as input is also used as
+output. You can prevent writing output files by setting `--dry-run` or prevent
+reusing the first input file by setting an explicit output using `--output`.
 
 Instead of passing STAM JSON files, you can read from stdin and/or output to
 stdout by setting the filename to ``-``, this works in many places.
@@ -81,14 +85,15 @@ use `stam import` instead.
 The `stam init` and `stam annotate` commands are also capable of merging
 multiple annotation stores into one.
 
-### stam save
-
-This command is used to load a STAM annotationstore and save it under another
-name and/or other format. It can be used to convert between STAM JSON
-and STAM CSV. Example:
+If you want to load a STAM annotationstore (or multiple) and save it under
+another name and/or other format, you can use `stam init` (or `stam annotate`)
+as well, they key is to then use an explicit `--output` filename that differs
+from the input. It serves to merge stores and/or convert between STAM JSON and
+STAM CSV. Example:
 
 ```
-$ stam save -o my.store.stam.csv my.store.stam.json
+$ stam init --output merged.store.stam.csv mystore1.store.stam.json mystore2.store.stam.json
+
 ```
 
 ### stam info
