@@ -36,32 +36,51 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
-fn store_argument<'a>() -> Vec<clap::Arg<'a>> {
+
+const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one.";
+const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set.";
+const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an annotation store in STAM JSON or STAM CSV. If the file exists, it will be loaded and augmented. Multiple store files are allowed but will only act as input and will be merged into one. (the *first* file mentioned).  If  --dry-run or --output is set, this will not be used for output.";
+
+fn store_arguments<'a>(input_required: bool, outputs: bool) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
         Arg::with_name("annotationstore")
             .help(
-                "Input and output file for the annotation store (will be overwritten if it already exists!). Set to - for standard input/output. Note that for 'stam init', this is only used as output.",
+                if !input_required && outputs {
+                    HELP_OUTPUT_OPTIONAL_INPUT
+                } else if outputs {
+                    HELP_INPUT_OUTPUT
+                } else {
+                    HELP_INPUT
+                }
             )
             .takes_value(true)
-            .required(true),
+            .required(input_required)
+            .action(ArgAction::Append),
     );
+    if outputs {
+        args.push(
+            Arg::with_name("outputstore")
+                .long("output")
+                .short('o')
+                .help(
+                    "The annotation store to use as output. If this is not specified and --dry-run is not set, the *first* annotation store that was used for input will also be used as output. The file type is derived rom the extension, you can use the following:
+                    * .json (recommended: .store.json) - STAM JSON - Very verbose but also more interopable.
+                    * .csv (recommended: .store.csv) - STAM CSV - Not very verbose, less interoperable",
+                )
+                .takes_value(true)
+                .required(false)
+        );
+        args.push(
+            Arg::with_name("force-new")
+                .long("force-new")
+                .help("Force a new AnnotationStore, do not reload but simply overwrite any existing ones")
+                .required(false),
+        );
+    }
     args
 }
 
-fn multi_store_arguments<'a>(required: bool) -> Vec<clap::Arg<'a>> {
-    let mut args: Vec<Arg> = Vec::new();
-    args.push(
-        Arg::with_name("annotationstore")
-            .help(
-                "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed.",
-            )
-            .takes_value(true)
-            .required(required)
-            .action(ArgAction::Append),
-    );
-    args
-}
 
 fn config_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -580,15 +599,40 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn store_exists(args: &ArgMatches) -> bool {
+    if args.is_present("annotationstore") {
+        for filename in args
+            .values_of("annotationstore").unwrap()
+         {
+            return Path::new(filename).exists();
+        }
+        false
+    } else {
+        false
+    }
+}
+
 fn load_store(args: &ArgMatches) -> AnnotationStore {
-    let filename = args
-        .value_of("annotationstore")
-        .expect("an annotation store must be provided");
-    let mut store =
-        AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
-            eprintln!("Error loading annotation store: {}", err);
+    let mut store: AnnotationStore = AnnotationStore::new(config_from_args(args));
+    for (i,filename) in args
+        .values_of("annotationstore")
+        .expect("an annotation store must be provided").enumerate() {
+        if i == 0 {
+            store =
+                AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
+                    eprintln!("error loading annotation store: {}", err);
+                    exit(1);
+                });
+        } else if !filename.ends_with(".json") {
+            eprintln!("When loading multiple annotation store, the other ones must be in STAM JSON format (CSV and CBOR not supported)");
             exit(1);
-        });
+        } else {
+            store = store.with_file(filename).unwrap_or_else(|err| {
+                eprintln!("Error loading annotation store: {}", err);
+                exit(1);
+            });
+        }
+    }
     if args.is_present("strip-ids") {
         store.strip_data_ids();
         store.strip_annotation_ids();
@@ -606,21 +650,21 @@ fn main() {
             SubCommand::with_name("info")
                 .about("Return information regarding a STAM model. Set --verbose for extra details.")
                 .args(&common_arguments())
-                .args(&multi_store_arguments(true))
+                .args(&store_arguments(true, false))
                 .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("validate")
                 .about("Validate a STAM model. Set --verbose to have it output the STAM JSON or STAM CSV to standard output.")
                 .args(&common_arguments())
-                .args(&multi_store_arguments(true))
+                .args(&store_arguments(true, false))
                 .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("save")
                 .about("Save the annotation store and all underlying files to the the specified location and data format (detected by extension).")
                 .args(&common_arguments())
-                .args(&store_argument())
+                .args(&store_arguments(true,true))
                 .args(&config_arguments())
                 .arg(
                     Arg::with_name("outputfile")
@@ -639,7 +683,7 @@ fn main() {
             SubCommand::with_name("export")
                 .about("Export annotations (or other data structures) as tabular data to a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
                 .args(&common_arguments())
-                .args(&multi_store_arguments(true))
+                .args(&store_arguments(true, true))
                 .args(&config_arguments())
                 .args(&format_arguments())
                 .args(&tsv_arguments_out())
@@ -652,7 +696,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
             SubCommand::with_name("import")
                 .about("Import annotations from a TSV format.")
                 .args(&common_arguments())
-                .args(&store_argument())
+                .args(&store_arguments(false, true))
                 .args(&config_arguments())
                 .args(&tsv_arguments_in()),
         )
@@ -660,7 +704,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
             SubCommand::with_name("query")
                 .about("Query annotations by data and output results to a TSV format. If --verbose is set, a tree-like structure is expressed in which the order of rows matters.")
                 .args(&common_arguments())
-                .args(&multi_store_arguments(true))
+                .args(&store_arguments(true, false))
                 .args(&config_arguments())
                 .args(&format_arguments())
                 .args(&tsv_arguments_out())
@@ -673,7 +717,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
             SubCommand::with_name("print")
                 .about("Output the plain text of given a query, or of all resources if no query was provided")
                 .args(&common_arguments())
-                .args(&multi_store_arguments(true))
+                .args(&store_arguments(true, false))
                 .args(&config_arguments())
                 .args(&query_arguments("
 A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
@@ -683,7 +727,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
             SubCommand::with_name("view")
                 .about("Output the text and annotations of one or more resource(s) in HTML, suitable for visualisation in a browser. Requires --resource")
                 .args(&common_arguments())
-                .args(&multi_store_arguments(true))
+                .args(&store_arguments(true, false))
                 .args(&config_arguments())
                 .args(&query_arguments("One or more queries in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. You can specify multiple queries here by repeating the parameter, the first query is the primary selection query and determines what text is shown. Any subsequent queries are highlight queries and determine what is highlighted. You can prepend the following *attributes* to the query (before the SELECT statement), to determine how things are visualised:
 
@@ -756,15 +800,15 @@ If no attribute is provided, there will be no tags shown for that query, only a 
             SubCommand::with_name("init")
                 .about("Initialize a new stam annotationstore")
                 .args(&common_arguments())
-                .args(&store_argument())
+                .args(&store_arguments(true,true))
                 .args(&annotate_arguments())
                 .args(&config_arguments()),
         )
         .subcommand(
             SubCommand::with_name("annotate")
                 .about("Add annotations (or datasets, resources) to an existing annotationstore")
+                .args(&store_arguments(true,true))
                 .args(&annotate_arguments())
-                .args(&store_argument())
                 .args(&common_arguments())
                 .args(&config_arguments()),
         )
@@ -772,7 +816,7 @@ If no attribute is provided, there will be no tags shown for that query, only a 
             SubCommand::with_name("tag")
                 .about("Regular-expression based tagger on plain text")
                 .args(&common_arguments())
-                .args(&store_argument())
+                .args(&store_arguments(true,true))
                 .args(&config_arguments())
                 .arg(
                     Arg::with_name("rules")
@@ -803,7 +847,7 @@ The file contains the following columns:
             SubCommand::with_name("grep")
                 .about("Regular-expression based search on plain text")
                 .args(&common_arguments())
-                .args(&store_argument())
+                .args(&store_arguments(true,false))
                 .args(&config_arguments())
                 .arg(
                     Arg::with_name("expression")
@@ -831,7 +875,7 @@ returned, in that case anything else is considered context and will not be retur
             SubCommand::with_name("align")
                 .about("Aligns two (or more) texts; computes a transposition annotation that maps the two (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose) and adds it to the store. The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters. In --verbose mode, the alignments will be outputted to standard output as tab separated values with the follows columns: resource 1, offset 1, resource 2, offset 2, text 1, text 2")
                 .args(&common_arguments())
-                .args(&store_argument())
+                .args(&store_arguments(true,true))
                 .args(&config_arguments())
                 .args(&query_arguments("A query in STAMQL to retrieve a text. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. 
 You need to specify this parameter twice, the text of first query will be aligned with text of the second one. If specified more than twice, each text will be aligned (independently) with the first one"))
@@ -841,7 +885,7 @@ You need to specify this parameter twice, the text of first query will be aligne
             SubCommand::with_name("transpose")
                 .about("Transpose annotations over a transposition, effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). The first query corresponds to the transposition, further queries correspond to the annotations to transpose via that transposition. The new transposed annotations (and the transpositions that produced them) will be added to the store.")
                 .args(&common_arguments())
-                .args(&store_argument())
+                .args(&store_arguments(true,true))
                 .args(&config_arguments())
                 .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
 The first query should retrieve the transposition annotation to transpose over, it should produce only one result. Subsequent queries are the annotations to transpose."))
@@ -849,82 +893,40 @@ The first query should retrieve the transposition annotation to transpose over, 
             )
         .get_matches();
 
-    let args = if let Some(args) = rootargs.subcommand_matches("info") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("save") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("export") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("query") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("import") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("print") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("view") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("validate") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("init") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("annotate") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("tag") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("grep") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("align") {
-        args
-    } else if let Some(args) = rootargs.subcommand_matches("transpose") {
-        args
-    } else {
+
+
+    let mut args: Option<&ArgMatches> = None;
+    for subcommand in ["info","save","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose"] {
+        if let Some(matchedargs) = rootargs.subcommand_matches(subcommand) {
+            args = Some(matchedargs);
+        }
+    }
+    if args.is_none() {
         eprintln!("No command specified, please see stam --help");
         exit(2);
+    }
+    let args = args.unwrap();
+
+    let mut store = if rootargs.subcommand_matches("import").is_some() || rootargs.subcommand_matches("init").is_some(){
+        if !args.is_present("force-new") && store_exists(args) {
+            eprintln!("Existing annotation store found, loading");
+            load_store(args)
+        } else {
+            eprintln!("New annotation store created");
+            AnnotationStore::new(config_from_args(args))
+        }
+    } else {
+        //loading one or more existing stores
+        load_store(args)
     };
-
-    let mut store = AnnotationStore::new(config_from_args(args));
-
-    if rootargs.subcommand_matches("info").is_some()
-        || rootargs.subcommand_matches("export").is_some()
-        || rootargs.subcommand_matches("query").is_some()
-        || rootargs.subcommand_matches("print").is_some()
-        || rootargs.subcommand_matches("view").is_some()
-        || rootargs.subcommand_matches("validate").is_some()
-        || rootargs.subcommand_matches("align").is_some()
-        || rootargs.subcommand_matches("transpose").is_some()
-    {
-        if args.is_present("annotationstore") {
-            let storefiles = args
-                .values_of("annotationstore")
-                .unwrap()
-                .collect::<Vec<&str>>();
-            for (i, filename) in storefiles.iter().enumerate() {
-                eprintln!("Loading annotation store {}", filename);
-                if i == 0 {
-                    store = AnnotationStore::from_file(filename, config_from_args(args))
-                        .unwrap_or_else(|err| {
-                            eprintln!("Error loading annotation store: {}", err);
-                            exit(1);
-                        });
-                } else {
-                    store = store.with_file(filename).unwrap_or_else(|err| {
-                        eprintln!("Error loading annotation store: {}", err);
-                        exit(1);
-                    });
-                }
-            }
-        }
-
-        if args.is_present("strip-ids") {
-            store.strip_data_ids();
-            store.strip_annotation_ids();
-        }
+    if let Some(output) = args.value_of("outputstore") {
+        //set output filename
+        store.set_filename(output);
     }
 
     if rootargs.subcommand_matches("info").is_some() {
         info(&store, args.is_present("verbose"));
     } else if rootargs.subcommand_matches("save").is_some() {
-        store = load_store(args);
         store.set_filename(args.value_of("outputfile").unwrap());
         if !args.is_present("dry-run") {
             store.save().unwrap_or_else(|err| {
@@ -1065,18 +1067,9 @@ The first query should retrieve the transposition annotation to transpose over, 
             eprintln!("Invalid output format, specify 'tsv', 'json' or 'w3anno'");
             exit(1);
         }
+        exit(0); //no need to save to store so we exit here
     } else if rootargs.subcommand_matches("import").is_some() {
-        let storefilename = args
-            .value_of("annotationstore")
-            .expect("an annotation store must be provided");
         let inputfiles = args.values_of("inputfile").unwrap().collect::<Vec<&str>>();
-        if Path::new(storefilename).exists() {
-            eprintln!("Existing annotation store found");
-            store = load_store(args);
-        } else {
-            eprintln!("New annotation store created");
-            store.set_filename(storefilename);
-        }
         let columns: Option<Vec<&str>> = if args.is_present("columns") {
             Some(args.value_of("columns").unwrap().split(",").collect())
         } else {
@@ -1140,6 +1133,7 @@ The first query should retrieve the transposition annotation to transpose over, 
             exit(1);
         });
         to_text(&store, query, args.value_of("use"));
+        exit(0); //no need to save to store so we exit here
     } else if rootargs.subcommand_matches("view").is_some() {
         let queries: Vec<&str> = args.values_of("query").unwrap_or_default().collect();
         let mut queries_iter = queries.into_iter();
@@ -1230,21 +1224,13 @@ The first query should retrieve the transposition annotation to transpose over, 
             }
             None => unreachable!(),
         }
+        exit(0); //no need to save to store so we exit here
     } else if rootargs.subcommand_matches("validate").is_some() {
         validate(&store, args.is_present("verbose"));
+        exit(0); //no need to save to store so we exit here
     } else if rootargs.subcommand_matches("init").is_some()
         || rootargs.subcommand_matches("annotate").is_some()
     {
-        if rootargs.subcommand_matches("annotate").is_some() {
-            //load the store
-            store = load_store(args);
-        } else {
-            //init: associate the filename with the pre-created store
-            let filename = args
-                .value_of("annotationstore")
-                .expect("an annotation store must be provided");
-            store.set_filename(filename);
-        }
         let resourcefiles = args
             .values_of("resources")
             .unwrap_or_default()
@@ -1285,19 +1271,8 @@ The first query should retrieve the transposition annotation to transpose over, 
             &storefiles,
             &annotationfiles,
         );
-        if !args.is_present("dry-run") {
-            store.save().unwrap_or_else(|err| {
-                eprintln!(
-                    "Failed to write annotation store {:?}: {}",
-                    store.filename(),
-                    err
-                );
-                exit(1);
-            });
-        }
     } else if rootargs.subcommand_matches("tag").is_some() {
         //load the store
-        store = load_store(args);
         tag(
             &mut store,
             args.value_of("rules").expect("--rules must be provided"),
@@ -1313,9 +1288,9 @@ The first query should retrieve the transposition annotation to transpose over, 
                 exit(1);
             });
         }
+        exit(0); //no need to save to store so we exit here
     } else if rootargs.subcommand_matches("grep").is_some() {
         //load the store
-        store = load_store(args);
         grep(
             &store,
             args.values_of("expression")
@@ -1323,10 +1298,9 @@ The first query should retrieve the transposition annotation to transpose over, 
                 .collect(),
             args.is_present("allow-overlap"),
         );
+        exit(0); //no need to save to store so we exit here
     } else if rootargs.subcommand_matches("align").is_some() {
         //load the store
-        store = load_store(args);
-
         let mut querystrings: Vec<_> = args.values_of("query").unwrap_or_default().map(|x| x.to_string()).collect();
         querystrings.extend( args.values_of("resource").unwrap_or_default().map(|x| format!("SELECT RESOURCE WHERE ID \"{}\"",x)) );
 
@@ -1382,19 +1356,7 @@ The first query should retrieve the transposition annotation to transpose over, 
             eprintln!("[error] Alignment failed: {:?}", err);
             exit(1);
         }
-        if !args.is_present("dry-run") {
-            store.save().unwrap_or_else(|err| {
-                eprintln!(
-                    "Failed to write annotation store {:?}: {}",
-                    store.filename(),
-                    err
-                );
-                exit(1);
-            });
-        }
     } else if rootargs.subcommand_matches("transpose").is_some() {
-        //load the store
-        store = load_store(args);
         let transposition_querystrings: Vec<_> = args.values_of("transposition").unwrap_or_default().map(|q|
             if q.find(" ").is_some() {
                 //already a query
@@ -1450,16 +1412,16 @@ The first query should retrieve the transposition annotation to transpose over, 
             eprintln!("[error] Transposition failed: {:?}", err);
             exit(1);
         }
-        if !args.is_present("dry-run") {
-            store.save().unwrap_or_else(|err| {
-                eprintln!(
-                    "Failed to write annotation store {:?}: {}",
-                    store.filename(),
-                    err
-                );
-                exit(1);
-            });
-        }
+    }
 
+    if !args.is_present("dry-run") {
+        store.save().unwrap_or_else(|err| {
+            eprintln!(
+                "Failed to write annotation store {:?}: {}",
+                store.filename(),
+                err
+            );
+            exit(1);
+        });
     }
 }
