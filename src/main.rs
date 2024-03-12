@@ -887,7 +887,7 @@ fn main() {
         }
     }
     if args.is_none() {
-        eprintln!("No command specified, please see stam --help");
+        eprintln!("[error] No command specified, please see 'stam help', for interactive mode use 'stam batch'");
         exit(2);
     }
     let args = args.unwrap();

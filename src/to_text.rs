@@ -1,17 +1,19 @@
 use crate::query::textselection_from_queryresult;
 use stam::{AnnotationStore, Query, Text};
-use std::process::exit;
 
 /// Run a query and outputs the text of the results to standard output. Some extra information (identifiers as headers) will be outputted to standard error output
-pub fn to_text<'a>(store: &'a AnnotationStore, query: Query<'a>, varname: Option<&'a str>) {
+pub fn to_text<'a>(
+    store: &'a AnnotationStore,
+    query: Query<'a>,
+    varname: Option<&'a str>,
+) -> Result<(), String> {
     let results = store.query(query);
     let names = results.names();
     let mut prevresult = None;
     for selectionresult in results {
         match textselection_from_queryresult(&selectionresult, varname, &names) {
             Err(msg) => {
-                eprintln!("Error: {}", msg);
-                exit(1);
+                return Err(format!("{}", msg));
             }
             Ok((textselection, _, id)) => {
                 if prevresult == Some(textselection.clone()) {
@@ -36,4 +38,5 @@ pub fn to_text<'a>(store: &'a AnnotationStore, query: Query<'a>, varname: Option
             }
         }
     }
+    Ok(())
 }

@@ -1,7 +1,6 @@
 use stam::{AnnotationStore, Configurable, ToJson};
-use std::process::exit;
 
-pub fn validate(store: &AnnotationStore, verbose: bool) {
+pub fn validate(store: &AnnotationStore, verbose: bool) -> Result<(), String> {
     let result = store.to_json_string(&store.config().clone().with_use_include(false));
     match result {
         Ok(result) => {
@@ -10,8 +9,8 @@ pub fn validate(store: &AnnotationStore, verbose: bool) {
             }
         }
         Err(err) => {
-            eprintln!("Error during serialization: {}", err);
-            exit(1);
+            return Err(format!("Error during serialization: {}", err));
         }
     }
+    Ok(())
 }
