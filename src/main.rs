@@ -641,6 +641,7 @@ fn app<'a>(batchmode: bool) -> App<'a> {
         .about("CLI tool to work with standoff text annotation (STAM)")
         .subcommand(
             SubCommand::with_name("batch")
+                .visible_alias("shell")
                 .about("Batch mode, reads multiple STAM subcommands from standard input (or interactively). Loading takes place at the very beginning, and saving is deferred to the very end.")
                 .args(&common_arguments())
                 .args(&store_arguments(true, true, batchmode))
@@ -787,6 +788,7 @@ If no attribute is provided, there will be no tags shown for that query, only a 
         )
         .subcommand(
             SubCommand::with_name("annotate")
+                .visible_alias("add")
                 .about("Add annotations (or datasets, resources) to an existing annotationstore")
                 .args(&store_arguments(true,true, batchmode))
                 .args(&annotate_arguments())
@@ -983,13 +985,22 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         if batchmode {
             return Err(format!("Batch can't be used when already in batch mode"));
         }
-        eprintln!("Batch mode enabled, enter stam commands as usual but without the initial 'stam' command\nand without store input/output arguments\nuse ^D to quit with saving (if applicable), ^C to quit without saving");
+        eprintln!("Batch mode enabled, enter stam commands as usual but without the initial 'stam' command\n but without store input/output arguments\ntype 'help' for help\ntype 'quit' or ^D to quit with saving (if applicable), 'cancel' or ^C to quit without saving");
         let mut line = String::new();
         loop {
-            eprint!("stam{}> ", if changed { "*" } else { ""} );
+            if atty::is(atty::Stream::Stdin) {
+                eprint!("stam{}> ", if changed { "*" } else { ""} );
+            }
             match io::stdin().lock().read_line(&mut line) {
                 Ok(0) => break,
                 Ok(_) => {
+                    let line_trimmed = line.trim();
+                    if line_trimmed == "q" || line_trimmed == "quit" || line_trimmed == "exit" {
+                        break;
+                    } else if line_trimmed == "abort" || line_trimmed == "cancel" {
+                        changed = false;
+                        break;
+                    }
                     let fields = parse_batch_line(&line);
                     let batchapp = app(true);
                     match batchapp.try_get_matches_from(fields) {
