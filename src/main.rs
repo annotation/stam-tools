@@ -993,14 +993,20 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         }
         eprintln!("Batch mode enabled, enter stam commands as usual but without the initial 'stam' command\n but without store input/output arguments\ntype 'help' for help\ntype 'quit' or ^D to quit with saving (if applicable), 'cancel' or ^C to quit without saving");
         let mut line = String::new();
+        let is_tty = atty::is(atty::Stream::Stdin);
+        let mut seqnr = 0;
         loop {
-            if atty::is(atty::Stream::Stdin) {
-                eprint!("stam{}> ", if changed { "*" } else { ""} );
-            }
+            seqnr += 1;
+            //prompt
+            eprint!("stam[{}{}]> ", seqnr, if changed { "*" } else { ""} );
             match io::stdin().lock().read_line(&mut line) {
                 Ok(0) => break,
                 Ok(_) => {
                     let line_trimmed = line.trim();
+                    if !is_tty {
+                        //non-interactive: copy input
+                        eprintln!("{}", line);
+                    }
                     if line_trimmed == "q" || line_trimmed == "quit" || line_trimmed == "exit" {
                         break;
                     } else if line_trimmed == "abort" || line_trimmed == "cancel" {
@@ -1025,6 +1031,10 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                     }
                 }
                 Err(err) => {
+                    if !is_tty {
+                        //non-interactive: copy input
+                        eprintln!("{}",line);
+                    }
                     eprintln!("{}",err);
                 }
             }
