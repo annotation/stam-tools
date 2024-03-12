@@ -908,6 +908,7 @@ The first query should retrieve the transposition annotation to transpose over, 
 
     if rootargs.subcommand_matches("info").is_some() {
         info(&store, args.is_present("verbose"));
+        exit(0); //no need to save to store so we exit here
     } else if rootargs.subcommand_matches("export").is_some()
         || rootargs.subcommand_matches("query").is_some()
     {
