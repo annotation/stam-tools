@@ -15,9 +15,10 @@ A collection of command-line tools for working with [STAM](https://github.com/an
 Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 
 * ``stam align``     - Align two similar texts, mapping their coordinate spaces.
-* ``stam annotate``  - Add annotations (or datasets or resources) from STAM JSON files
+* ``stam annotate`` or ``stam add``  - Add annotations or datasets or resources (from file).
+* ``stam batch`` or `stam shell`     - Process multiple subcommands in sequence, or run interactively.
 * ``stam info``      - Return information regarding a STAM model. 
-* ``stam init``      - Initialize a new STAM annotationstore
+* ``stam init``      - Initialize a new STAM annotationstore (either from scratch or as a copy/merge of others)
 * ``stam import``    - Import STAM data in tabular from a simple TSV (Tab Separated Values) format, allows custom columns.
 * ``stam print``     - Output the text of any resources in the model.
 * ``stam query`` or ``stam export``  -  Query the annotation store and export the output in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
@@ -373,3 +374,22 @@ You can also output transpositions and other alignments using the `stam export
 above, except for an extra first column with the annotation (transposition) ID,
 and an extra final column with all annotations ID underlying the transposition
 (separated by a pipe character).
+
+### stam batch
+
+The `stam batch` tool is used when you want to execute multiple subcommands in
+series.
+
+Subcommands are read from standard input, either interactively or by piping
+input. The syntax for the subcommands is equivalent to their invocation from
+the command line, but with the following differences:
+
+* there is no `stam` command, just start with the subcommand
+* you can not pass input/output arguments to load/save from/to annotation stores with the individual subcommands anymore,
+  instead, these should be passed on the batch level as a whole. 
+
+The annotation store(s) is loaded once at the start, and saved at the end if
+there are any changes (and you didn't set --dry-run). This gives `stam batch`
+its edge over just running the `stam` command itself in sequence; data need not
+be loaded and stored after each step.
+
