@@ -4,7 +4,6 @@ use stam::{
 };
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::process::exit;
 
 struct Rule<'a> {
     expression: Regex,
@@ -13,30 +12,24 @@ struct Rule<'a> {
     variable_value: bool,
 }
 
-fn load_tag_rules(filename: &str) -> Vec<Rule> {
+fn load_tag_rules(filename: &str) -> Result<Vec<Rule>, String> {
     let mut rules: Vec<Rule> = Vec::new();
-    let f = File::open(filename).unwrap_or_else(|e| {
-        eprintln!("Error opening rules {}: {}", filename, e);
-        exit(1)
-    });
+    let f = File::open(filename).map_err(|e| format!("Error opening rules {}: {}", filename, e))?;
     let reader = BufReader::new(f);
     for (i, line) in reader.lines().enumerate() {
         if let Ok(line) = line {
             if !line.is_empty() && !line.starts_with("#") {
                 let fields: Vec<&str> = line.split("\t").collect();
                 if fields.len() != 4 {
-                    eprintln!(
+                    return Err(format!(
                         "Error parsing rules {} line {}: Expected 4 columns, got {}",
                         filename,
                         i + 1,
                         fields.len()
-                    );
-                    exit(2)
+                    ));
                 }
-                let expression = Regex::new(fields[0]).unwrap_or_else(|e| {
-                    eprintln!("Error in rules {} line {}: {}", filename, i + 1, e);
-                    exit(1)
-                });
+                let expression = Regex::new(fields[0])
+                    .map_err(|e| format!("Error in rules {} line {}: {}", filename, i + 1, e))?;
                 let variable_value = if fields[3].find("$").is_some() {
                     true
                 } else {
@@ -53,19 +46,20 @@ fn load_tag_rules(filename: &str) -> Vec<Rule> {
             }
         }
     }
-    rules
+    Ok(rules)
 }
 
 /// Tag according to ths specified rule file. This adds new annotations to the store.
-pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bool) {
-    let rules = load_tag_rules(rulefile);
+pub fn tag<'a>(
+    store: &mut AnnotationStore,
+    rulefile: &'a str,
+    allow_overlap: bool,
+) -> Result<(), String> {
+    let rules = load_tag_rules(rulefile)?;
     let expressions: Vec<_> = rules.iter().map(|rule| rule.expression.clone()).collect();
     eprintln!("Loaded {} expressions from {}", rules.len(), rulefile);
-    let precompiledset =
-        RegexSet::new(expressions.iter().map(|x| x.as_str())).unwrap_or_else(|e| {
-            eprintln!("Error in compiling regexset: {}", e);
-            exit(1);
-        });
+    let precompiledset = RegexSet::new(expressions.iter().map(|x| x.as_str()))
+        .map_err(|e| format!("Error in compiling regexset: {}", e))?;
     //search the text and build annotations
     let annotations: Vec<AnnotationBuilder<'a>> = store
         .find_text_regex(&expressions, &Some(precompiledset), allow_overlap)
@@ -119,9 +113,9 @@ pub fn tag<'a>(store: &mut AnnotationStore, rulefile: &'a str, allow_overlap: bo
         .collect();
     //now we add the actual annotations (can't be combined with previous step because we can't have mutability during iteration)
     for annotation in annotations {
-        store.annotate(annotation).unwrap_or_else(|err| {
-            eprintln!("Failed to add annotation: {}", err);
-            exit(1)
-        });
+        store
+            .annotate(annotation)
+            .map_err(|err| format!("Failed to add annotation: {}", err))?;
     }
+    Ok(())
 }

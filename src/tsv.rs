@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::process::exit;
 
 #[derive(Clone, PartialEq, Debug)]
 /// Represents a column in TSV output or input
@@ -534,8 +533,7 @@ pub fn to_tsv<'a>(
             .map(|col| {
                 Column::parse(*col, setdelimiter)
                     .map_err(|err| {
-                        eprintln!("{}", err);
-                        exit(1);
+                        eprintln!("[warning] {}", err);
                     })
                     .unwrap()
             })
@@ -782,11 +780,9 @@ pub fn from_tsv(
     header: Option<bool>,   //None means autodetect
     validation: ValidationMode,
     verbose: bool,
-) {
-    let f = File::open(filename).unwrap_or_else(|e| {
-        eprintln!("Error opening TSV file {}: {}", filename, e);
-        exit(1);
-    });
+) -> Result<(), String> {
+    let f =
+        File::open(filename).map_err(|e| format!("Error opening TSV file {}: {}", filename, e))?;
     let reader = BufReader::new(f);
 
     let mut columns: Option<Columns> = None;
@@ -813,8 +809,7 @@ pub fn from_tsv(
                         line.split("\t")
                             .map(|col| {
                                 parse_column(col, default_set, setdelimiter).map_err(|err| {
-                                    eprintln!("Unable to parse first line of TSV file as header (please provide a column configuration explicitly if the input file has none): {}. You may consider setting --annotationset if you want to interpret this column as a key in the specified annotationset", err);
-                                    exit(1);
+                                    eprintln!("[warning] Unable to parse first line of TSV file as header (please provide a column configuration explicitly if the input file has none): {}. You may consider setting --annotationset if you want to interpret this column as a key in the specified annotationset", err);
                                 }).unwrap()
                             })
                             .collect(),
@@ -822,10 +817,7 @@ pub fn from_tsv(
                 );
                 parsemode = Some(
                     ParseMode::new(columns.as_ref().unwrap(), existing_resource, sequential)
-                        .unwrap_or_else(|e| {
-                            eprintln!("Can't determine parse mode: {}", e);
-                            exit(1);
-                        }),
+                        .map_err(|e| format!("Can't determine parse mode: {}", e))?,
                 );
                 if verbose {
                     eprintln!("Columns: {:?}", columns.as_ref().unwrap());
@@ -839,8 +831,7 @@ pub fn from_tsv(
             } else {
                 if columns.is_none() {
                     if columnconfig.is_none() {
-                        eprintln!("Please provide a configuration for the columns");
-                        exit(1);
+                        return Err(format!("Please provide a configuration for the columns"));
                     }
                     columns = Some(Columns(
                         columnconfig
@@ -849,8 +840,10 @@ pub fn from_tsv(
                             .map(|col| {
                                 parse_column(col, default_set, setdelimiter)
                                     .map_err(|err| {
-                                        eprintln!("Unable to parse provided column: {}", err);
-                                        exit(1);
+                                        eprintln!(
+                                            "[warning] Unable to parse provided column: {}",
+                                            err
+                                        );
                                     })
                                     .unwrap()
                             })
@@ -858,10 +851,7 @@ pub fn from_tsv(
                     ));
                     parsemode = Some(
                         ParseMode::new(columns.as_ref().unwrap(), existing_resource, sequential)
-                            .unwrap_or_else(|e| {
-                                eprintln!("Can't determine parse mode: {}", e);
-                                exit(1);
-                            }),
+                            .map_err(|e| format!("Can't determine parse mode: {}", e))?,
                     );
                     if verbose {
                         eprintln!("Columns: {:?}", columns.as_ref().unwrap());
@@ -879,8 +869,11 @@ pub fn from_tsv(
                             outputdelimiter,
                             &mut buffered_delimiter,
                         ) {
-                            eprintln!("Error reconstructing text (line {}): {}", i + 1, e);
-                            exit(1);
+                            return Err(format!(
+                                "Error reconstructing text (line {}): {}",
+                                i + 1,
+                                e
+                            ));
                         }
                         if buffer.is_empty() {
                             bufferbegin = i;
@@ -901,8 +894,7 @@ pub fn from_tsv(
                         validation,
                         &mut cursors,
                     ) {
-                        eprintln!("Error parsing tsv line {}: {}", i + 1, e);
-                        exit(1);
+                        return Err(format!("Error parsing tsv line {}: {}", i + 1, e));
                     }
                 }
             }
@@ -924,13 +916,11 @@ pub fn from_tsv(
             {
                 Ok(resource) => {
                     if let Err(e) = store.insert(resource) {
-                        eprintln!("Error adding reconstructed text to store: {}", e);
-                        exit(1);
+                        return Err(format!("Error adding reconstructed text to store: {}", e));
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error loading resource: {}", e);
-                    exit(1);
+                    return Err(format!("Error loading resource: {}", e));
                 }
             }
         }
@@ -955,11 +945,15 @@ pub fn from_tsv(
                 validation,
                 &mut cursors,
             ) {
-                eprintln!("Error parsing tsv line {}: {}", i + bufferbegin + 1, e);
-                exit(1);
+                return Err(format!(
+                    "Error parsing tsv line {}: {}",
+                    i + bufferbegin + 1,
+                    e
+                ));
             }
         }
     }
+    Ok(())
 }
 
 fn reconstruct_text(
