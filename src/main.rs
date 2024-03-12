@@ -899,7 +899,13 @@ fn main() {
             load_store(args)
         } else {
             eprintln!("New annotation store created");
-            AnnotationStore::new(config_from_args(args))
+            let mut store = AnnotationStore::new(config_from_args(args));
+            if args.is_present("annotationstore") {
+                if let Some(filename) = args.values_of("annotationstore").unwrap().next() {
+                    store.set_filename(filename);
+                }
+            }
+            store
         }
     } else {
         //loading one or more existing stores
@@ -926,8 +932,8 @@ fn main() {
     }
 
     if changed && !args.is_present("dry-run") {
-        if let Some(filename ) = store.filename() {
-            eprintln!("[error] Writing annotation store to {}", filename);
+        if let Some(filename) = store.filename() {
+            eprintln!("Writing annotation store to {}", filename);
         }
         store.save().unwrap_or_else(|err| {
             eprintln!(
@@ -1007,7 +1013,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                         Ok(batchargs) => 
                             match run(store, &batchargs, true) {
                                 Ok(newchanged) => {
-                                    changed &= newchanged;
+                                    changed = changed || newchanged;
                                 }
                                 Err(err) => {
                                     eprintln!("[error] {}",&err);
