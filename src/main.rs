@@ -1212,7 +1212,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         let (query, _) = stam::Query::parse(querystring).map_err(|err| {
             format!("Query syntax error: {}", err)
         })?;
-        to_text(&store, query, args.value_of("use"));
+        to_text(&store, query, args.value_of("use"))?;
     } else if rootargs.subcommand_matches("view").is_some() {
         let queries: Vec<&str> = args.values_of("query").unwrap_or_default().collect();
         let mut queries_iter = queries.into_iter();
@@ -1302,7 +1302,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
             None => unreachable!(),
         }
     } else if rootargs.subcommand_matches("validate").is_some() {
-        validate(&store, args.is_present("verbose"));
+        validate(&store, args.is_present("verbose"))?;
     } else if rootargs.subcommand_matches("init").is_some()
         || rootargs.subcommand_matches("annotate").is_some()
     {
@@ -1353,7 +1353,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 .expect("--expression must be provided")
                 .collect(),
             args.is_present("allow-overlap"),
-        );
+        )?;
     } else if rootargs.subcommand_matches("align").is_some() {
         //load the store
         let mut querystrings: Vec<_> = args.values_of("query").unwrap_or_default().map(|x| x.to_string()).collect();
