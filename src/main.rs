@@ -443,6 +443,11 @@ fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Do case-insensitive matching, this has more performance overhead"),
     );
     args.push(
+        Arg::with_name("trim")
+            .long("trim")
+            .help("Trim leading and trailing whitespace (including newlines) from matches, ensuring the aligned matches are minimal. This may lead to whitespace being unaligned even though there is an alignment."),
+    );
+    args.push(
         Arg::with_name("global")
             .long("global")
             .help("Perform global alignment instead of local"),
@@ -1403,6 +1408,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 },
                 annotation_id_prefix: args.value_of("id-prefix").map(|x| x.to_string()),
                 simple_only: args.is_present("simple-only"),
+                trim: args.is_present("trim"),
                 verbose: args.is_present("verbose")
             }
         ) {

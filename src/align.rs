@@ -2,6 +2,8 @@ use stam::*;
 
 use seal::pair::{AlignmentSet, InMemoryAlignmentMatrix, NeedlemanWunsch, SmithWaterman, Step};
 
+const TRIM_CHARS: [char; 4] = [' ', '\n', '\t', '\r'];
+
 pub struct AlignmentConfig {
     /// Case-insensitive matching has more performance overhead
     pub case_sensitive: bool,
@@ -14,6 +16,10 @@ pub struct AlignmentConfig {
 
     /// Prefix to use when assigning annotation IDs. The actual ID will have a random component
     pub annotation_id_prefix: Option<String>,
+
+    /// Strip leading and trailing whitespace/newlines from aligned text selections, keeping them as minimal as possible (default is to be as greedy as possible in selecting)
+    /// Setting this may lead to certain whitespaces not being covered even though they may align.
+    pub trim: bool,
 
     /// Only allow for alignments that consist of one contiguous text selection on either side. This is a so-called simple transposition.
     pub simple_only: bool,
@@ -29,6 +35,7 @@ impl Default for AlignmentConfig {
             alignment_scope: AlignmentScope::Local,
             algorithm: AlignmentAlgorithm::default(),
             annotation_id_prefix: None,
+            trim: false,
             simple_only: false,
             verbose: false,
         }
@@ -172,9 +179,29 @@ impl AlignedFragment {
         text2: &ResultTextSelection<'store>,
         config: &AlignmentConfig,
     ) -> Result<bool, StamError> {
-        let (offset1, offset2) = self.to_offsets();
-        let textstring1 = text.textselection(&offset1)?.text();
-        let textstring2 = text2.textselection(&offset2)?.text();
+        let (offset1, offset2) = self.to_offsets(); //will get shadowed immediately after
+        let (textstring1, offset1) = if config.trim {
+            let trimmed = text.textselection(&offset1)?.trim_text(&TRIM_CHARS)?;
+            (
+                trimmed.text(),
+                trimmed
+                    .relative_offset(text, OffsetMode::BeginBegin)
+                    .expect("relative offset must succeed"),
+            )
+        } else {
+            (text.textselection(&offset1)?.text(), offset1)
+        };
+        let (textstring2, offset2) = if config.trim {
+            let trimmed = text2.textselection(&offset2)?.trim_text(&TRIM_CHARS)?;
+            (
+                trimmed.text(),
+                trimmed
+                    .relative_offset(text2, OffsetMode::BeginBegin)
+                    .expect("relative offset must succeed"),
+            )
+        } else {
+            (text2.textselection(&offset2)?.text(), offset2)
+        };
         //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
         if textstring1 != textstring2 {
             if self.length > 1 {
