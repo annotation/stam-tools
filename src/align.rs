@@ -180,28 +180,8 @@ impl AlignedFragment {
         config: &AlignmentConfig,
     ) -> Result<bool, StamError> {
         let (offset1, offset2) = self.to_offsets(); //will get shadowed immediately after
-        let (textstring1, offset1) = if config.trim {
-            let trimmed = text.textselection(&offset1)?.trim_text(&TRIM_CHARS)?;
-            (
-                trimmed.text(),
-                trimmed
-                    .relative_offset(text, OffsetMode::BeginBegin)
-                    .expect("relative offset must succeed"),
-            )
-        } else {
-            (text.textselection(&offset1)?.text(), offset1)
-        };
-        let (textstring2, offset2) = if config.trim {
-            let trimmed = text2.textselection(&offset2)?.trim_text(&TRIM_CHARS)?;
-            (
-                trimmed.text(),
-                trimmed
-                    .relative_offset(text2, OffsetMode::BeginBegin)
-                    .expect("relative offset must succeed"),
-            )
-        } else {
-            (text2.textselection(&offset2)?.text(), offset2)
-        };
+        let textstring1 = text.textselection(&offset1)?.text();
+        let textstring2 = text2.textselection(&offset2)?.text();
         //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
         if textstring1 != textstring2 {
             if self.length > 1 {
@@ -224,6 +204,32 @@ impl AlignedFragment {
             }
             return Ok(false);
         }
+        let (textstring1, offset1) = if config.trim {
+            if let Ok(trimmed) = text.textselection(&offset1)?.trim_text(&TRIM_CHARS) {
+                let newoffset = trimmed
+                    .relative_offset(text, OffsetMode::BeginBegin)
+                    .expect("relative offset must succeed");
+                (trimmed.text(), newoffset)
+            } else {
+                //nothing left to align
+                return Ok(false);
+            }
+        } else {
+            (textstring1, offset1)
+        };
+        let (textstring2, offset2) = if config.trim {
+            if let Ok(trimmed) = text2.textselection(&offset2)?.trim_text(&TRIM_CHARS) {
+                let newoffset = trimmed
+                    .relative_offset(text2, OffsetMode::BeginBegin)
+                    .expect("relative offset must succeed");
+                (trimmed.text(), newoffset)
+            } else {
+                //nothing left to align
+                return Ok(false);
+            }
+        } else {
+            (textstring2, offset2)
+        };
         if config.verbose {
             println!(
                 "{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
