@@ -959,6 +959,7 @@ fn parse_batch_line(line: &str) -> Vec<&str> {
                 begin = i + 1;
             } else {
                 fields.push(&line[begin..i]);
+                begin = i + 1;
             }
         } else if !quote {
             if c == ' ' || c == '\n' || c == '\t' {
