@@ -539,6 +539,11 @@ fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("ignore-errors")
             .help("Skip annotations that can not be transposed successfully and output a warning, this would produce a hard failure otherwise"),
     );
+    args.push(
+        Arg::with_name("debug-transpose")
+            .long("debug-transpose")
+            .help("Debug the transpose function only (more narrow than doing --debug in general)"),
+    );
     args
 }
 
@@ -1461,7 +1466,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 existing_source_side: true,
                 no_transposition: args.is_present("no-transpositions"),
                 no_resegmentation: args.is_present("no-resegmentations"),
-                debug: args.is_present("debug"),
+                debug: args.is_present("debug") || args.is_present("debug-transpose"),
                 ..Default::default()
             }) {
             return Err(format!("Transposition failed: {:?}", err));
