@@ -769,6 +769,13 @@ If no attribute is provided, there will be no tags shown for that query, only a 
                     ),
                 )
                 .arg(
+                    Arg::with_name("collapse")
+                        .long("collapse")
+                        .help(
+                        "Collapse all tags by default on loading HTML documents",
+                    ),
+                )
+                .arg(
                     Arg::with_name("prune")
                         .long("prune")
                         .help(
@@ -1280,6 +1287,9 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 }
                 if args.is_present("verbose") {
                     writer = writer.with_annotation_ids(true);
+                }
+                if args.is_present("collapse") {
+                    writer = writer.with_autocollapse(true);
                 }
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);

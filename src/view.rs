@@ -176,6 +176,8 @@ pub struct HtmlWriter<'a> {
     titles: bool,
     /// Use javascript for interactive elements
     interactive: bool,
+    /// Auto-collapse all tags on document load
+    autocollapse: bool,
 }
 
 const HTML_HEADER: &str = "<!DOCTYPE html>
@@ -411,6 +413,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     e.classList.add("hidetags");
                 }
             });
+            if (autocollapse) {
+                e.click();
+            }
         }
     }
 });
@@ -439,6 +444,7 @@ impl<'a> HtmlWriter<'a> {
             legend: true,
             titles: true,
             interactive: true,
+            autocollapse: true,
         }
     }
 
@@ -485,6 +491,10 @@ impl<'a> HtmlWriter<'a> {
     }
     pub fn with_interactive(mut self, value: bool) -> Self {
         self.interactive = value;
+        self
+    }
+    pub fn with_autocollapse(mut self, value: bool) -> Self {
+        self.autocollapse = value;
         self
     }
     pub fn with_data_script(mut self, value: bool) -> Self {
@@ -549,6 +559,11 @@ impl<'a> Display for HtmlWriter<'a> {
             write!(f, "{}", header)?;
         }
         if self.interactive {
+            write!(
+                f,
+                "<script>autocollapse = {};</script>",
+                if self.autocollapse { "true" } else { "false" }
+            )?;
             write!(f, "{}", HTML_SCRIPT)?;
         }
         write!(
