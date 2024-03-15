@@ -13,7 +13,7 @@ repository = "https://github.com/annotation/stam-tools"
 keywords = [ "text-processing", "annotation", "linguistics", "standoff", "nlp"]
 
 [dependencies]
-stam = { version = "0.10.1" }
+stam = { version = "0.11.0" }
 clap = "3.2.23"
 html-escape = "0.2.13"
 seal = "0.1.5"
