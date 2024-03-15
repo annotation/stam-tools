@@ -646,6 +646,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                             "{}",
                                             html_escape::encode_text(subtext)
                                                 .replace(" ", "&ensp;")
+                                                .replace("\n", "<br/>")
                                                 .as_str()
                                         )?;
                                     }
