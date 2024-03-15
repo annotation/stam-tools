@@ -8,7 +8,7 @@ pub struct AlignmentConfig {
     /// Case-insensitive matching has more performance overhead
     pub case_sensitive: bool,
 
-    // The Alignment algorithm
+    // The Alignment algorithm (Experimental)
     pub algorithm: AlignmentAlgorithm,
 
     /// Alignment scope (Experimental)
