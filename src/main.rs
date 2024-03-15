@@ -1278,6 +1278,9 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 if args.is_present("prune") {
                     writer = writer.with_prune(true);
                 }
+                if args.is_present("verbose") {
+                    writer = writer.with_annotation_ids(true);
+                }
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);
                     writer = writer.with_selectionvar(var);

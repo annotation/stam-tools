@@ -428,7 +428,7 @@ impl<'a> HtmlWriter<'a> {
             selectionquery,
             selectionvar: None,
             highlights: Vec::new(),
-            output_annotation_ids: true,
+            output_annotation_ids: false,
             output_data_ids: false,
             output_key_ids: false,
             output_offset: true,
@@ -646,7 +646,6 @@ impl<'a> Display for HtmlWriter<'a> {
                                             "{}",
                                             html_escape::encode_text(subtext)
                                                 .replace(" ", "&ensp;")
-                                                .replace("\n", "<br/>")
                                                 .as_str()
                                         )?;
                                     }
@@ -1253,7 +1252,7 @@ impl<'a> Iterator for LinebreakIter<'a> {
         while !self.done {
             if let Some(c) = self.iter.next() {
                 if (c == '\n' && self.buffertype == BufferType::NewLines)
-                    || (self.buffertype == BufferType::Text)
+                    || (c != '\n' && self.buffertype == BufferType::Text)
                 {
                     //same type as buffer, carry on
                     self.curbytepos += c.len_utf8();
