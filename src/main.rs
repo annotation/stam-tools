@@ -928,11 +928,11 @@ fn main() {
         //loading one or more existing stores
         load_store(args)
     };
-    if let Some(output) = args.value_of("outputstore") {
+    if let Ok(Some(output)) = args.try_get_one::<String>("outputstore") {
         //set output filename
         store.set_filename(output);
     }
-    if let Some(id) = args.value_of("id") {
+    if let Ok(Some(id)) = args.try_get_one::<String>("id") {
         store = store.with_id(id.to_string());
     }
 
