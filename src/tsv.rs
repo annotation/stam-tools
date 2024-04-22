@@ -526,7 +526,7 @@ pub fn to_tsv<'a>(
     header: bool,
     setdelimiter: &str,
     autocolumns: bool,
-) {
+) -> Result<(), StamError> {
     let mut columns = Columns(
         columnconfig
             .iter()
@@ -560,7 +560,7 @@ pub fn to_tsv<'a>(
     let want_textselections =
         columns.0.contains(&Column::TextSelection) || columns.0.contains(&Column::Text);
 
-    let iter = store.query(query);
+    let iter = store.query(query)?;
     let names = iter.names();
     let names_ordered = names.enumerate();
     for (seqnr, resultrow) in iter.enumerate() {
@@ -693,6 +693,7 @@ pub fn to_tsv<'a>(
             }
         }
     }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

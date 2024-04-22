@@ -49,7 +49,7 @@ pub(crate) fn textselection_from_queryresult<'a>(
 
 /// Run a query and outputs the results as STAM JSON to standard output
 pub fn to_json<'a>(store: &'a AnnotationStore, query: Query<'a>) -> Result<(), StamError> {
-    let iter = store.query(query);
+    let iter = store.query(query)?;
     let names = iter.names();
     let names_ordered = names.enumerate();
     print!("[");
@@ -102,7 +102,7 @@ pub fn to_w3anno<'a>(
     use_var: &str,
     config: WebAnnoConfig,
 ) {
-    let iter = store.query(query);
+    let iter = store.query(query).expect("query failed");
     let names = iter.names();
     for resultrow in iter {
         if let Ok(result) = resultrow.get_by_name(&names, use_var) {

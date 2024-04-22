@@ -82,7 +82,7 @@ pub fn align<'store>(
 ) -> Result<Vec<AnnotationHandle>, StamError> {
     let mut buildtranspositions = Vec::new();
     {
-        let iter = store.query(query);
+        let iter = store.query(query)?;
         let names = iter.names();
         for resultrow in iter {
             if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
@@ -102,7 +102,7 @@ pub fn align<'store>(
                         _ => return Err(StamError::OtherError("Obtained result type can not by used by stam align, expected ANNOTATION, RESOURCE or TEXT"))
                     };
 
-                    let iter2 = store.query(query2);
+                    let iter2 = store.query(query2)?;
                     let names2 = iter2.names();
                     for resultrow2 in iter2 {
                         if let Ok(result) = resultrow2.get_by_name_or_last(&names2, use_var2) {
@@ -419,7 +419,7 @@ pub fn alignments_tsv_out<'a>(
     query: Query<'a>,
     use_var: Option<&str>,
 ) -> Result<(), StamError> {
-    let iter = store.query(query);
+    let iter = store.query(query)?;
     let names = iter.names();
     for resultrow in iter {
         if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {

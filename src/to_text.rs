@@ -7,7 +7,7 @@ pub fn to_text<'a>(
     query: Query<'a>,
     varname: Option<&'a str>,
 ) -> Result<(), String> {
-    let results = store.query(query);
+    let results = store.query(query).map_err(|e| format!("{}", e))?;
     let names = results.names();
     let mut prevresult = None;
     for selectionresult in results {

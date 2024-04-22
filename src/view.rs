@@ -603,7 +603,11 @@ impl<'a> Display for HtmlWriter<'a> {
             }
             write!(f, "</ul></div>")?;
         }
-        let results = self.store.query(self.selectionquery.clone());
+        let results = self.store.query(self.selectionquery.clone()).map_err(|e| {
+            eprintln!("{}", e);
+            std::fmt::Error
+        })?;
+
         let names = results.names();
         let mut prevresult = None;
         let mut openingtags = String::new();
@@ -994,7 +998,12 @@ impl<'a> AnsiWriter<'a> {
             }
             println!();
         }
-        let results = self.store.query(self.selectionquery.clone());
+
+        let results = self
+            .store
+            .query(self.selectionquery.clone())
+            .expect("query failed");
+
         let names = results.names();
         let mut prevresult = None;
         for (resultnr, selectionresult) in results.enumerate() {
@@ -1186,7 +1195,7 @@ fn get_highlights_results<'a>(
                 );
             }
             //process result of highlight query and extra annotations
-            for results in store.query(hlquery) {
+            for results in store.query(hlquery).expect("query failed") {
                 if let Some(result) = results.iter().last() {
                     match result {
                         &QueryResultItem::Annotation(ref annotation) => {

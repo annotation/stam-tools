@@ -1139,7 +1139,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 !args.is_present("no-header"),
                 args.value_of("setdelimiter").unwrap(),
                 !args.is_present("strict-columns"),
-            );
+            ).map_err(|err| format!("{}",err))?;
         } else if let Some("json") = args.value_of("format") {
             to_json(&store, query).map_err(|err| format!("{}",err))?;
         } else if let Some("webanno") | Some("w3anno") | Some("jsonl") = args.value_of("format") {

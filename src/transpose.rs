@@ -21,7 +21,7 @@ pub fn transpose<'store>(
         transposition_queries.push(query.clone());
     }
     for (transposition_query, query) in transposition_queries.into_iter().zip(queries.into_iter()) {
-        let iter = store.query(transposition_query);
+        let iter = store.query(transposition_query)?;
         let names = iter.names();
         let mut transposition: Option<ResultItem<Annotation>> = None;
         let transpositiondata = store
@@ -50,7 +50,7 @@ pub fn transpose<'store>(
             }
         }
         if let Some(transposition) = transposition {
-            let iter = store.query(query);
+            let iter = store.query(query)?;
             let names2 = iter.names();
             for resultrow in iter {
                 if let Ok(QueryResultItem::Annotation(annotation)) =
