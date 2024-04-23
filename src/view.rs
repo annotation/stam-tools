@@ -1170,22 +1170,22 @@ fn get_highlights_results<'a>(
                 match parentresult {
                     QueryResultItem::None => {}
                     QueryResultItem::Annotation(x) => {
-                        hlquery.bind_annotationvar(varname, x.clone());
+                        hlquery.bind_annotationvar(varname, x);
                     }
                     QueryResultItem::TextSelection(x) => {
-                        hlquery.bind_textvar(varname, x.clone());
+                        hlquery.bind_textvar(varname, x);
                     }
                     QueryResultItem::AnnotationData(x) => {
-                        hlquery.bind_datavar(varname, x.clone());
+                        hlquery.bind_datavar(varname, x);
                     }
                     QueryResultItem::TextResource(x) => {
-                        hlquery.bind_resourcevar(varname, x.clone());
+                        hlquery.bind_resourcevar(varname, x);
                     }
                     QueryResultItem::AnnotationDataSet(x) => {
-                        hlquery.bind_datasetvar(varname, x.clone());
+                        hlquery.bind_datasetvar(varname, x);
                     }
                     QueryResultItem::DataKey(x) => {
-                        hlquery.bind_keyvar(varname, x.clone());
+                        hlquery.bind_keyvar(varname, x);
                     }
                 }
             } else {

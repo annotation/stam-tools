@@ -90,15 +90,15 @@ pub fn align<'store>(
                     //MAYBE TODO: this could be parallellized (but memory may be a problem then)
                     eprintln!("Aligning #{}/{}...", i + 1, queries2.len());
                     let (text, query2) = match result {
-                        QueryResultItem::TextResource(resource) => ( resource.clone().to_textselection(), query2raw.clone().with_resourcevar(use_var.unwrap_or("resource"), resource.clone())),
+                        QueryResultItem::TextResource(resource) => ( resource.clone().to_textselection(), query2raw.clone().with_resourcevar(use_var.unwrap_or("resource"), resource)),
                         QueryResultItem::Annotation(annotation) => {
                             if let Some(tsel) = annotation.textselections().next() {
-                                (tsel, query2raw.clone().with_annotationvar(use_var.unwrap_or("annotation"), annotation.clone()))
+                                (tsel, query2raw.clone().with_annotationvar(use_var.unwrap_or("annotation"), annotation))
                             } else {
                                 return Err(StamError::OtherError("Annotation references multiple texts, this is not supported yet by stam align"));
                             }
                         }
-                        QueryResultItem::TextSelection(tsel) => ( tsel.clone(), query2raw.clone().with_textvar(use_var.unwrap_or("text"), tsel.clone())),
+                        QueryResultItem::TextSelection(tsel) => ( tsel.clone(), query2raw.clone().with_textvar(use_var.unwrap_or("text"), tsel)),
                         _ => return Err(StamError::OtherError("Obtained result type can not by used by stam align, expected ANNOTATION, RESOURCE or TEXT"))
                     };
 
