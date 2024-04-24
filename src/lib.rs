@@ -21,5 +21,6 @@ pub mod transpose;
 pub mod tsv;
 pub mod validate;
 pub mod view;
+pub mod xml;
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");

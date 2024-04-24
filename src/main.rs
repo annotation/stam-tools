@@ -17,6 +17,7 @@ use stamtools::validate::*;
 use stamtools::info::*;
 use stamtools::annotate::*;
 use stamtools::transpose::*;
+use stamtools::xml::*;
 
 fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -41,7 +42,7 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
 const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one.";
 const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set.";
 const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an annotation store in STAM JSON or STAM CSV. If the file exists, it will be loaded and augmented. Multiple store files are allowed but will only act as input and will be merged into one. (the *first* file mentioned).  If  --dry-run or --output is set, this will not be used for output.";
-const SUBCOMMANDS: [&'static str; 14] = ["batch","info","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose"];
+const SUBCOMMANDS: [&'static str; 15] = ["batch","info","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose","fromxml"];
 
 fn store_arguments<'a>(input_required: bool, outputs: bool, batchmode: bool) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -603,6 +604,20 @@ fn annotate_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("inputfile")
+            .long("inputfile")
+            .short('f')
+            .help("XML file to import. This option may be specified multiple times.")
+            .action(ArgAction::Append)
+            .required(true)
+            .takes_value(true),
+    );
+    args
+}
+
 fn store_exists(args: &ArgMatches) -> bool {
     if args.is_present("annotationstore") {
         for filename in args
@@ -691,6 +706,14 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
                 .args(&store_arguments(false, true, batchmode))
                 .args(&config_arguments())
                 .args(&tsv_arguments_in()),
+        )
+        .subcommand(
+            SubCommand::with_name("fromxml")
+                .about("Convert an XML file with inline annotations to STAM. A mapping for the conversion is provided separately in a configuration file and is specific to a type of XML format.")
+                .args(&common_arguments())
+                .args(&store_arguments(false, true, batchmode))
+                .args(&config_arguments())
+                .args(&xml_arguments()),
         )
         .subcommand(
             SubCommand::with_name("query")
@@ -909,7 +932,7 @@ fn main() {
     }
     let args = args.unwrap();
 
-    let mut store = if rootargs.subcommand_matches("import").is_some() || rootargs.subcommand_matches("init").is_some(){
+    let mut store = if rootargs.subcommand_matches("import").is_some() || rootargs.subcommand_matches("init").is_some() || rootargs.subcommand_matches("fromxml").is_some() {
         let force_new = !args.is_present("outputstore") && (args.is_present("force-new") || rootargs.subcommand_matches("init").is_some());
         if !force_new && store_exists(args) {
             eprintln!("Existing annotation store found, loading");
@@ -1483,6 +1506,12 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 ..Default::default()
             }) {
             return Err(format!("Transposition failed: {:?}", err));
+        }
+        changed = true;
+    } else if rootargs.subcommand_matches("fromxml").is_some() {
+        let config = XmlConversionConfig::default();
+        for filename in args.values_of("inputfile").expect("an input file must must be provided").into_iter() {
+            from_xml(filename, &config, store)?;
         }
         changed = true;
     }
