@@ -266,7 +266,7 @@ impl XPathExpression {
     /// matches a node path against an XPath-like expression
     fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>) -> bool {
         let mut pathiter = path.components.iter().rev();
-        for (refns, pat) in self.components.iter() {
+        for (refns, pat) in self.components.iter().rev() {
             if let Some((ns, name)) = pathiter.next() {
                 if pat != "*" && pat != "" {
                     if refns.is_empty() != ns.is_none()
@@ -296,7 +296,7 @@ impl<'a, 'b> Display for NodePath<'a, 'b> {
         for (ns, name) in self.components.iter() {
             write!(f, "/")?;
             if let Some(ns) = ns {
-                write!(f, "{}:{}", ns, name)?;
+                write!(f, "{{{}}}{}", ns, name)?;
             } else {
                 write!(f, "{}", name)?;
             }
@@ -344,7 +344,9 @@ impl<'a> Default for XmlConversionConfig<'a> {
             .unwrap()
             .with_element("//html:br", |e| e.with_textsuffix("\n"))
             .unwrap()
-            .with_element("//html:p", |e| e.with_textprefix("\n\n"))
+            .with_element("//html:p", |e| {
+                e.with_textprefix("\n").with_textsuffix("\n")
+            })
             .unwrap()
             .with_element("//html:li", |e| {
                 e.with_textprefix("* ").with_textsuffix("\n")
@@ -360,7 +362,7 @@ impl<'a> Default for XmlConversionConfig<'a> {
             .unwrap()
             .with_element("//tei:br", |e| e.with_textsuffix("\n"))
             .unwrap()
-            .with_element("//tei:p", |e| e.with_textprefix("\n\n"))
+            .with_element("//tei:p", |e| e.with_textprefix("\n").with_textsuffix("\n"))
             .unwrap()
             .with_element("//tei:item", |e| e.with_textprefix("* "))
             .unwrap()
@@ -498,9 +500,12 @@ impl<'a> XmlToStamConverter<'a> {
             let path: NodePath = node.into();
             eprintln!("[STAM fromxml] extracting text from {}", path);
         }
-        let begin = self.cursor;
-        let bytebegin = self.text.len();
+        let mut begin = self.cursor;
+        let mut bytebegin = self.text.len();
         if let Some(element_config) = self.config.element_config(node) {
+            if self.config.debug {
+                eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
+            }
             if element_config.handling != ElementHandling::Exclude
                 && element_config.handling != ElementHandling::ResourceMetadata
             {
@@ -510,13 +515,8 @@ impl<'a> XmlToStamConverter<'a> {
                     element_config.whitespace
                 };
                 if let Some(textprefix) = &element_config.textprefix {
-                    if self.pending_whitespace
-                        && !textprefix.chars().next().unwrap().is_whitespace()
-                    {
-                        self.text.push(' ');
-                        self.cursor += 1;
-                    }
                     self.pending_whitespace = false;
+                    eprintln!("[STAM fromxml]   outputing textprefix: {:?}", textprefix);
                     self.text += textprefix;
                     self.cursor += textprefix.chars().count();
                 }
@@ -530,7 +530,7 @@ impl<'a> XmlToStamConverter<'a> {
                         let mut leading_whitespace = false;
                         if whitespace == Whitespace::Collapse && !innertext.is_empty() {
                             let mut all_whitespace = true;
-                            leading_whitespace = innertext.chars().next().unwrap().is_whitespace();
+                            leading_whitespace = innertext.chars().next().is_some();
                             pending_whitespace = innertext
                                 .chars()
                                 .inspect(|c| {
@@ -543,12 +543,26 @@ impl<'a> XmlToStamConverter<'a> {
                                 .is_whitespace();
                             if all_whitespace {
                                 self.pending_whitespace = true;
+                                if self.config.debug {
+                                    eprintln!(
+                                        "[STAM fromxml]       all whitespace, flag pending whitespace and skipping...",
+                                    );
+                                }
                                 continue;
                             }
                             innertext = innertext.trim();
+                            if self.config.debug {
+                                eprintln!(
+                                    "[STAM fromxml]       collapsed whitespace: {:?}",
+                                    innertext
+                                );
+                            }
                         }
                         if self.pending_whitespace || leading_whitespace {
-                            if !self.text.is_empty() {
+                            //output pending whitespace
+                            if !self.text.is_empty()
+                                && !self.text.chars().rev().next().unwrap().is_whitespace()
+                            {
                                 self.text.push(' ');
                                 self.cursor += 1;
                             }
@@ -570,23 +584,27 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                         self.pending_whitespace = pending_whitespace;
                     } else if child.is_element() {
+                        if self.config.debug {
+                            eprintln!("[STAM fromxml] <recursion -^>");
+                        }
                         self.extract_element_text(child, whitespace);
+                        if self.config.debug {
+                            eprintln!("[STAM fromxml] </recursion>");
+                        }
                     } else {
                         if self.config.debug {
                             eprintln!("[STAM fromxml]   skipping child node");
                         }
                         continue;
                     }
-                    if let Some(textsuffix) = &element_config.textsuffix {
-                        if self.pending_whitespace
-                            && !textsuffix.chars().next().unwrap().is_whitespace()
-                        {
-                            self.text.push(' ');
-                            self.cursor += 1;
-                        }
-                        self.text += textsuffix;
-                        self.cursor += textsuffix.chars().count();
+                }
+                if let Some(textsuffix) = &element_config.textsuffix {
+                    if self.config.debug {
+                        eprintln!("[STAM fromxml]   outputing textsuffix: {:?}", textsuffix);
                     }
+                    self.text += textsuffix;
+                    self.cursor += textsuffix.chars().count();
+                    self.pending_whitespace = false;
                 }
             }
         } else if self.config.debug {
@@ -756,5 +774,16 @@ impl<'a> XmlToStamConverter<'a> {
         } else {
             None
         }
+    }
+}
+
+mod tests {
+    #[cfg(test)]
+    use crate::xml::*;
+
+    #[test]
+    fn test() {
+        let config = XmlConversionConfig::default();
+        let expr = XPathExpression::new("//a", &config);
     }
 }
