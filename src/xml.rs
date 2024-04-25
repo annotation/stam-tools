@@ -14,6 +14,8 @@ pub struct XmlConversionConfig<'a> {
 
     prefix_to_namespace: HashMap<String, String>,
 
+    whitespace: Whitespace,
+
     inject_dtd: Option<&'a str>,
 
     debug: bool,
@@ -25,6 +27,7 @@ impl<'a> XmlConversionConfig<'a> {
             elements: Vec::new(),
             attributes: Vec::new(),
             prefix_to_namespace: HashMap::new(),
+            whitespace: Whitespace::Collapse,
             inject_dtd: None,
             debug: true,
         }
@@ -43,6 +46,12 @@ impl<'a> XmlConversionConfig<'a> {
 
     pub fn with_inject_dtd(mut self, dtd: &'a str) -> Self {
         self.inject_dtd = Some(dtd);
+        self
+    }
+
+    /// Set default whitespace handling
+    pub fn with_whitespace(mut self, handling: Whitespace) -> Self {
+        self.whitespace = handling;
         self
     }
 
@@ -106,7 +115,9 @@ impl<'a> XmlConversionConfig<'a> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum WhitespaceHandling {
+pub enum Whitespace {
+    //Inherit from parent
+    Inherit,
     /// Whitespace is kept as is in the XML
     Preserve,
     /// all whitespace becomes space, consecutive whitespace is squashed
@@ -117,7 +128,7 @@ pub enum WhitespaceHandling {
 pub struct XmlElementConfig {
     expression: XPathExpression,
     handling: ElementHandling,
-    whitespace: WhitespaceHandling,
+    whitespace: Whitespace,
     textprefix: Option<String>,
     textsuffix: Option<String>,
 
@@ -131,7 +142,7 @@ impl XmlElementConfig {
         Self {
             expression,
             handling: ElementHandling::Include,
-            whitespace: WhitespaceHandling::Collapse,
+            whitespace: Whitespace::Inherit,
             textprefix: None,
             textsuffix: None,
 
@@ -146,7 +157,7 @@ impl XmlElementConfig {
         self
     }
 
-    pub fn with_whitespace(mut self, handling: WhitespaceHandling) -> Self {
+    pub fn with_whitespace(mut self, handling: Whitespace) -> Self {
         self.whitespace = handling;
         self
     }
@@ -399,7 +410,7 @@ pub fn from_xml<'a>(
         format!("{}.txt", filename)
     };
 
-    converter.extract_element_text(doc.root_element());
+    converter.extract_element_text(doc.root_element(), converter.config.whitespace);
     if config.debug {
         eprintln!("[STAM fromxml] extracted full text: {}", &converter.text);
     }
@@ -482,7 +493,7 @@ impl<'a> XmlToStamConverter<'a> {
     }
 
     /// untangle text
-    fn extract_element_text(&mut self, node: Node) {
+    fn extract_element_text(&mut self, node: Node, whitespace: Whitespace) {
         if self.config.debug {
             let path: NodePath = node.into();
             eprintln!("[STAM fromxml] extracting text from {}", path);
@@ -493,6 +504,11 @@ impl<'a> XmlToStamConverter<'a> {
             if element_config.handling != ElementHandling::Exclude
                 && element_config.handling != ElementHandling::ResourceMetadata
             {
+                let whitespace = if element_config.whitespace == Whitespace::Inherit {
+                    whitespace
+                } else {
+                    element_config.whitespace
+                };
                 if let Some(textprefix) = &element_config.textprefix {
                     if self.pending_whitespace
                         && !textprefix.chars().next().unwrap().is_whitespace()
@@ -512,9 +528,7 @@ impl<'a> XmlToStamConverter<'a> {
                         let mut innertext = child.text().expect("text node must have text");
                         let mut pending_whitespace = false;
                         let mut leading_whitespace = false;
-                        if element_config.whitespace == WhitespaceHandling::Collapse
-                            && !innertext.is_empty()
-                        {
+                        if whitespace == Whitespace::Collapse && !innertext.is_empty() {
                             let mut all_whitespace = true;
                             leading_whitespace = innertext.chars().next().unwrap().is_whitespace();
                             pending_whitespace = innertext
@@ -540,7 +554,7 @@ impl<'a> XmlToStamConverter<'a> {
                             }
                             self.pending_whitespace = false;
                         }
-                        if element_config.whitespace == WhitespaceHandling::Collapse {
+                        if whitespace == Whitespace::Collapse {
                             let mut prevc = ' ';
                             let mut innertext = innertext.replace(|c: char| c.is_whitespace(), " ");
                             innertext.retain(|c| {
@@ -556,7 +570,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                         self.pending_whitespace = pending_whitespace;
                     } else if child.is_element() {
-                        self.extract_element_text(child);
+                        self.extract_element_text(child, whitespace);
                     } else {
                         if self.config.debug {
                             eprintln!("[STAM fromxml]   skipping child node");
