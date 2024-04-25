@@ -353,6 +353,22 @@ impl<'a> Default for XmlConversionConfig<'a> {
                 e.with_textprefix("\n").with_textsuffix("\n")
             })
             .unwrap()
+            .with_element("//html:h1", |e| {
+                e.with_textprefix("\n").with_textsuffix("\n")
+            })
+            .unwrap()
+            .with_element("//html:h2", |e| {
+                e.with_textprefix("\n").with_textsuffix("\n")
+            })
+            .unwrap()
+            .with_element("//html:h3", |e| {
+                e.with_textprefix("\n").with_textsuffix("\n")
+            })
+            .unwrap()
+            .with_element("//html:h4", |e| {
+                e.with_textprefix("\n").with_textsuffix("\n")
+            })
+            .unwrap()
             .with_element("//html:li", |e| {
                 e.with_textprefix("* ").with_textsuffix("\n")
             })
@@ -541,7 +557,7 @@ impl<'a> XmlToStamConverter<'a> {
                         let mut leading_whitespace = false;
                         if whitespace == Whitespace::Collapse && !innertext.is_empty() {
                             let mut all_whitespace = true;
-                            leading_whitespace = innertext.chars().next().is_some();
+                            leading_whitespace = innertext.chars().next().unwrap().is_whitespace();
                             pending_whitespace = innertext
                                 .chars()
                                 .inspect(|c| {
@@ -574,6 +590,9 @@ impl<'a> XmlToStamConverter<'a> {
                             if !self.text.is_empty()
                                 && !self.text.chars().rev().next().unwrap().is_whitespace()
                             {
+                                if self.config.debug {
+                                    eprintln!("[STAM fromxml]       outputting pending whitespace",);
+                                }
                                 self.text.push(' ');
                                 self.cursor += 1;
                             }
