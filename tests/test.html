@@ -1,0 +1,33 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:my="http://example.com">
+<head>
+    <title>Test</title>
+    <meta name="author" content="proycon" />
+</head>
+<body>
+    <h1>Header</h1>
+
+    <p xml:id="par1">
+        <span xml:id="sen1">This is a sentence.</span>
+        <span xml:id="sen2">This is the second&nbsp;sentence.</span>
+    </p>
+    <p xml:id="par2">
+        <strong>This</strong> is    the <em>second</em> paragraph.
+            It has a <strong>bold</strong> word and one in <em>italics</em>.<br/>
+        Let's highlight stress in the following word: <span my:stress="primary">re</span>pu<span my:stress="secondary">ta</span>tion.
+    </p>
+    <p xml:space="preserve"><![CDATA[This    third
+paragraph consists
+of CDATA and is configured to preserve whitespace, <tags/> and weird &entities;]]></p>
+
+    <h2>Subsection</h2>
+
+    <p>
+    Have some fruits:<br/>
+    <ul xml:id="list1">
+        <li xml:id="fruit1">apple</li>
+        <li xml:id="fruit2">banana</li>
+        <li xml:id="fruit3">melon</li>
+    </ul>
+    </p>
+</body>
+</html>
