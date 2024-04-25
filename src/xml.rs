@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::Display;
 use std::fs::{read_to_string, File};
@@ -510,23 +511,49 @@ impl<'a> XmlToStamConverter<'a> {
                     if child.is_text() && element_config.handling != ElementHandling::PassThrough {
                         let mut innertext = child.text().expect("text node must have text");
                         let mut pending_whitespace = false;
+                        let mut leading_whitespace = false;
                         if element_config.whitespace == WhitespaceHandling::Collapse
                             && !innertext.is_empty()
                         {
-                            pending_whitespace = innertext.chars().last().unwrap().is_whitespace();
-                            if self.text.is_empty() {
-                                innertext = innertext.trim();
-                            } else {
-                                innertext = innertext.trim_end();
+                            let mut all_whitespace = true;
+                            leading_whitespace = innertext.chars().next().unwrap().is_whitespace();
+                            pending_whitespace = innertext
+                                .chars()
+                                .inspect(|c| {
+                                    if !c.is_whitespace() {
+                                        all_whitespace = false
+                                    }
+                                })
+                                .last()
+                                .unwrap()
+                                .is_whitespace();
+                            if all_whitespace {
+                                self.pending_whitespace = true;
+                                continue;
                             }
+                            innertext = innertext.trim();
                         }
-                        if self.pending_whitespace {
-                            self.text.push(' ');
-                            self.cursor += 1;
+                        if self.pending_whitespace || leading_whitespace {
+                            if !self.text.is_empty() {
+                                self.text.push(' ');
+                                self.cursor += 1;
+                            }
                             self.pending_whitespace = false;
                         }
-                        self.text += &innertext;
-                        self.cursor += innertext.chars().count();
+                        if element_config.whitespace == WhitespaceHandling::Collapse {
+                            let mut prevc = ' ';
+                            let mut innertext = innertext.replace(|c: char| c.is_whitespace(), " ");
+                            innertext.retain(|c| {
+                                let do_retain = c != ' ' || prevc != ' ';
+                                prevc = c;
+                                do_retain
+                            });
+                            self.text += &innertext;
+                            self.cursor += innertext.chars().count();
+                        } else {
+                            self.text += &innertext;
+                            self.cursor += innertext.chars().count();
+                        }
                         self.pending_whitespace = pending_whitespace;
                     } else if child.is_element() {
                         self.extract_element_text(child);
