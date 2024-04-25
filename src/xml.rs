@@ -522,6 +522,7 @@ impl<'a> XmlToStamConverter<'a> {
         let mut bytebegin = self.text.len();
         let mut end_discount = 0;
         let mut end_bytediscount = 0;
+        let mut firsttext = true;
         if let Some(element_config) = self.config.element_config(node) {
             if self.config.debug {
                 eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
@@ -598,6 +599,11 @@ impl<'a> XmlToStamConverter<'a> {
                                 }
                                 self.text.push(' ');
                                 self.cursor += 1;
+                                if firsttext && self.pending_whitespace {
+                                    begin += 1;
+                                    bytebegin += 1;
+                                    firsttext = false;
+                                }
                             }
                             self.pending_whitespace = false;
                         }
@@ -649,7 +655,7 @@ impl<'a> XmlToStamConverter<'a> {
                 NodePath::from(node)
             );
         }
-        if begin < self.cursor {
+        if begin < (self.cursor - end_discount) {
             let offset = Offset::simple(begin, self.cursor - end_discount);
             self.positionmap.insert(node.id(), offset);
             if self.config.debug {
