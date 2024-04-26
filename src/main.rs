@@ -1509,7 +1509,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         }
         changed = true;
     } else if rootargs.subcommand_matches("fromxml").is_some() {
-        let config = XmlConversionConfig::default();
+        let config = XmlConversionConfig::default().with_debug(args.is_present("debug"));
         for filename in args.values_of("inputfile").expect("an input file must must be provided").into_iter() {
             from_xml(filename, &config, store)?;
         }
