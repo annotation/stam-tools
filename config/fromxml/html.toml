@@ -29,7 +29,7 @@ handling = "AnnotateText"
 #   * `AnnotateResource` - Ignore any text, associate metadata with the resource
 #   * `AnnotateResourceWithTextAsData` - Associate metadata with the resource, take the text of the element as data value. This is useful for mapping XML metadata like `<author>John Doe</author>` to an annotation with datakey 'author' and value 'John Doe'.
 # * `set` (optional) - The STAM set to use for this mapping, if not set, it will be derived from the namespace (if any), or `urn:stam-fromxml` if all else fails.
-# * `key` (optional) - The STAM key to use for this element's mapping, if not set, it will be derived from the name of the element
+# * `key` (optional) - The STAM key to use for this element's mapping, if not set, it will be derived from the name of the element. If set, the *value* of the annotation data for this key in this set will be derived from the name of the element.
 
 
 # default matching for attributes, will match all
@@ -50,8 +50,8 @@ handling = "KeyValue"
 #    * Identifier - Use this attribute as identifier for the annotation
 #    * Key - Use this attribute value as key. This implies that there must be a single other attribute with `AttributeHandling = Value`
 #    * Value - Use this attribute value as value. If there is another attribute with `AttributeHandling = Key`, then that will be used as key, otherwise the element name itself will be used as key.
-# * `set` (optional) - The STAM set to use for this mapping, if not set, it will be derived from the namespace (if any), or `urn:stam-fromxml` if all else fails.
-# * `key` (optional) - The STAM key to use for this attribute's mapping, if not set, it will be derived from the name of the element
+# * `set` (optional) - The STAM set to use for this mapping, if not set, it will be derived from the namespace of the attribute (if any), or `urn:stam-fromxml` if all else fails.
+# * `key` (optional) - The STAM key to use for this attribute's mapping, if not set, it will be derived from the name of the attribute
 
 # use xml:id as identifier for annotations
 [[attributes]]
