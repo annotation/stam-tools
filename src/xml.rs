@@ -215,6 +215,7 @@ impl XmlElementConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct XmlAttributeConfig {
+    #[serde(default = "XPathExpression::any")]
     scope: XPathExpression,
 
     name: String,
@@ -277,6 +278,10 @@ struct XPathExpression(String);
 impl XPathExpression {
     pub fn new(expression: impl Into<String>) -> Self {
         Self(expression.into())
+    }
+
+    pub fn any() -> Self {
+        Self("*".into())
     }
 
     pub fn iter<'a>(
@@ -547,11 +552,11 @@ pub enum AttributeHandling {
     /// Use this attribute as identifier for the annotation
     Identifier,
 
-    /// Use this attribute value as key (the element must have [`ElementHandling::AnnotateResourceWithKeyValueAttribute`].
+    /// Use this attribute value as key.
     /// This implies that there must be a single other attribute with [`AttributeHandling::Value`]
     Key,
 
-    /// Use this attribute value as value (the element must have [`ElementHandling::AnnotateResourceWithKeyValueAttribute`].
+    /// Use this attribute value as value.
     /// If there is another attribute with [`AttributeHandling::Key`], then that will be used as key,
     /// otherwise the element name itself will be used as key.
     Value,

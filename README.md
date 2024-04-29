@@ -393,3 +393,31 @@ there are any changes (and you didn't set --dry-run). This gives `stam batch`
 its edge over just running the `stam` command itself in sequence; data need not
 be loaded and stored after each step.
 
+### stam fromxml
+
+The `stam fromxml` tool allows to map XML files with *inline annotations* to
+STAM. It will effectively *untangle* the inline annotations and produce plain
+text on the one hand, and stand-off STAM annotations on that plain text on the
+other hand.
+
+As there is an endless variety of XML formats imaginable, this tool takes as
+extra input an external configuration file that defines how to map from a
+specific XML format (e.g. xHTML, TEI or PageXML) to STAM. See for example [this
+configuration for xHTML](config/fromxml/html.toml) which contains some inline
+documentation to help you get going.
+
+Example:
+
+```
+$ stam fromxml --inputfile tests/test.html --config config/fromxml/html.toml --force-new output.stam.json
+```
+
+Some notes:
+
+* If you want to map HTML to STAM, first make sure your document is valid XHTML
+and uses the proper XML namespace. Plain HTML is not supported.
+* This tool does not support conversion of stand-off annotations
+formulated in XML, such as are present for instance in
+[FoLiA](http://proycon.github.io/folia/). For that format, a dedicated
+`stam2folia` converter is available as part of
+[foliatools](https://github.com/proycon/foliatools).
