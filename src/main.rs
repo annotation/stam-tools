@@ -1,5 +1,6 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
 use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig, TransposeConfig};
+use std::fs;
 use std::path::Path;
 use std::process::exit;
 use std::collections::VecDeque;
@@ -614,6 +615,19 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .action(ArgAction::Append)
             .required(true)
             .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("config")
+            .long("config")
+            .short('c')
+            .help("Configuration file that defines how to map a specific XML format to STAM")
+            .required(true)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("debug-xml")
+            .long("debug-xml")
+            .help("Debug the xml mapping only (more narrow than doing --debug in general)"),
     );
     args
 }
@@ -1509,7 +1523,16 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         }
         changed = true;
     } else if rootargs.subcommand_matches("fromxml").is_some() {
-        let config = XmlConversionConfig::default().with_debug(args.is_present("debug"));
+        let configdata = if let Some(filename) = args.value_of("config") {
+            fs::read_to_string(filename).map_err(|e| format!("Failure reading XML->STAM config file {}: {} ",filename, e))?
+        } else {
+            String::new()
+        };
+        let config = if configdata.is_empty() {
+            XmlConversionConfig::default().with_debug(args.is_present("debug") || args.is_present("debug-xml") )
+        } else {
+            XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug"))
+        };
         for filename in args.values_of("inputfile").expect("an input file must must be provided").into_iter() {
             from_xml(filename, &config, store)?;
         }
