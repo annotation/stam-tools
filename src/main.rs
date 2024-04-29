@@ -1526,13 +1526,9 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         let configdata = if let Some(filename) = args.value_of("config") {
             fs::read_to_string(filename).map_err(|e| format!("Failure reading XML->STAM config file {}: {} ",filename, e))?
         } else {
-            String::new()
+            return Err(format!("A configuration file that defines the XML->STAM mapping is required"));
         };
-        let config = if configdata.is_empty() {
-            XmlConversionConfig::default().with_debug(args.is_present("debug") || args.is_present("debug-xml") )
-        } else {
-            XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug"))
-        };
+        let config = XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug") || args.is_present("debug-xml"));
         for filename in args.values_of("inputfile").expect("an input file must must be provided").into_iter() {
             from_xml(filename, &config, store)?;
         }
