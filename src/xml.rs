@@ -904,7 +904,7 @@ impl<'a> XmlToStamConverter<'a> {
         node: Node<'b, 'b>,
         element_config: &'b XmlElementConfig,
     ) -> AnnotationDataBuilder<'b> {
-        let text = node.text().expect("node must have text");
+        let text = recursive_text(node);
         if let (Some(set), Some(key)) =
             (element_config.set.as_deref(), element_config.set.as_deref())
         {
@@ -943,4 +943,17 @@ impl<'a> XmlToStamConverter<'a> {
             None
         }
     }
+}
+
+/// Get recursive text without any elements
+fn recursive_text(node: Node) -> String {
+    let mut s = String::new();
+    for child in node.children() {
+        if child.is_text() {
+            s += child.text().expect("should have text");
+        } else if child.is_element() {
+            s += &recursive_text(child);
+        }
+    }
+    s
 }
