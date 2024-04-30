@@ -72,6 +72,11 @@ handling = "Exclude"
 path = "//tei:teiHeader"
 handling = "PassThrough"
 
+# By default, ignore any tags in the head (unless they're mentioned specifically later in the config)
+[[elements]]
+path = "//tei:teiHeader/*"
+handling = "Exclude"
+
 [[elements]]
 path = "//tei:teiHeader/tei:fileDesc"
 handling = "PassThrough"
@@ -94,11 +99,6 @@ handling = "PassThrough"
 
 [[elements]]
 path = "//tei:facsimile"
-handling = "Exclude"
-
-# By default, ignore any tags in the head (unless they're mentioned specifically later in the config)
-[[elements]]
-path = "//tei:teiHeader/*"
 handling = "Exclude"
 
 [[elements]]
