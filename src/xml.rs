@@ -667,7 +667,14 @@ impl<'a> XmlToStamConverter<'a> {
     }
 
     fn extract_element_annotation(&mut self, node: Node, store: &mut AnnotationStore) {
+        if self.config.debug {
+            let path: NodePath = node.into();
+            eprintln!("[STAM fromxml] extracting annotation from {}", path);
+        }
         if let Some(element_config) = self.config.element_config(node) {
+            if self.config.debug {
+                eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
+            }
             if element_config.handling != ElementHandling::Exclude
                 && element_config.handling != ElementHandling::ExtractTextOnly
                 && element_config.handling != ElementHandling::PassThrough
@@ -743,6 +750,9 @@ impl<'a> XmlToStamConverter<'a> {
                     ElementHandling::AnnotateText => {
                         if let Some(selector) = self.selector(node) {
                             builder = builder.with_target(selector);
+                            if self.config.debug {
+                                eprintln!("[STAM fromxml]   builder AnnotateText: {:?}", builder);
+                            }
                             store.annotate(builder).expect("annotation should succeed");
                         }
                     }
@@ -750,6 +760,9 @@ impl<'a> XmlToStamConverter<'a> {
                         builder = builder.with_target(SelectorBuilder::ResourceSelector(
                             self.resource_handle.into(),
                         ));
+                        if self.config.debug {
+                            eprintln!("[STAM fromxml]   builder AnnotateResource: {:?}", builder);
+                        }
                         store.annotate(builder).expect("annotation should succeed");
                     }
                     ElementHandling::AnnotateResourceWithTextAsData => {
@@ -760,6 +773,12 @@ impl<'a> XmlToStamConverter<'a> {
                             builder = builder.with_data_builder(
                                 self.translate_text_as_data(node, element_config),
                             );
+                            if self.config.debug {
+                                eprintln!(
+                                    "[STAM fromxml]   builder AnnotateResourceWithTextAsData: {:?}",
+                                    builder
+                                );
+                            }
                             store.annotate(builder).expect("annotation should succeed");
                         }
                     }
