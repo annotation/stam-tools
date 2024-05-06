@@ -408,9 +408,10 @@ label.h.tag3 em {
 .italic, .italics { font-style: italic; }
 .bold { font-weight: bold; }
 .normal { font-weight: normal; font-style: normal; }
-.red { font-color: #ff0000; }
-.green { font-color: #ff0000; }
-.blue { font-color: #ff0000; }
+.red { color: #ff0000; }
+.green { color: #00ff00; }
+.blue { color: #0000ff; }
+.yellow { color: #ffff00; }
     </style>
 </head>
 <body>
