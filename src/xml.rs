@@ -1,6 +1,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::fs::read_to_string;
+use std::path::Path;
 
 use roxmltree::{Attribute, Document, Node, NodeId, ParsingOptions};
 use serde::Deserialize;
@@ -355,16 +356,17 @@ impl<'a, 'b> From<Node<'a, 'b>> for NodePath<'a, 'b> {
 }
 
 pub fn from_xml<'a>(
-    filename: &str,
+    filename: &Path,
     config: &XmlConversionConfig,
     store: &'a mut AnnotationStore,
+    standoff_textfiles: bool,
 ) -> Result<(), String> {
     if config.debug {
-        eprintln!("[STAM fromxml] parsing {}", filename);
+        eprintln!("[STAM fromxml] parsing {}", filename.display());
     }
 
     let mut xmlstring = read_to_string(filename)
-        .map_err(|e| format!("Error opening XML file {}: {}", filename, e))?;
+        .map_err(|e| format!("Error opening XML file {}: {}", filename.display(), e))?;
 
     //patchy: remove HTML5 doctype and inject our own
     if xmlstring[..100].find("<!DOCTYPE html>").is_some() && config.inject_dtd.is_some() {
@@ -384,32 +386,35 @@ pub fn from_xml<'a>(
             ..ParsingOptions::default()
         },
     )
-    .map_err(|e| format!("Error parsing XML file {}: {}", filename, e))?;
+    .map_err(|e| format!("Error parsing XML file {}: {}", filename.display(), e))?;
 
     let mut converter = XmlToStamConverter::new(config);
 
-    let textfilename = if filename.ends_with(".xml") {
-        format!("{}.txt", &filename[0..filename.len() - 4])
-    } else {
-        format!("{}.txt", filename)
-    };
+    let textoutfilename = format!(
+        "{}.txt",
+        filename
+            .file_stem()
+            .expect("invalid filename")
+            .to_str()
+            .expect("invalid utf-8 in filename")
+    );
 
     converter.extract_element_text(doc.root_element(), converter.config.whitespace);
     if config.debug {
         eprintln!("[STAM fromxml] extracted full text: {}", &converter.text);
     }
     let resource: TextResource = TextResourceBuilder::new()
-        .with_id(textfilename.clone())
-        //.with_config(Config::default().with_use_include(true))
+        .with_id(textoutfilename.clone())
+        .with_config(Config::default().with_use_include(standoff_textfiles))
         .with_text(std::mem::replace(&mut converter.text, String::new()))
-        //.with_filename(&textfilename)
+        .with_filename(&textoutfilename)
         .try_into()
-        .map_err(|e| format!("Failed to build resource {}: {}", &textfilename, e))?;
+        .map_err(|e| format!("Failed to build resource {}: {}", &textoutfilename, e))?;
 
     converter.resource_handle = Some(
         store
             .insert(resource)
-            .map_err(|e| format!("Failed to add resource {}: {}", &textfilename, e))?,
+            .map_err(|e| format!("Failed to add resource {}: {}", &textoutfilename, e))?,
     );
 
     converter.extract_element_annotation(doc.root_element(), store);

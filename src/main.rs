@@ -625,6 +625,11 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true),
     );
     args.push(
+        Arg::with_name("single-output")
+            .long("-s")
+            .help("Single output file: do not write separate stand-off textfiles (using the @include mechanism), but put the text in the STAM JSON instead"),
+    );
+    args.push(
         Arg::with_name("debug-xml")
             .long("debug-xml")
             .help("Debug the xml mapping only (more narrow than doing --debug in general)"),
@@ -1530,7 +1535,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         };
         let config = XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug") || args.is_present("debug-xml"));
         for filename in args.values_of("inputfile").expect("an input file must must be provided").into_iter() {
-            from_xml(filename, &config, store)?;
+            from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
         }
         changed = true;
     }
