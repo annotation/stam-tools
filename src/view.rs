@@ -660,6 +660,15 @@ impl<'a> Display for HtmlWriter<'a> {
                             resulttextselection.end(),
                         )?;
                     }
+                    highlights_results = get_highlights_results(
+                        &self.selectionquery,
+                        &selectionresult,
+                        self.selectionvar,
+                        self.store,
+                        &self.highlights,
+                        &names,
+                        highlights_results,
+                    );
                     let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
                     let resource = resulttextselection.resource();
                     let mut begin: usize = resulttextselection.begin();
@@ -803,20 +812,6 @@ impl<'a> Display for HtmlWriter<'a> {
                                     if self.output_data {
                                         //all_annotations.extend(new_span_annotations.iter());
                                     }
-                                }
-
-                                if self.prune || !span_annotations.is_empty() {
-                                    //gather annotations for the textselection under consideration
-                                    highlights_results = get_highlights_results(
-                                        &self.selectionquery,
-                                        &selectionresult,
-                                        self.selectionvar,
-                                        self.store,
-                                        &self.highlights,
-                                        &names,
-                                        &span_annotations,
-                                        highlights_results,
-                                    );
                                 }
                             }
 
@@ -1046,6 +1041,15 @@ impl<'a> AnsiWriter<'a> {
                             self.writeheader(s.as_str());
                         }
                     }
+                    highlights_results = get_highlights_results(
+                        &self.selectionquery,
+                        &selectionresult,
+                        self.selectionvar,
+                        self.store,
+                        &self.highlights,
+                        &names,
+                        highlights_results,
+                    );
                     let resource = resulttextselection.resource();
                     let mut begin: usize = resulttextselection.begin();
                     let mut positions: Vec<_> = resulttextselection
@@ -1118,20 +1122,6 @@ impl<'a> AnsiWriter<'a> {
                                     new_span_annotations
                                         .extend(textselection.annotations().map(|a| a.handle()));
                                 }
-
-                                if self.prune || !new_span_annotations.is_empty() {
-                                    //gather annotations for the textselection under consideration
-                                    highlights_results = get_highlights_results(
-                                        &self.selectionquery,
-                                        &selectionresult,
-                                        self.selectionvar,
-                                        self.store,
-                                        &self.highlights,
-                                        &names,
-                                        &new_span_annotations,
-                                        highlights_results,
-                                    )
-                                }
                             }
                             if self.prune {
                                 //prunes everything that is not highlighted
@@ -1177,7 +1167,6 @@ fn get_highlights_results<'a>(
     store: &'a AnnotationStore,
     highlights: &[Highlight],
     names: &QueryNames,
-    span_annotations: &BTreeSet<AnnotationHandle>,
     mut highlights_results: Vec<BTreeSet<AnnotationHandle>>,
 ) -> Vec<BTreeSet<AnnotationHandle>> {
     //gather annotations for the textselection under consideration
@@ -1241,12 +1230,6 @@ fn get_highlights_results<'a>(
                 }
             }
             highlights_results[j] = FromHandles::new(annotations.iter().copied(), store)
-                .map(|x| x.handle())
-                .collect();
-        } else if let Tag::Key(key) | Tag::KeyAndValue(key) | Tag::Value(key) = &highlights.tag {
-            //no query defined, only a tagkey, that's ok, we obtain the annotations directly:
-            highlights_results[j] = FromHandles::new(span_annotations.iter().copied(), store)
-                .filter_key(key)
                 .map(|x| x.handle())
                 .collect();
         }

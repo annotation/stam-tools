@@ -790,17 +790,6 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
 If no attribute is provided, there will be no tags shown for that query, only a highlight underline. In the highlight queries, the variable from the main selection query is available and you *should* use it in a constraint, otherwise performance will be sub-optimal.
 " ))
                 .arg(
-                    Arg::with_name("highlight")
-                        .long("highlight")
-                        .help(
-                            "Define an annotation set and key which you want to highlight in the results. This will highlight text pertaining to annotations that have this data and output the key and value in a tag.
-
-                             This option can be provided multiple times and is essentialy a shortcut for a certain type of --query. The set and key are delimited by the set delimiter (by default a /), which is configurable via --setdelimiter"
-                        )
-                        .action(ArgAction::Append)
-                        .takes_value(true)
-                )
-                .arg(
                     Arg::with_name("format")
                         .long("format")
                         .short('F')
@@ -809,15 +798,6 @@ If no attribute is provided, there will be no tags shown for that query, only a 
                         )
                         .takes_value(true)
                         .default_value("html")
-                )
-                .arg(
-                    Arg::with_name("setdelimiter")
-                        .long("setdelimiter")
-                        .help(
-                            "The delimiter between the annotation set and the key when specifying highlights (--highlight). If the delimiter occurs multiple times, only the rightmost one is considered (the others are part of the set)"
-                        )
-                        .takes_value(true)
-                        .default_value("/")
                 )
                 .arg(
                     Arg::with_name("auto-highlight")
@@ -1304,25 +1284,6 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                     format!("Syntax error in query {}: {}", i + 1, err)
                 })?;
             highlights.push(highlight);
-        }
-        let setdelimiter = args.value_of("setdelimiter").unwrap();
-        if let Some(extrahighlights) = args.values_of("highlight") {
-            highlights.extend(extrahighlights.filter_map(|set_and_key: &str| {
-                if set_and_key.find(setdelimiter).is_some() {
-                    let (set, key) = set_and_key.rsplit_once(setdelimiter).unwrap();
-                    if let Some(key) = store.key(set, key) {
-                        Some(Highlight::default().with_tag(Tag::Key(key)))
-                    } else {
-                        format!(
-                            "[warning] Key specified in highlight not found: {}{}{}",
-                            set, setdelimiter, key
-                        );
-                        None
-                    }
-                } else {
-                    None
-                }
-            }));
         }
 
         match args.value_of("format") {
