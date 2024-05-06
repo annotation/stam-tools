@@ -636,6 +636,12 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Single output file: do not write separate stand-off textfiles (using the @include mechanism), but put the text in the STAM JSON instead"),
     );
     args.push(
+        Arg::with_name("id-prefix")
+            .long("id-prefix")
+            .takes_value(true)
+            .help("Prefix to use when assigning annotation IDs. If you use the special variable {resource}, it will be resolved to the resource ID, which is useful when annotation IDs in the XML are not globally unique."),
+    );
+    args.push(
         Arg::with_name("debug-xml")
             .long("debug-xml")
             .help("Debug the xml mapping only (more narrow than doing --debug in general)"),
@@ -1539,7 +1545,10 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         } else {
             return Err(format!("A configuration file that defines the XML->STAM mapping is required"));
         };
-        let config = XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug") || args.is_present("debug-xml"));
+        let mut config = XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug") || args.is_present("debug-xml"));
+        if let Some(prefix) = args.value_of("id-prefix") {
+            config = config.with_id_prefix(prefix);
+        }
         let mut has_input = false;
         if args.is_present("inputfile") {
             for filename in args.values_of("inputfile").unwrap().into_iter() {
@@ -1547,14 +1556,12 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 has_input = true;
             }
         }
-        if args.is_present("inputfilelist") {
-            if let Some(listfilename) = args.value_of("inputfilelist")  {
-                has_input = true;
-                let listdata = fs::read_to_string(listfilename).map_err(|e| format!("Failure reading file list from {}: {}",listfilename, e))?;
-                let filenames: Vec<&str> = listdata.split("\n").collect();
-                for filename in filenames {
-                    from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
-                }
+        if let Some(listfilename) = args.value_of("inputfilelist")  {
+            has_input = true;
+            let listdata = fs::read_to_string(listfilename).map_err(|e| format!("Failure reading file list from {}: {}",listfilename, e))?;
+            let filenames: Vec<&str> = listdata.split("\n").collect();
+            for filename in filenames {
+                from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
             }
         }
         if !has_input {

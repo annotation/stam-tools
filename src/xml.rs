@@ -28,6 +28,9 @@ pub struct XmlConversionConfig {
     #[serde(default)]
     inject_dtd: Option<String>,
 
+    #[serde(default)]
+    id_prefix: Option<String>,
+
     #[serde(skip_deserializing)]
     debug: bool,
 }
@@ -40,6 +43,7 @@ impl XmlConversionConfig {
             namespaces: HashMap::new(),
             whitespace: Whitespace::Collapse,
             inject_dtd: None,
+            id_prefix: None,
             debug: false,
         }
     }
@@ -55,6 +59,11 @@ impl XmlConversionConfig {
 
     pub fn with_prefix(mut self, prefix: impl Into<String>, namespace: impl Into<String>) -> Self {
         self.namespaces.insert(prefix.into(), namespace.into());
+        self
+    }
+
+    pub fn with_id_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.id_prefix = Some(prefix.into());
         self
     }
 
@@ -725,7 +734,27 @@ impl<'a> XmlToStamConverter<'a> {
                             }
                             value = Some(attribute);
                         } else if attribute_config.handling == AttributeHandling::Identifier {
-                            builder = builder.with_id(attribute.value());
+                            if let Some(id_prefix) = &self.config.id_prefix {
+                                if id_prefix.find("{resource}").is_some() {
+                                    let resource_id = store
+                                        .resource(
+                                            self.resource_handle
+                                                .expect("resource must have been created"),
+                                        )
+                                        .expect("resource must exist")
+                                        .id()
+                                        .expect("resource must have ID");
+                                    builder = builder.with_id(format!(
+                                        "{}{}",
+                                        &id_prefix.replace("{resource}", resource_id),
+                                        attribute.value()
+                                    ));
+                                } else {
+                                    builder = builder.with_id(attribute.value());
+                                }
+                            } else {
+                                builder = builder.with_id(attribute.value());
+                            }
                         }
                     } else {
                         eprintln!(
