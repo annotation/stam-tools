@@ -34,6 +34,7 @@ pub enum Tag<'a> {
 /// Represent a highlight action, represented by a query and a tag to show how to visualize it.
 pub struct Highlight<'a> {
     tag: Tag<'a>,
+    style: Option<String>,
     query: Option<Query<'a>>,
     label: Option<&'a str>,
 }
@@ -44,6 +45,7 @@ impl<'a> Default for Highlight<'a> {
             label: None,
             query: None,
             tag: Tag::None,
+            style: None,
         }
     }
 }
@@ -66,6 +68,7 @@ impl<'a> Highlight<'a> {
         let (query, _) = stam::Query::parse(query).map_err(|err| err.to_string())?;
 
         let mut tag = Tag::None;
+        let mut style = None;
         let key = get_key_from_query(&query, store);
 
         //prepared for a future in which we may have multiple attribs
@@ -92,13 +95,20 @@ impl<'a> Highlight<'a> {
                         eprintln!("Warning: Query has @VALUETAG attribute but no key was found in query constraints of query {}, ignoring...", seqnr);
                     }
                 }
-                "@IDTAG" | "ID" => tag = Tag::Id,
-                _ => {}
+                "@IDTAG" | "@ID" => tag = Tag::Id,
+                attribname => {
+                    if attribname.starts_with("@STYLE=") || attribname.starts_with("@CLASS=") {
+                        style = Some(attribname[7..].to_owned())
+                    } else {
+                        eprintln!("Warning: Unknown attribute ignored: {}", attribname);
+                    }
+                }
             }
         }
 
         Ok(Highlight {
             tag,
+            style,
             query: Some(query),
             label: None,
         })
@@ -394,6 +404,13 @@ label.h.tag3 em {
     color: #e19898; /*red*/
     font-weight: bold;
 }
+/* generic style classes */
+.italic, .italics { font-style: italic; }
+.bold { font-weight: bold; }
+.normal { font-weight: normal; font-style: normal; }
+.red { font-color: #ff0000; }
+.green { font-color: #ff0000; }
+.blue { font-color: #ff0000; }
     </style>
 </head>
 <body>
@@ -721,6 +738,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                         .is_some()
                                     {
                                         classes.push(format!("hi{}", j + 1));
+                                        if let Some(style) = &self.highlights[j].style {
+                                            classes.push(style.clone()); //MAYBE TODO: borrow?
+                                        }
                                     }
                                 }
                                 span_annotations.retain(|a| {
@@ -823,6 +843,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                         .is_some()
                                     {
                                         classes.push(format!("hi{}", j + 1));
+                                        if let Some(style) = &self.highlights[j].style {
+                                            classes.push(style.clone()); //MAYBE TODO: borrow?
+                                        }
                                     }
                                 }
                                 openingtags.clear();
