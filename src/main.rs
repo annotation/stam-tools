@@ -613,7 +613,13 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .short('f')
             .help("XML file to import. This option may be specified multiple times.")
             .action(ArgAction::Append)
-            .required(true)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("inputfilelist")
+            .long("inputfilelist")
+            .short('l')
+            .help("Filename containing a list of input files (alternative to specifying --inputfile multiple times)")
             .takes_value(true),
     );
     args.push(
@@ -626,7 +632,7 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
     );
     args.push(
         Arg::with_name("single-output")
-            .long("-s")
+            .long("s")
             .help("Single output file: do not write separate stand-off textfiles (using the @include mechanism), but put the text in the STAM JSON instead"),
     );
     args.push(
@@ -1534,8 +1540,25 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
             return Err(format!("A configuration file that defines the XML->STAM mapping is required"));
         };
         let config = XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug") || args.is_present("debug-xml"));
-        for filename in args.values_of("inputfile").expect("an input file must must be provided").into_iter() {
-            from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
+        let mut has_input = false;
+        if args.is_present("inputfile") {
+            for filename in args.values_of("inputfile").unwrap().into_iter() {
+                from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
+                has_input = true;
+            }
+        }
+        if args.is_present("inputfilelist") {
+            if let Some(listfilename) = args.value_of("inputfilelist")  {
+                has_input = true;
+                let listdata = fs::read_to_string(listfilename).map_err(|e| format!("Failure reading file list from {}: {}",listfilename, e))?;
+                let filenames: Vec<&str> = listdata.split("\n").collect();
+                for filename in filenames {
+                    from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
+                }
+            }
+        }
+        if !has_input {
+            return Err(format!("No input files specified"));
         }
         changed = true;
     }
