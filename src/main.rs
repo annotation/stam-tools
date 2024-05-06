@@ -642,6 +642,11 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Prefix to use when assigning annotation IDs. If you use the special variable {resource}, it will be resolved to the resource ID, which is useful when annotation IDs in the XML are not globally unique."),
     );
     args.push(
+        Arg::with_name("ignore-errors")
+            .long("ignore-errors")
+            .help("Skip XML files that have errors and output a warning, this would produce a hard failure otherwise"),
+    );
+    args.push(
         Arg::with_name("debug-xml")
             .long("debug-xml")
             .help("Debug the xml mapping only (more narrow than doing --debug in general)"),
@@ -1552,7 +1557,13 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         let mut has_input = false;
         if args.is_present("inputfile") {
             for filename in args.values_of("inputfile").unwrap().into_iter() {
-                from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
+                if let Err(e) = from_xml(Path::new(filename), &config, store, !args.is_present("single-output")) {
+                    if args.is_present("ignore-errors") {
+                        eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
+                    } else {
+                        return Err(e);
+                    }
+                }
                 has_input = true;
             }
         }
@@ -1561,7 +1572,15 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
             let listdata = fs::read_to_string(listfilename).map_err(|e| format!("Failure reading file list from {}: {}",listfilename, e))?;
             let filenames: Vec<&str> = listdata.split("\n").collect();
             for filename in filenames {
-                from_xml(Path::new(filename), &config, store, !args.is_present("single-output"))?;
+                if !filename.is_empty() {
+                    if let Err(e) = from_xml(Path::new(filename), &config, store, !args.is_present("single-output")) {
+                        if args.is_present("ignore-errors") {
+                            eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
             }
         }
         if !has_input {

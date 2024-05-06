@@ -408,7 +408,15 @@ pub fn from_xml<'a>(
             .expect("invalid utf-8 in filename")
     );
 
-    converter.extract_element_text(doc.root_element(), converter.config.whitespace);
+    converter
+        .extract_element_text(doc.root_element(), converter.config.whitespace)
+        .map_err(|e| {
+            format!(
+                "Error extracting element text from {}: {}",
+                filename.display(),
+                e
+            )
+        })?;
     if config.debug {
         eprintln!("[STAM fromxml] extracted full text: {}", &converter.text);
     }
@@ -426,7 +434,15 @@ pub fn from_xml<'a>(
             .map_err(|e| format!("Failed to add resource {}: {}", &textoutfilename, e))?,
     );
 
-    converter.extract_element_annotation(doc.root_element(), store);
+    converter
+        .extract_element_annotation(doc.root_element(), store)
+        .map_err(|e| {
+            format!(
+                "Error extracting element annotation from {}: {}",
+                filename.display(),
+                e
+            )
+        })?;
 
     Ok(())
 }
@@ -522,7 +538,11 @@ impl<'a> XmlToStamConverter<'a> {
     }
 
     /// untangle text
-    fn extract_element_text(&mut self, node: Node, whitespace: Whitespace) {
+    fn extract_element_text(
+        &mut self,
+        node: Node,
+        whitespace: Whitespace,
+    ) -> Result<(), StamError> {
         if self.config.debug {
             let path: NodePath = node.into();
             eprintln!("[STAM fromxml] extracting text from {}", path);
@@ -637,7 +657,7 @@ impl<'a> XmlToStamConverter<'a> {
                         if self.config.debug {
                             eprintln!("[STAM fromxml] <recursion -^>");
                         }
-                        self.extract_element_text(child, whitespace);
+                        self.extract_element_text(child, whitespace)?;
                         if self.config.debug {
                             eprintln!("[STAM fromxml] </recursion>");
                         }
@@ -678,9 +698,14 @@ impl<'a> XmlToStamConverter<'a> {
                 );
             }
         }
+        Ok(())
     }
 
-    fn extract_element_annotation(&mut self, node: Node, store: &mut AnnotationStore) {
+    fn extract_element_annotation(
+        &mut self,
+        node: Node,
+        store: &mut AnnotationStore,
+    ) -> Result<(), StamError> {
         if self.config.debug {
             let path: NodePath = node.into();
             eprintln!("[STAM fromxml] extracting annotation from {}", path);
@@ -741,7 +766,7 @@ impl<'a> XmlToStamConverter<'a> {
                                             self.resource_handle
                                                 .expect("resource must have been created"),
                                         )
-                                        .expect("resource must exist")
+                                        .or_fail()?
                                         .id()
                                         .expect("resource must have ID");
                                     builder = builder.with_id(format!(
@@ -787,7 +812,7 @@ impl<'a> XmlToStamConverter<'a> {
                             if self.config.debug {
                                 eprintln!("[STAM fromxml]   builder AnnotateText: {:?}", builder);
                             }
-                            store.annotate(builder).expect("annotation should succeed");
+                            store.annotate(builder)?;
                         }
                     }
                     ElementHandling::AnnotateResource => {
@@ -797,7 +822,7 @@ impl<'a> XmlToStamConverter<'a> {
                         if self.config.debug {
                             eprintln!("[STAM fromxml]   builder AnnotateResource: {:?}", builder);
                         }
-                        store.annotate(builder).expect("annotation should succeed");
+                        store.annotate(builder)?;
                     }
                     ElementHandling::AnnotateResourceWithTextAsData => {
                         if node.text().is_some() {
@@ -823,7 +848,7 @@ impl<'a> XmlToStamConverter<'a> {
             if element_config.handling != ElementHandling::Exclude {
                 for child in node.children() {
                     if child.is_element() {
-                        self.extract_element_annotation(child, store);
+                        self.extract_element_annotation(child, store)?;
                     }
                 }
             }
@@ -833,6 +858,7 @@ impl<'a> XmlToStamConverter<'a> {
                 NodePath::from(node)
             );
         }
+        Ok(())
     }
 
     fn translate_attribute<'b>(
