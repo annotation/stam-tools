@@ -320,10 +320,23 @@ Tags can be enabled by prepending the query with one of the following *attribute
 * `@VALUETAG` - Outputs a tag with the value only, pertaining to the first DATA constraint in the query
 * `@IDTAG` - Outputs a tag with the public identifier of the ANNOTATION that has been selected
 
-If no attribute is provided, there will be no tags shown for that query, only a
-highlight underline. In the highlight queries, the variable from the main
+If you don't want to match the first DATA constraint, but the n-th, then specify a number to refer to the DATA constraint (1-indexed) in the order specifies. Note that only DATA constraints are counted:
+
+* `@KEYTAG=`*n* - Outputs a tag with the key, pertaining to the *n*-th DATA constraint in the query
+* `@KEYVALUETAG=`*n* - Outputs a tag with the key and the value, pertaining to the *n*-th DATA constraint in the query
+* `@VALUETAG=`*n* - Outputs a tag with the value only, pertaining to the *n*-th DATA constraint in the query
+
+Attributes may also be provided for styling HTML output:
+
+* `@STYLE=`*class* - Will associate the mentioned CSS class (it's up to you to associate a proper stylesheet). The default one predefines only a few simple classes: `italic`, `bold`, `red`,`green`,`blue`, `super`.
+* `@HIDE` - Do not add the highlight underline and do not add an entry to the legend. This may be useful if you only want to apply `@STYLE`.
+
+If no attribute is provided, there will be no tags or styling shown for that query, only a
+highlight underline.
+
+In the highlight queries, the variable from the main
 selection query is available and you *should* always use it in a constraint, otherwise
-performance will be sub-optimal. All your queries *should* have variable names
+performance will be sub-optimal! All your queries *should* have variable names
 and these will appear in the legend (unless you pass `--no-legend`).
 
 Various real examples of visualisation and queries are shown here: <https://github.com/knaw-huc/stam-experiments/tree/main/exp6>

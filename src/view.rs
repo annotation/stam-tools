@@ -57,24 +57,35 @@ impl<'a> Highlight<'a> {
         store: &'a AnnotationStore,
         seqnr: usize,
     ) -> Result<Self, String> {
-        let mut attribs: Vec<&str> = Vec::new();
+        let mut attribs: Vec<(&str, Option<&str>)> = Vec::new();
         while query.starts_with("@") {
             let pos = query
                 .find(' ')
                 .ok_or("query syntax error: expected space after @ATTRIBUTE")?;
-            attribs.push(&query[0..pos]);
-            query = &query[pos..query.len()];
+            let attribname = &query[0..pos];
+            if let Some(pos2) = attribname.find('=') {
+                let attribvalue = &attribname[pos2 + 1..];
+                attribs.push((&attribname[0..pos2], Some(attribvalue)));
+            } else {
+                attribs.push((attribname, None));
+            }
+            query = &query[pos + 1..query.len()];
         }
         let (query, _) = stam::Query::parse(query).map_err(|err| err.to_string())?;
 
         let mut tag = Tag::None;
         let mut style = None;
-        let key = get_key_from_query(&query, store);
 
         //prepared for a future in which we may have multiple attribs
-        for attrib in attribs.iter() {
-            match *attrib {
+        for (attribname, attribvalue) in attribs.iter() {
+            match *attribname {
                 "@KEYTAG" | "@KEY" => {
+                    let n = attribvalue
+                        .map(|x| x.parse::<usize>().unwrap_or_else(|_|{
+                            eprintln!("Warning: Query has @KEYTAG={} but '{}' is not a number, ignoring...", x, x);
+                            1}))
+                        .unwrap_or(1) - 1;
+                    let key = get_key_from_query(&query, n, store);
                     if let Some(key) = key.as_ref() {
                         tag = Tag::Key(key.clone())
                     } else {
@@ -82,6 +93,12 @@ impl<'a> Highlight<'a> {
                     }
                 }
                 "@KEYVALUETAG" | "@KEYVALUE" => {
+                    let n = attribvalue
+                        .map(|x| x.parse::<usize>().unwrap_or_else(|_|{
+                            eprintln!("Warning: Query has @KEYVALUETAG={} but '{}' is not a number, ignoring...", x, x);
+                            1}))
+                        .unwrap_or(1) - 1;
+                    let key = get_key_from_query(&query, n, store);
                     if let Some(key) = key.as_ref() {
                         tag = Tag::KeyAndValue(key.clone())
                     } else {
@@ -89,6 +106,12 @@ impl<'a> Highlight<'a> {
                     }
                 }
                 "@VALUETAG" | "@VALUE" => {
+                    let n = attribvalue
+                        .map(|x| x.parse::<usize>().unwrap_or_else(|_|{
+                            eprintln!("Warning: Query has @VALUETAG={} but '{}' is not a number, ignoring...", x, x);
+                            1}))
+                        .unwrap_or(1) - 1;
+                    let key = get_key_from_query(&query, n, store);
                     if let Some(key) = key.as_ref() {
                         tag = Tag::Value(key.clone())
                     } else {
@@ -96,13 +119,8 @@ impl<'a> Highlight<'a> {
                     }
                 }
                 "@IDTAG" | "@ID" => tag = Tag::Id,
-                attribname => {
-                    if attribname.starts_with("@STYLE=") || attribname.starts_with("@CLASS=") {
-                        style = Some(attribname[7..].to_owned())
-                    } else {
-                        eprintln!("Warning: Unknown attribute ignored: {}", attribname);
-                    }
-                }
+                "@STYLE" | "@CLASS" => style = attribvalue.map(|s| s.to_owned()),
+                x => eprintln!("Warning: Unknown attribute ignored: {}", x),
             }
         }
 
@@ -412,6 +430,7 @@ label.h.tag3 em {
 .green { color: #00ff00; }
 .blue { color: #0000ff; }
 .yellow { color: #ffff00; }
+.super, .small { vertical-align: top; font-size: 60%; };
     </style>
 </head>
 <body>
@@ -540,9 +559,14 @@ impl<'a> HtmlWriter<'a> {
 
 fn get_key_from_query<'a>(
     query: &Query<'a>,
+    n: usize,
     store: &'a AnnotationStore,
 ) -> Option<ResultItem<'a, DataKey>> {
-    for constraint in query.iter() {
+    if let Some(constraint) = query
+        .iter()
+        .filter(|c| matches!(c, Constraint::DataKey { .. } | Constraint::KeyValue { .. }))
+        .nth(n)
+    {
         if let Constraint::DataKey { set, key, .. } | Constraint::KeyValue { set, key, .. } =
             constraint
         {
@@ -559,10 +583,10 @@ fn helper_add_highlights_from_query<'a>(
     query: &Query<'a>,
     store: &'a AnnotationStore,
 ) {
-    if let Some(key) = get_key_from_query(query, store) {
+    if let Some(key) = get_key_from_query(query, 0, store) {
+        //TODO: translate to queries now highlights are no longer supported
         highlights.push(Highlight::default().with_tag(Tag::KeyAndValue(key)))
-    }
-    if let Some(subquery) = query.subquery() {
+    } else if let Some(subquery) = query.subquery() {
         helper_add_highlights_from_query(highlights, subquery, store);
     }
 }
