@@ -37,6 +37,7 @@ pub struct Highlight<'a> {
     style: Option<String>,
     query: Option<Query<'a>>,
     label: Option<&'a str>,
+    hide: bool, //hide the highlight?
 }
 
 impl<'a> Default for Highlight<'a> {
@@ -46,6 +47,7 @@ impl<'a> Default for Highlight<'a> {
             query: None,
             tag: Tag::None,
             style: None,
+            hide: false,
         }
     }
 }
@@ -75,6 +77,7 @@ impl<'a> Highlight<'a> {
 
         let mut tag = Tag::None;
         let mut style = None;
+        let mut hide = false;
 
         //prepared for a future in which we may have multiple attribs
         for (attribname, attribvalue) in attribs.iter() {
@@ -120,6 +123,7 @@ impl<'a> Highlight<'a> {
                 }
                 "@IDTAG" | "@ID" => tag = Tag::Id,
                 "@STYLE" | "@CLASS" => style = attribvalue.map(|s| s.to_owned()),
+                "@HIDE" | "@HIDDEN" => hide = true,
                 x => eprintln!("Warning: Unknown attribute ignored: {}", x),
             }
         }
@@ -129,6 +133,7 @@ impl<'a> Highlight<'a> {
             style,
             query: Some(query),
             label: None,
+            hide,
         })
     }
 
@@ -639,19 +644,21 @@ impl<'a> Display for HtmlWriter<'a> {
         if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
             write!(f, "<div id=\"legend\" title=\"Click the items in this legend to toggle visibility of tags (if any)\"><ul>")?;
             for (i, highlight) in self.highlights.iter().enumerate() {
-                if let Some(hlq) = highlight.query.as_ref() {
-                    write!(
-                        f,
-                        "<li id=\"legend{}\"{}><span class=\"hi{}\"></span> {}</li>",
-                        i + 1,
-                        if self.interactive {
-                            " title=\"Click to toggle visibility of tags (if any)\""
-                        } else {
-                            ""
-                        },
-                        i + 1,
-                        hlq.name().unwrap_or("(untitled)").replace("_", " ")
-                    )?;
+                if !highlight.hide {
+                    if let Some(hlq) = highlight.query.as_ref() {
+                        write!(
+                            f,
+                            "<li id=\"legend{}\"{}><span class=\"hi{}\"></span> {}</li>",
+                            i + 1,
+                            if self.interactive {
+                                " title=\"Click to toggle visibility of tags (if any)\""
+                            } else {
+                                ""
+                            },
+                            i + 1,
+                            hlq.name().unwrap_or("(untitled)").replace("_", " ")
+                        )?;
+                    }
                 }
             }
             write!(f, "</ul></div>")?;
@@ -789,7 +796,7 @@ impl<'a> Display for HtmlWriter<'a> {
 
                             // Identify which annotations amongst the ones we are spanning are
                             // annotations that we want to highlight, populate the list of CSS classes.
-                            for (j, (_, highlights_annotations)) in self
+                            for (j, (highlight, highlights_annotations)) in self
                                 .highlights
                                 .iter()
                                 .zip(highlights_results.iter())
@@ -800,7 +807,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                     .next()
                                     .is_some()
                                 {
-                                    classes.push(&classnames[j]);
+                                    if !highlight.hide {
+                                        classes.push(&classnames[j]);
+                                    }
                                     if let Some(style) = &self.highlights[j].style {
                                         classes.push(style.as_str());
                                     }
@@ -842,17 +851,23 @@ impl<'a> Display for HtmlWriter<'a> {
                                                             classes.join(" ")
                                                         )
                                                         .ok();
-                                                        for i in 0..self.highlights.len() {
-                                                            write!(
-                                                                f,
-                                                                "{}",
-                                                                &layertags[i], //<span class="l$i">
-                                                            )
-                                                            .ok();
+                                                        for (l, highlight) in
+                                                            self.highlights.iter().enumerate()
+                                                        {
+                                                            if !highlight.hide {
+                                                                write!(
+                                                                    f,
+                                                                    "{}",
+                                                                    &layertags[l], //<span class="l$i">
+                                                                )
+                                                                .ok();
+                                                            }
                                                         }
                                                         write!(f, "<em>{}</em>", tag,).ok();
-                                                        for _ in 0..self.highlights.len() {
-                                                            write!(f, "</span>").ok();
+                                                        for highlight in self.highlights.iter() {
+                                                            if !highlight.hide {
+                                                                write!(f, "</span>").ok();
+                                                            }
                                                         }
                                                         write!(f, "</label>",).ok();
                                                     }
@@ -923,15 +938,20 @@ impl<'a> Display for HtmlWriter<'a> {
                                     //the final or only iteration will always be the normal one
                                     classes.clear();
                                     classes.push("a");
-                                    for (j, highlights_annotations) in
-                                        highlights_results.iter().enumerate()
+                                    for (j, (highlight, highlights_annotations)) in self
+                                        .highlights
+                                        .iter()
+                                        .zip(highlights_results.iter())
+                                        .enumerate()
                                     {
                                         if span_annotations
                                             .intersection(&highlights_annotations)
                                             .next()
                                             .is_some()
                                         {
-                                            classes.push(&classnames[j]);
+                                            if !highlight.hide {
+                                                classes.push(&classnames[j]);
+                                            }
                                             if let Some(style) = &self.highlights[j].style {
                                                 classes.push(style);
                                             }
@@ -990,17 +1010,27 @@ impl<'a> Display for HtmlWriter<'a> {
                                                                     classes.join(" ")
                                                                 )
                                                                 .ok();
-                                                                for i in 0..self.highlights.len() {
-                                                                    write!(
-                                                                        f,
-                                                                        "{}",
-                                                                        &layertags[i], //<span class="l$i">
-                                                                    )
-                                                                    .ok();
+                                                                for (l, highlight) in self
+                                                                    .highlights
+                                                                    .iter()
+                                                                    .enumerate()
+                                                                {
+                                                                    if !highlight.hide {
+                                                                        write!(
+                                                                            f,
+                                                                            "{}",
+                                                                            &layertags[l], //<span class="l$i">
+                                                                        )
+                                                                        .ok();
+                                                                    }
                                                                 }
                                                                 write!(f, "<em>{}</em>", tag,).ok();
-                                                                for _ in 0..self.highlights.len() {
-                                                                    write!(f, "</span>").ok();
+                                                                for highlight in
+                                                                    self.highlights.iter()
+                                                                {
+                                                                    if !highlight.hide {
+                                                                        write!(f, "</span>").ok();
+                                                                    }
                                                                 }
                                                                 write!(f, "</label>",).ok();
                                                             }
@@ -1028,9 +1058,11 @@ impl<'a> Display for HtmlWriter<'a> {
                                 openingtags += ">";
                                 write!(f, ">")?;
                                 // output all the <span> layers
-                                for i in 0..self.highlights.len() {
-                                    openingtags += &layertags[i]; //<span class="l$i">
-                                    write!(f, "{}", &layertags[i])?;
+                                for (l, highlight) in self.highlights.iter().enumerate() {
+                                    if !highlight.hide {
+                                        openingtags += &layertags[l]; //<span class="l$i">
+                                        write!(f, "{}", &layertags[l])?;
+                                    }
                                 }
 
                                 //note: the text is outputted when closing a segment
