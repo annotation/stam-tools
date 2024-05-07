@@ -686,7 +686,7 @@ impl<'a> XmlToStamConverter<'a> {
                 NodePath::from(node)
             );
         }
-        if begin < (self.cursor - end_discount) {
+        if begin <= (self.cursor - end_discount) {
             let offset = Offset::simple(begin, self.cursor - end_discount);
             self.positionmap.insert(node.id(), offset);
             if self.config.debug {
