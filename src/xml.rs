@@ -481,6 +481,10 @@ pub enum ElementHandling {
     /// Associate metadata with the resource, take the text of the element as data value
     /// This is useful for mapping XML metadata like `<author>John Doe</author>` to an annotation with datakey 'author' and value 'John Doe'.
     AnnotateResourceWithTextAsData,
+
+    /// Annotate the text span from element until the next occurence of the same element.
+    /// This can be used for example to convert <br/> elements annotations spanning whole lines.
+    MarkersToTextSpan,
 }
 
 impl Default for ElementHandling {
@@ -508,6 +512,12 @@ pub enum AttributeHandling {
 
     /// Use this attribute as identifier for the annotation
     Identifier,
+
+    /// Use this attribute to extract the text from (prior to any text in the element)
+    ExtractTextFirst,
+
+    /// Use this attribute to extract the text from (after any text in the element)
+    ExtractTextAfter,
 
     /// Use this attribute value as key.
     /// This implies that there must be a single other attribute with [`AttributeHandling::Value`]
@@ -575,12 +585,36 @@ impl<'a> XmlToStamConverter<'a> {
                     if self.config.debug {
                         eprintln!("[STAM fromxml]   outputting textprefix: {:?}", textprefix);
                     }
-                    self.text += textprefix;
-                    let textprefix_len = textprefix.chars().count();
+                    let (textprefix_len, textprefix_bytelen) = if has_variables(textprefix) {
+                        let s = resolve_variables(textprefix, node);
+                        self.text += &s;
+                        (s.chars().count(), s.len())
+                    } else {
+                        self.text += textprefix;
+                        (textprefix.chars().count(), textprefix.len())
+                    };
                     self.cursor += textprefix_len;
                     // the textprefix will never be part of the annotation's text selection:
                     begin += textprefix_len;
-                    bytebegin += textprefix.len();
+                    bytebegin += textprefix_bytelen;
+                }
+                let mut textfromattrib_after = None;
+                for attribute in node.attributes() {
+                    if let Some(attribute_config) = self.config.attribute_config(node, attribute) {
+                        if attribute_config.handling == AttributeHandling::ExtractTextFirst {
+                            if self.pending_whitespace {
+                                self.text.push(' ');
+                                self.pending_whitespace = false;
+                                begin += 1;
+                                bytebegin += 1;
+                            }
+                            firsttext = false;
+                            self.text += attribute.value();
+                        } else if attribute_config.handling == AttributeHandling::ExtractTextAfter {
+                            //store for later output
+                            textfromattrib_after = Some(attribute.value());
+                        }
+                    }
                 }
                 for child in node.children() {
                     if self.config.debug {
@@ -668,16 +702,27 @@ impl<'a> XmlToStamConverter<'a> {
                         continue;
                     }
                 }
+                if let Some(textfromattrib) = textfromattrib_after {
+                    self.text += textfromattrib;
+                    self.cursor += textfromattrib.chars().count();
+                }
                 if let Some(textsuffix) = &element_config.textsuffix {
                     if self.config.debug {
                         eprintln!("[STAM fromxml]   outputing textsuffix: {:?}", textsuffix);
                     }
-                    self.text += textsuffix;
+                    let (end_discount_tmp, end_bytediscount_tmp) = if has_variables(textsuffix) {
+                        let s = resolve_variables(textsuffix, node);
+                        self.text += &s;
+                        (s.chars().count(), s.len())
+                    } else {
+                        self.text += textsuffix;
+                        (textsuffix.chars().count(), textsuffix.len())
+                    };
                     // the textsuffix will never be part of the annotation's text selection:
-                    end_discount = textsuffix.chars().count();
-                    self.cursor += end_discount;
+                    self.cursor += end_discount_tmp;
                     self.pending_whitespace = false;
-                    end_bytediscount = textsuffix.len();
+                    end_discount = end_discount_tmp;
+                    end_bytediscount = end_bytediscount_tmp;
                 }
             }
         } else if self.config.debug {
@@ -1035,4 +1080,51 @@ fn recursive_text(node: Node) -> String {
         }
     }
     s
+}
+
+/// Tests if this string is a template that has variables that reference attributes using the `{@attrib}` syntax.
+fn has_variables(s: &str) -> bool {
+    while let Some(pos) = s.find("{@") {
+        for c in s[pos..].chars() {
+            if c.is_whitespace() {
+                break;
+            } else if c == '}' {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// resolve attribute variables in a string
+fn resolve_variables(s: &str, node: Node) -> String {
+    let mut out = String::new();
+    let mut begin = None;
+    for (bytepos, c) in s.char_indices() {
+        if begin.is_some() {
+            if c == '}' {
+                let varname = &s[begin.unwrap() + 1..bytepos];
+                if varname.starts_with('@') {
+                    let varname = &varname[1..];
+                    //TODO: handle namespaces prefixes
+                    if let Some(value) = node.attribute(varname) {
+                        out += value;
+                    }
+                    //(note: if not found it resolve to an empty string)
+                    begin = None;
+                }
+            } else if c.is_whitespace() {
+                //not a variable, flush buffer
+                out += &s[begin.unwrap()..bytepos];
+                begin = None;
+            }
+        } else if c == '{' {
+            begin = Some(bytepos)
+        }
+    }
+    if let Some(begin) = begin {
+        //flush remainder of buffer
+        out += &s[begin..];
+    }
+    out
 }
