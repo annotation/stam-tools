@@ -236,6 +236,10 @@ label {
     margin-top: 10px;
     border-radius: 0px 20px 0px 0px;
 }
+label.zw {
+    border-radius: 20px;
+    border-right: none !important;
+}
 label em {
     display: inline-block;
     font-size: 70%;
@@ -663,10 +667,10 @@ impl<'a> Display for HtmlWriter<'a> {
         let mut openingtags = String::new(); //buffer
         let mut classes: Vec<&str> = vec![];
         for (resultnr, selectionresult) in results.enumerate() {
-            //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
                 Err(msg) => return self.output_error(f, msg),
                 Ok((resulttextselection, whole_resource, id)) => {
+                    //MAYBE TODO: the clone is a bit unfortunate but no big deal
                     if prevresult == Some(resulttextselection.clone()) {
                         //prevent duplicates (especially relevant when --use is set)
                         continue;
@@ -709,6 +713,7 @@ impl<'a> Display for HtmlWriter<'a> {
                     // This will hold all annotations that apply at a certain moment
                     // we dynically add and remove from this as we iterator over all segments
                     let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
+                    let mut zerowidth_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
 
                     let resource = resulttextselection.resource();
                     let mut begin: usize = resulttextselection.begin();
@@ -863,6 +868,7 @@ impl<'a> Display for HtmlWriter<'a> {
 
                             // find and add annotations that begin at this position
                             // anything that begins at the end of our top-level result is ignored
+                            zerowidth_annotations.clear();
                             if i != resulttextselection.end() {
                                 for (_, textselectionhandle) in positionitem.iter_begin2end() {
                                     let textselection = resource
@@ -871,7 +877,21 @@ impl<'a> Display for HtmlWriter<'a> {
                                         .unwrap()
                                         .as_resultitem(resource.as_ref(), self.store);
                                     let new_span_annotations: BTreeSet<AnnotationHandle> =
-                                        textselection.annotations().map(|a| a.handle()).collect();
+                                        textselection
+                                            .annotations()
+                                            .inspect(|a| {
+                                                // are there any zero-width annotations? collect them
+                                                // they will get special treatment later
+                                                if let Some(ts) = a.textselections().next() {
+                                                    if ts.begin() == ts.end()
+                                                        && ts.end() == textselection.end()
+                                                    {
+                                                        zerowidth_annotations.insert(a.handle());
+                                                    }
+                                                }
+                                            })
+                                            .map(|a| a.handle())
+                                            .collect();
                                     span_annotations.extend(new_span_annotations.iter());
                                     if self.output_data {
                                         //all_annotations.extend(new_span_annotations.iter());
@@ -891,51 +911,114 @@ impl<'a> Display for HtmlWriter<'a> {
                                 })
                             }
 
+                            // do we have zero-width annotations that should be closed immediately after opening?
+
                             if !span_annotations.is_empty() && i != resulttextselection.end() {
                                 // output the opening <span> layer tag for the current segment
                                 // this covers all the annotations we are spanning
                                 // not just annotations that start here
-                                classes.clear();
-                                classes.push("a");
-                                for (j, highlights_annotations) in
-                                    highlights_results.iter().enumerate()
-                                {
-                                    if span_annotations
-                                        .intersection(&highlights_annotations)
-                                        .next()
-                                        .is_some()
+                                loop {
+                                    //the loop is only re-used when there are zero-width
+                                    //annotations, which will be handled in the first iteration,
+                                    //the final or only iteration will always be the normal one
+                                    classes.clear();
+                                    classes.push("a");
+                                    for (j, highlights_annotations) in
+                                        highlights_results.iter().enumerate()
                                     {
-                                        classes.push(&classnames[j]);
-                                        if let Some(style) = &self.highlights[j].style {
-                                            classes.push(style);
+                                        if span_annotations
+                                            .intersection(&highlights_annotations)
+                                            .next()
+                                            .is_some()
+                                        {
+                                            classes.push(&classnames[j]);
+                                            if let Some(style) = &self.highlights[j].style {
+                                                classes.push(style);
+                                            }
                                         }
                                     }
+                                    openingtags.clear(); //this is a buffer that may be referenced later (for newline processing), start it anew
+                                    openingtags += "<span";
+                                    if !classes.is_empty() {
+                                        openingtags +=
+                                            format!(" class=\"{}\"", classes.join(" ")).as_str();
+                                    }
+                                    if self.output_annotation_ids {
+                                        openingtags += format!(
+                                            " data-annotations=\"{}\"",
+                                            span_annotations
+                                                .iter()
+                                                .map(|a_handle| {
+                                                    let annotation =
+                                                        self.store.get(*a_handle).unwrap();
+                                                    annotation
+                                                        .id()
+                                                        .map(|x| x.to_string())
+                                                        .unwrap_or_else(|| {
+                                                            annotation.temp_id().unwrap()
+                                                        })
+                                                })
+                                                .collect::<Vec<_>>()
+                                                .join(" "),
+                                        )
+                                        .as_str();
+                                    }
+
+                                    if !zerowidth_annotations.is_empty() {
+                                        //output close tags for zero-width annotation and remove the from the span_annotations
+                                        span_annotations.retain(|a| {
+                                            if zerowidth_annotations.contains(a) {
+                                                for (j, (highlights, highlights_results)) in self
+                                                    .highlights
+                                                    .iter()
+                                                    .zip(highlights_results.iter())
+                                                    .enumerate()
+                                                {
+                                                    if highlights_results.contains(a) {
+                                                        if let Some(annotation) =
+                                                            self.store.annotation(*a)
+                                                        {
+                                                            // Get the appropriate tag representation
+                                                            // and output the zero-width tag for this highlight
+                                                            let tag =
+                                                                highlights.get_tag(annotation);
+                                                            if !tag.is_empty() {
+                                                                write!(
+                                                                    f,
+                                                                    "<label class=\"zw tag{} {}\">",
+                                                                    j + 1,
+                                                                    classes.join(" ")
+                                                                )
+                                                                .ok();
+                                                                for i in 0..self.highlights.len() {
+                                                                    write!(
+                                                                        f,
+                                                                        "{}",
+                                                                        &layertags[i], //<span class="l$i">
+                                                                    )
+                                                                    .ok();
+                                                                }
+                                                                write!(f, "<em>{}</em>", tag,).ok();
+                                                                for _ in 0..self.highlights.len() {
+                                                                    write!(f, "</span>").ok();
+                                                                }
+                                                                write!(f, "</label>",).ok();
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                false
+                                            } else {
+                                                true
+                                            }
+                                        });
+                                        zerowidth_annotations.clear();
+                                        continue; //next iteration in loop
+                                    } else {
+                                        break; //break loop, no zero-width annotations
+                                    }
                                 }
-                                openingtags.clear(); //this is a buffer that may be referenced later (for newline processing), start it anew
-                                openingtags += "<span";
-                                if !classes.is_empty() {
-                                    openingtags +=
-                                        format!(" class=\"{}\"", classes.join(" ")).as_str();
-                                }
-                                if self.output_annotation_ids {
-                                    openingtags += format!(
-                                        " data-annotations=\"{}\"",
-                                        span_annotations
-                                            .iter()
-                                            .map(|a_handle| {
-                                                let annotation = self.store.get(*a_handle).unwrap();
-                                                annotation
-                                                    .id()
-                                                    .map(|x| x.to_string())
-                                                    .unwrap_or_else(|| {
-                                                        annotation.temp_id().unwrap()
-                                                    })
-                                            })
-                                            .collect::<Vec<_>>()
-                                            .join(" "),
-                                    )
-                                    .as_str();
-                                }
+
                                 // buffer is incomplete but we output already
                                 write!(f, "{}", openingtags.as_str())?;
                                 if self.output_offset {
@@ -950,7 +1033,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                     write!(f, "{}", &layertags[i])?;
                                 }
 
-                                //note: the text is outputted alongside the closing tag
+                                //note: the text is outputted when closing a segment
                             }
                         }
                     }
