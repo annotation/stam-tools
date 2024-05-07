@@ -1120,6 +1120,8 @@ fn resolve_variables(s: &str, node: Node) -> String {
             }
         } else if c == '{' {
             begin = Some(bytepos)
+        } else {
+            out.push(c);
         }
     }
     if let Some(begin) = begin {
