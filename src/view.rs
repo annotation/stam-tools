@@ -615,7 +615,14 @@ impl<'a> Display for HtmlWriter<'a> {
                 .to_string()
                 .unwrap_or_else(|err| format!("{}", err))
         )?;
+
+        // pre-assign class names and layer opening tags so we can borrow later
+        let mut classnames: Vec<String> = Vec::with_capacity(self.highlights.len());
+        let mut layertags: Vec<String> = Vec::with_capacity(self.highlights.len());
         for (i, highlight) in self.highlights.iter().enumerate() {
+            layertags.push(format!("<span class=\"l{}\">", i + 1));
+            classnames.push(format!("hi{}", i + 1));
+
             if let Some(query) = highlight.query.as_ref() {
                 write!(
                     f,
@@ -651,9 +658,10 @@ impl<'a> Display for HtmlWriter<'a> {
         })?;
 
         let names = results.names();
+
         let mut prevresult = None;
         let mut openingtags = String::new(); //buffer
-        let mut classes: Vec<String> = vec![];
+        let mut classes: Vec<&str> = vec![];
         for (resultnr, selectionresult) in results.enumerate() {
             //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
@@ -787,9 +795,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                     .next()
                                     .is_some()
                                 {
-                                    classes.push(format!("hi{}", j + 1)); //MAYBE TODO: pre-compute and borrow?
+                                    classes.push(&classnames[j]);
                                     if let Some(style) = &self.highlights[j].style {
-                                        classes.push(style.clone()); //MAYBE TODO: borrow?
+                                        classes.push(style.as_str());
                                     }
                                 }
                             }
@@ -832,8 +840,8 @@ impl<'a> Display for HtmlWriter<'a> {
                                                         for i in 0..self.highlights.len() {
                                                             write!(
                                                                 f,
-                                                                "<span class=\"l{}\">",
-                                                                i + 1
+                                                                "{}",
+                                                                &layertags[i], //<span class="l$i">
                                                             )
                                                             .ok();
                                                         }
@@ -888,7 +896,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                 // this covers all the annotations we are spanning
                                 // not just annotations that start here
                                 classes.clear();
-                                classes.push("a".to_string());
+                                classes.push("a");
                                 for (j, highlights_annotations) in
                                     highlights_results.iter().enumerate()
                                 {
@@ -897,9 +905,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                         .next()
                                         .is_some()
                                     {
-                                        classes.push(format!("hi{}", j + 1));
+                                        classes.push(&classnames[j]);
                                         if let Some(style) = &self.highlights[j].style {
-                                            classes.push(style.clone()); //MAYBE TODO: borrow?
+                                            classes.push(style);
                                         }
                                     }
                                 }
@@ -938,9 +946,8 @@ impl<'a> Display for HtmlWriter<'a> {
                                 write!(f, ">")?;
                                 // output all the <span> layers
                                 for i in 0..self.highlights.len() {
-                                    let layer = format!("<span class=\"l{}\">", i + 1);
-                                    openingtags += layer.as_str();
-                                    write!(f, "{}", layer)?;
+                                    openingtags += &layertags[i]; //<span class="l$i">
+                                    write!(f, "{}", &layertags[i])?;
                                 }
 
                                 //note: the text is outputted alongside the closing tag
