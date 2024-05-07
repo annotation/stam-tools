@@ -684,6 +684,10 @@ impl<'a> Display for HtmlWriter<'a> {
                             resulttextselection.end(),
                         )?;
                     }
+
+                    // Process all highlight queries and store the resulting annotations handles
+                    // so we can later associate the appropriate rendering for the highlight
+                    // when an annotation corresponds to one
                     highlights_results = get_highlights_results(
                         &self.selectionquery,
                         &selectionresult,
@@ -693,21 +697,34 @@ impl<'a> Display for HtmlWriter<'a> {
                         &names,
                         highlights_results,
                     );
+
+                    // This will hold all annotations that apply at a certain moment
+                    // we dynically add and remove from this as we iterator over all segments
                     let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
+
                     let resource = resulttextselection.resource();
                     let mut begin: usize = resulttextselection.begin();
+
+                    // Gather over all positions in the top-level text selection result where there
+                    // is some kind of boundary for other text selections (e.g. segments)
                     let mut positions: Vec<_> = resulttextselection
                         .positions(stam::PositionMode::Both)
                         .copied()
                         .collect();
                     positions.push(resulttextselection.end());
+
+                    // Loop over them..
                     for i in positions {
-                        let mut needclosure = true;
+                        let mut needclosure = true; //close </span> layers?
                         if i > begin {
-                            //output text
+                            // output the text for the segment ending at this position
                             let text = resource
                                 .text_by_offset(&Offset::simple(begin, i))
                                 .expect("offset should be valid");
+
+                            // Linebreaks require special handling in rendering, we can't nest
+                            // them in the various <span> layers we have but have to pull them out
+                            // to the top level. Even if they are in the middle of some text!
                             for (subtext, texttype, done) in LinebreakIter::new(text) {
                                 match texttype {
                                     BufferType::Text => {
@@ -734,6 +751,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                                 //open spans again for the next subtext
                                                 write!(f, "{}", openingtags)?;
                                             } else {
+                                                // we already handled the </span> closure here, prevent doing it again later
                                                 needclosure = false;
                                             }
                                         }
@@ -743,6 +761,8 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
                             begin = i;
                         }
+
+                        // Close </span> layers for this position
                         if !span_annotations.is_empty() && needclosure {
                             for _ in 0..self.highlights.len() {
                                 write!(f, "</span>")?;
@@ -750,16 +770,22 @@ impl<'a> Display for HtmlWriter<'a> {
                             write!(f, "</span>")?;
                         }
 
-                        if let Some(position) = resource.as_ref().position(i) {
-                            for (_, textselectionhandle) in position.iter_end2begin() {
+                        // Gather info for this position
+                        if let Some(positionitem) = resource.as_ref().position(i) {
+                            // Find all textselections that end here
+                            for (_, textselectionhandle) in positionitem.iter_end2begin() {
                                 let textselection = resource
                                     .as_ref()
                                     .get(*textselectionhandle)
                                     .unwrap()
                                     .as_resultitem(resource.as_ref(), self.store);
+                                // Gather annotation IDs for all annotations we need to close at this position
                                 let close: Vec<_> =
                                     textselection.annotations().map(|a| a.handle()).collect();
                                 let mut classes = vec![];
+
+                                // Identify which annotations amongst the ones we are spanning are
+                                // annotations that we want to highlight, populate the list of CSS classes.
                                 for (j, (_, highlights_annotations)) in self
                                     .highlights
                                     .iter()
@@ -777,9 +803,11 @@ impl<'a> Display for HtmlWriter<'a> {
                                         }
                                     }
                                 }
+
+                                // Identify which annotations amongst the ones we are spanning
+                                // are being closed. Remove them from the span list and output tags if needed.
                                 span_annotations.retain(|a| {
                                     if close.contains(a) {
-                                        //close tags and add labels
                                         for (j, (highlights, highlights_results)) in self
                                             .highlights
                                             .iter()
@@ -789,6 +817,8 @@ impl<'a> Display for HtmlWriter<'a> {
                                             if highlights_results.contains(a) {
                                                 if let Some(annotation) = self.store.annotation(*a)
                                                 {
+                                                    // Get the appropriate tag representation
+                                                    // and output the tag for this highlight
                                                     let tag = highlights.get_tag(annotation);
                                                     if !tag.is_empty() {
                                                         write!(
@@ -822,9 +852,10 @@ impl<'a> Display for HtmlWriter<'a> {
                                 });
                             }
 
+                            // find and add annotations that begin at this position
+                            // anything that begins at the end of our top-level result is ignored)
                             if i != resulttextselection.end() {
-                                //find and add annotations that begin here
-                                for (_, textselectionhandle) in position.iter_begin2end() {
+                                for (_, textselectionhandle) in positionitem.iter_begin2end() {
                                     let textselection = resource
                                         .as_ref()
                                         .get(*textselectionhandle)
@@ -840,7 +871,7 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
 
                             if self.prune {
-                                //prunes everything that is not highlighted
+                                // prune everything that is not highlighted
                                 span_annotations.retain(|a| {
                                     for highlights_annotations in highlights_results.iter() {
                                         if highlights_annotations.contains(a) {
@@ -850,8 +881,11 @@ impl<'a> Display for HtmlWriter<'a> {
                                     false
                                 })
                             }
+
                             if !span_annotations.is_empty() && i != resulttextselection.end() {
-                                //output the opening tags
+                                // output the opening <span> tags for the current segment
+                                // this covers all the annotations we are spanning
+                                // not just annotations that start here
                                 classes.clear();
                                 classes.push("a".to_string());
                                 for (j, highlights_annotations) in
@@ -868,7 +902,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                         }
                                     }
                                 }
-                                openingtags.clear();
+                                openingtags.clear(); //this is a buffer that may be referenced later (for newline processing), start it anew
                                 openingtags += "<span";
                                 if !classes.is_empty() {
                                     openingtags +=
@@ -893,7 +927,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                     )
                                     .as_str();
                                 }
-                                //incomplete but we output already
+                                // buffer is incomplete but we output already
                                 write!(f, "{}", openingtags.as_str())?;
                                 if self.output_offset {
                                     //we don't want this in the openingtags buffer because it'd be behind if we reuse the opening tags later
@@ -901,12 +935,14 @@ impl<'a> Display for HtmlWriter<'a> {
                                 }
                                 openingtags += ">";
                                 write!(f, ">")?;
+                                // output all the <span> layers
                                 for i in 0..self.highlights.len() {
                                     let layer = format!("<span class=\"l{}\">", i + 1);
                                     openingtags += layer.as_str();
                                     write!(f, "{}", layer)?;
                                 }
-                                //the text is outputted alongside the closing tag
+
+                                //note: the text is outputted alongside the closing tag
                             }
                         }
                     }
