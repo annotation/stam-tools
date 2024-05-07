@@ -652,8 +652,8 @@ impl<'a> Display for HtmlWriter<'a> {
 
         let names = results.names();
         let mut prevresult = None;
-        let mut openingtags = String::new();
-        let mut classes = vec![];
+        let mut openingtags = String::new(); //buffer
+        let mut classes: Vec<String> = vec![];
         for (resultnr, selectionresult) in results.enumerate() {
             //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
@@ -772,6 +772,28 @@ impl<'a> Display for HtmlWriter<'a> {
 
                         // Gather info for this position
                         if let Some(positionitem) = resource.as_ref().position(i) {
+                            classes.clear();
+
+                            // Identify which annotations amongst the ones we are spanning are
+                            // annotations that we want to highlight, populate the list of CSS classes.
+                            for (j, (_, highlights_annotations)) in self
+                                .highlights
+                                .iter()
+                                .zip(highlights_results.iter())
+                                .enumerate()
+                            {
+                                if span_annotations
+                                    .intersection(&highlights_annotations)
+                                    .next()
+                                    .is_some()
+                                {
+                                    classes.push(format!("hi{}", j + 1)); //MAYBE TODO: pre-compute and borrow?
+                                    if let Some(style) = &self.highlights[j].style {
+                                        classes.push(style.clone()); //MAYBE TODO: borrow?
+                                    }
+                                }
+                            }
+
                             // Find all textselections that end here
                             for (_, textselectionhandle) in positionitem.iter_end2begin() {
                                 let textselection = resource
@@ -779,30 +801,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                     .get(*textselectionhandle)
                                     .unwrap()
                                     .as_resultitem(resource.as_ref(), self.store);
-                                // Gather annotation IDs for all annotations we need to close at this position
+                                // Gather annotation handles for all annotations we need to close at this position
                                 let close: Vec<_> =
                                     textselection.annotations().map(|a| a.handle()).collect();
-                                let mut classes = vec![];
-
-                                // Identify which annotations amongst the ones we are spanning are
-                                // annotations that we want to highlight, populate the list of CSS classes.
-                                for (j, (_, highlights_annotations)) in self
-                                    .highlights
-                                    .iter()
-                                    .zip(highlights_results.iter())
-                                    .enumerate()
-                                {
-                                    if span_annotations
-                                        .intersection(&highlights_annotations)
-                                        .next()
-                                        .is_some()
-                                    {
-                                        classes.push(format!("hi{}", j + 1));
-                                        if let Some(style) = &self.highlights[j].style {
-                                            classes.push(style.clone()); //MAYBE TODO: borrow?
-                                        }
-                                    }
-                                }
 
                                 // Identify which annotations amongst the ones we are spanning
                                 // are being closed. Remove them from the span list and output tags if needed.
@@ -853,7 +854,7 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
 
                             // find and add annotations that begin at this position
-                            // anything that begins at the end of our top-level result is ignored)
+                            // anything that begins at the end of our top-level result is ignored
                             if i != resulttextselection.end() {
                                 for (_, textselectionhandle) in positionitem.iter_begin2end() {
                                     let textselection = resource
@@ -883,7 +884,7 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
 
                             if !span_annotations.is_empty() && i != resulttextselection.end() {
-                                // output the opening <span> tags for the current segment
+                                // output the opening <span> layer tag for the current segment
                                 // this covers all the annotations we are spanning
                                 // not just annotations that start here
                                 classes.clear();
