@@ -683,6 +683,7 @@ impl<'a> Display for HtmlWriter<'a> {
         let names = results.names();
         let mut prevresult = None;
         let mut openingtags = String::new(); //buffer
+        let mut pendingnewlines: String = String::new(); //buffer
         let mut classes: Vec<&str> = vec![];
         for (resultnr, selectionresult) in results.enumerate() {
             // obtain the text selection from the query result
@@ -783,17 +784,19 @@ impl<'a> Display for HtmlWriter<'a> {
                                                 write!(f, "</span>")?;
                                             }
                                             write!(f, "</span>")?;
-                                            write!(
-                                                f,
-                                                "{}",
-                                                subtext.replace("\n", "<br/>").as_str()
-                                            )?;
                                             if !done {
+                                                write!(
+                                                    f,
+                                                    "{}",
+                                                    subtext.replace("\n", "<br/>").as_str()
+                                                )?;
                                                 //open spans again for the next subtext
                                                 write!(f, "{}", openingtags)?;
                                             } else {
                                                 // we already handled the </span> closure here, prevent doing it again later
                                                 needclosure = false;
+                                                //set pending newlines, we don't output immediately because there might be a tag to output first
+                                                pendingnewlines = subtext.replace("\n", "<br/>");
                                             }
                                         }
                                     }
@@ -900,6 +903,11 @@ impl<'a> Display for HtmlWriter<'a> {
                                         true
                                     }
                                 });
+                            }
+
+                            if !pendingnewlines.is_empty() {
+                                write!(f, "{}", pendingnewlines)?;
+                                pendingnewlines.clear();
                             }
 
                             // find and add annotations that begin at this position
@@ -1455,7 +1463,9 @@ fn data_to_json(store: &AnnotationStore, annotations: impl Iterator<Item = Annot
 #[derive(Copy, PartialEq, Clone, Debug)]
 enum BufferType {
     None,
+    /// Buffer contains only newlines
     NewLines,
+    /// Buffer contains text without newlines
     Text,
 }
 
