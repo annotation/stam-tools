@@ -249,6 +249,17 @@ impl XmlElementConfig {
         self.value = Some(value.into());
         self
     }
+
+    /// Not a very safe hash function (just uses an address uniquely associated with this object) but works for our ends
+    fn hash(&self) -> usize {
+        self.path.0.as_ptr() as usize
+    }
+}
+
+impl PartialEq for XmlElementConfig {
+    fn eq(&self, other: &Self) -> bool {
+        self.hash() == other.hash()
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -495,6 +506,9 @@ struct XmlToStamConverter<'a> {
     /// Keep track of the new positions (unicode offset) where the node starts in the untangled document
     positionmap: HashMap<NodeId, Offset>,
 
+    /// Keep track of markers (XML elements with `ElementHandling::MarkersToTextSpan`), the key in this map is some hash of XmlElementConfig.
+    markers: HashMap<usize, Vec<NodeId>>,
+
     /// The resource
     resource_handle: Option<TextResourceHandle>,
 
@@ -529,7 +543,7 @@ pub enum ElementHandling {
 
     /// Annotate the text span from element until the next occurence of the same element.
     /// This can be used for example to convert <br/> elements annotations spanning whole lines.
-    MarkersToTextSpan,
+    AnnotateBetweenMarkers,
 }
 
 impl Default for ElementHandling {
@@ -587,6 +601,7 @@ impl<'a> XmlToStamConverter<'a> {
             cursor: 0,
             text: String::new(),
             positionmap: HashMap::new(),
+            markers: HashMap::new(),
             resource_handle: None,
             pending_whitespace: false,
             config,
@@ -619,6 +634,7 @@ impl<'a> XmlToStamConverter<'a> {
             }
 
             if element_config.handling != ElementHandling::Exclude
+                && element_config.handling != ElementHandling::AnnotateBetweenMarkers
                 && element_config.handling.extract_text()
             {
                 //do text extraction for this element
@@ -798,6 +814,15 @@ impl<'a> XmlToStamConverter<'a> {
                     end_discount = end_discount_tmp;
                     end_bytediscount = end_bytediscount_tmp;
                 }
+            } else if element_config.handling == ElementHandling::AnnotateBetweenMarkers {
+                // this is a marker, keep track of it so we can extract the span between markers in [`extract_element_annotation()`] later
+                if self.config.debug {
+                    eprintln!("[STAM fromxml]   adding to markers");
+                }
+                self.markers
+                    .entry(element_config.hash())
+                    .and_modify(|v| v.push(node.id()))
+                    .or_insert(vec![node.id()]);
             }
         } else if self.config.debug {
             eprintln!(
@@ -988,6 +1013,21 @@ impl<'a> XmlToStamConverter<'a> {
                             store.annotate(builder).expect("annotation should succeed");
                         }
                     }
+                    ElementHandling::AnnotateBetweenMarkers => {
+                        // Annotation is on a text span *between* two marker elements
+                        if let Some(selector) =
+                            self.textselector_for_markers(node, store, element_config)
+                        {
+                            builder = builder.with_target(selector);
+                            if self.config.debug {
+                                eprintln!(
+                                    "[STAM fromxml]   builder AnnotateBetweenMarkers: {:?}",
+                                    builder
+                                );
+                            }
+                            store.annotate(builder)?;
+                        }
+                    }
                     _ => panic!("Invalid elementhandling: {:?}", element_config.handling),
                 }
             }
@@ -1162,12 +1202,66 @@ impl<'a> XmlToStamConverter<'a> {
         }
     }
 
+    /// Select text corresponding to the element/node
     fn textselector(&self, node: Node) -> Option<SelectorBuilder> {
         let res_handle = self.resource_handle.expect("resource must be associated");
         if let Some(offset) = self.positionmap.get(&node.id()) {
             Some(SelectorBuilder::TextSelector(
                 BuildItem::Handle(res_handle),
                 offset.clone(),
+            ))
+        } else {
+            None
+        }
+    }
+
+    /// Select text between this element/node and the next of the same type
+    fn textselector_for_markers<'b>(
+        &self,
+        node: Node,
+        store: &AnnotationStore,
+        element_config: &'b XmlElementConfig,
+    ) -> Option<SelectorBuilder<'b>> {
+        let resource = store
+            .resource(
+                self.resource_handle
+                    .expect("resource must have been created"),
+            )
+            .expect("resource must exist");
+        let mut end: Option<usize> = None;
+        if let Some(markers) = self.markers.get(&element_config.hash()) {
+            let mut grab = false;
+            for n_id in markers.iter() {
+                if grab {
+                    //this marker is the next one, it's begin position is our desired end position
+                    end = self.positionmap.get(n_id).map(|offset| {
+                        offset
+                            .begin
+                            .try_into()
+                            .expect("begin cursor must be beginaligned")
+                    });
+                    break;
+                }
+                if *n_id == node.id() {
+                    //current node/marker found, signal grab for the next one
+                    grab = true;
+                }
+            }
+        };
+        if end.is_none() {
+            //no next marker found, use end of document instead
+            end = Some(resource.textlen());
+        }
+        if let (Some(offset), Some(end)) = (self.positionmap.get(&node.id()), end) {
+            Some(SelectorBuilder::TextSelector(
+                BuildItem::Handle(self.resource_handle.unwrap()),
+                Offset::simple(
+                    offset
+                        .begin
+                        .try_into()
+                        .expect("begin cursor must be beginaligned"),
+                    end,
+                ),
             ))
         } else {
             None
