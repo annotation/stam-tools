@@ -610,9 +610,11 @@ impl<'a> Display for HtmlWriter<'a> {
             highlights_results.push(BTreeSet::new());
         }
         if let Some(header) = self.header {
+            // write the HTML header
             write!(f, "{}", header)?;
         }
         if self.interactive {
+            // in interactive mode, we can '(un)collapse' the tags using a toggle in the legend
             write!(
                 f,
                 "<script>autocollapse = {};</script>",
@@ -620,6 +622,7 @@ impl<'a> Display for HtmlWriter<'a> {
             )?;
             write!(f, "{}", HTML_SCRIPT)?;
         }
+        // output the STAMQL queries as a comment, just for reference
         write!(
             f,
             "<!-- Selection Query:\n\n{}\n\n-->\n",
@@ -635,6 +638,7 @@ impl<'a> Display for HtmlWriter<'a> {
             layertags.push(format!("<span class=\"l{}\">", i + 1));
             classnames.push(format!("hi{}", i + 1));
 
+            // and output the highlight queries as comments, just for reference
             if let Some(query) = highlight.query.as_ref() {
                 write!(
                     f,
@@ -644,6 +648,8 @@ impl<'a> Display for HtmlWriter<'a> {
                 )?;
             }
         }
+
+        // output the legend
         if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
             write!(f, "<div id=\"legend\" title=\"Click the items in this legend to toggle visibility of tags (if any)\"><ul>")?;
             for (i, highlight) in self.highlights.iter().enumerate() {
@@ -666,17 +672,20 @@ impl<'a> Display for HtmlWriter<'a> {
             }
             write!(f, "</ul></div>")?;
         }
+
+        //run the selection query (the primary query), bail out on error
         let results = self.store.query(self.selectionquery.clone()).map_err(|e| {
             eprintln!("{}", e);
             std::fmt::Error
         })?;
 
+        // iterate over the selection query results
         let names = results.names();
-
         let mut prevresult = None;
         let mut openingtags = String::new(); //buffer
         let mut classes: Vec<&str> = vec![];
         for (resultnr, selectionresult) in results.enumerate() {
+            // obtain the text selection from the query result
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
                 Err(msg) => return self.output_error(f, msg),
                 Ok((resulttextselection, whole_resource, id)) => {
@@ -686,6 +695,8 @@ impl<'a> Display for HtmlWriter<'a> {
                         continue;
                     }
                     prevresult = Some(resulttextselection.clone());
+
+                    // write title and per-result container span (either for a full resource or any textselection)
                     if self.titles {
                         if let Some(id) = id {
                             write!(f, "<h2>{}. <span>{}</span></h2>\n", resultnr + 1, id,)?;
