@@ -730,6 +730,13 @@ impl<'a> Display for HtmlWriter<'a> {
                     let mut positions: Vec<_> = resulttextselection
                         .positions(stam::PositionMode::Both)
                         .copied()
+                        .filter(|i| {
+                            // filter out the milestones (they have no annotations) and
+                            // may cause odd arbitrary wordwraps
+                            let positionitem =
+                                resource.as_ref().position(*i).expect("position must exist");
+                            positionitem.len_begin2end() > 0 || positionitem.len_end2begin() > 0
+                        })
                         .collect();
                     positions.push(resulttextselection.end());
 
