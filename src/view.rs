@@ -875,11 +875,22 @@ impl<'a> Display for HtmlWriter<'a> {
                         for (subtext, texttype, done) in LinebreakIter::new(text) {
                             match texttype {
                                 BufferType::Text => {
+                                    write!(f, "{}", html_escape::encode_text(subtext))?;
+                                }
+                                BufferType::Whitespace => {
+                                    if !span_annotations.is_empty() {
+                                        for _ in 0..self.highlights.len() {
+                                            write!(f, "</span>")?;
+                                        }
+                                        write!(f, "</span>")?;
+                                        write!(f, "{}", openingtags)?;
+                                    }
                                     write!(
                                         f,
                                         "{}",
                                         html_escape::encode_text(subtext)
                                             .replace(" ", "&ensp;")
+                                            .replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;")
                                             .as_str()
                                     )?;
                                 }
@@ -1392,6 +1403,8 @@ enum BufferType {
     None,
     /// Buffer contains only newlines
     NewLines,
+    /// Buffer contains only whitespace
+    Whitespace,
     /// Buffer contains text without newlines
     Text,
 }
@@ -1424,7 +1437,9 @@ impl<'a> Iterator for LinebreakIter<'a> {
         while !self.done {
             if let Some(c) = self.iter.next() {
                 if (c == '\n' && self.buffertype == BufferType::NewLines)
-                    || (c != '\n' && self.buffertype == BufferType::Text)
+                    || ((c.is_whitespace() && c != '\n')
+                        && self.buffertype == BufferType::Whitespace)
+                    || (c != '\n' && !c.is_whitespace() && self.buffertype == BufferType::Text)
                 {
                     //same type as buffer, carry on
                     self.curbytepos += c.len_utf8();
@@ -1433,6 +1448,8 @@ impl<'a> Iterator for LinebreakIter<'a> {
                     let resultbuffertype = self.buffertype;
                     if c == '\n' {
                         self.buffertype = BufferType::NewLines;
+                    } else if c.is_whitespace() {
+                        self.buffertype = BufferType::Whitespace;
                     } else {
                         self.buffertype = BufferType::Text;
                     }
