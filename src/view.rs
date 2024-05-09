@@ -690,8 +690,7 @@ impl<'a> Display for HtmlWriter<'a> {
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
                 Err(msg) => return self.output_error(f, msg),
                 Ok((resulttextselection, whole_resource, id)) => {
-                    //MAYBE TODO: the clone is a bit unfortunate but no big deal
-                    if prevresult == Some(resulttextselection.clone()) {
+                    if prevresult.as_ref() == Some(&resulttextselection) {
                         //prevent duplicates (especially relevant when --use is set)
                         continue;
                     }
@@ -1242,7 +1241,7 @@ impl<'a> AnsiWriter<'a> {
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
                 Err(msg) => return self.output_error(msg),
                 Ok((resulttextselection, _, id)) => {
-                    if prevresult == Some(resulttextselection.clone()) {
+                    if prevresult.as_ref() == Some(&resulttextselection) {
                         //prevent duplicates (especially relevant when --use is set)
                         continue;
                     }
