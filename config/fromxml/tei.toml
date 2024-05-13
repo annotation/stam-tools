@@ -123,6 +123,7 @@ name = "target"
 handling = "Value"
 
 
+
 # Determine how various structural elements are converted to text 
 
 [[elements]]
@@ -131,8 +132,7 @@ textsuffix = "\n"
 
 [[elements]]
 path = "//tei:p"
-textprefix = "\n"
-textsuffix = "\n"
+textsuffix = "\n\n"
 
 [[elements]]
 path = "//tei:space"
@@ -152,3 +152,15 @@ textsuffix = "\n"
 path = "//tei:item/tei:item/tei:item"
 textprefix = "    * "
 textsuffix = "\n"
+
+[[elements]]
+path = "//tei:note"
+handling = "AnnotateText"
+textprefix = "[{@n}]:"
+
+[[elements]]
+path = "//tei:pb"
+handling = "AnnotateBetweenMarkers"
+set = "urn:stam-fromxml"
+key = "page"
+value = "{@n}"
