@@ -1,10 +1,11 @@
-use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
+use clap::{App, Arg, ArgAction, ArgMatches, SubCommand}; 
 use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig, TransposeConfig};
 use std::fs;
 use std::path::Path;
 use std::process::exit;
 use std::collections::VecDeque;
 use std::io::{self, BufRead,Write};
+use std::borrow::Cow;
 
 use stamtools::*;
 use stamtools::align::*;
@@ -1009,9 +1010,9 @@ enum BatchOutput<'a> {
     AppendToFile(&'a str),
 }
 
-fn parse_batch_line(line: &str) -> (Vec<&str>, BatchOutput) {
-    let mut fields = Vec::new();
-    fields.push("stam"); //binary name
+fn parse_batch_line(line: &str) -> (Vec<Cow<str>>, BatchOutput) {
+    let mut fields: Vec<Cow<str>> = Vec::new();
+    fields.push(Cow::Borrowed("stam")); //binary name
     let mut quote = false;
     let mut escaped = false;
     let mut begin = 0;
@@ -1022,14 +1023,18 @@ fn parse_batch_line(line: &str) -> (Vec<&str>, BatchOutput) {
             if quote {
                 begin = i + 1;
             } else {
-                fields.push(&line[begin..i]);
+                if line[begin..i].find("\\\"").is_some() {
+                    fields.push(Cow::Owned(line[begin..i].replace("\\\"","\""))); //unescape embedded contents
+                } else {
+                    fields.push(Cow::Borrowed(&line[begin..i]));
+                }
                 begin = i + 1;
             }
         } else if !quote {
             if c == ' ' || c == '\n' || c == '\t' {
                 let field = &line[begin..i].trim();
                 if !field.is_empty() {
-                    fields.push(&line[begin..i]);
+                    fields.push(Cow::Borrowed(&line[begin..i]));
                 }
                 begin = i + 1;
             } else if c == '>' {
@@ -1038,6 +1043,7 @@ fn parse_batch_line(line: &str) -> (Vec<&str>, BatchOutput) {
                 } else {
                     output = BatchOutput::WriteToFile(&line[i+1..].trim());
                 }
+                break;
             }
         }
         escaped = c == '\\';
@@ -1086,7 +1092,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                     }
                     let (fields, output) = parse_batch_line(&line);
                     let batchapp = app(true);
-                    match batchapp.try_get_matches_from(fields) {
+                    match batchapp.try_get_matches_from(fields.iter().map(|s| s.as_ref())) {
                         Ok(batchargs) =>{  
                             let result = match output {
                                 BatchOutput::Stdout => run(store, &mut io::stdout(), &batchargs, true),
