@@ -741,9 +741,8 @@ impl<'a> Display for HtmlWriter<'a> {
                         highlights_results,
                     );
 
-                    // Clear buffer: This buffer will hold all annotations that apply at a certain
-                    // moment we dynamically add and remove from this as we iterate over all
-                    // segments
+                    // Clear buffer: This buffer will hold all annotations that apply at a certain moment.
+                    // We dynamically add and remove from this as we iterate over all segments.
                     span_annotations.clear();
 
                     let resource = resulttextselection.resource();
@@ -1173,10 +1172,16 @@ impl<'a> AnsiWriter<'a> {
             .query(self.selectionquery.clone())
             .expect("query failed");
 
+        //buffers
+        let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
+        let mut new_span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
+        let mut close_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
+        let mut zerowidth_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
+        let mut endnewlines = String::new();
+
         let names = results.names();
         let mut prevresult = None;
         for (resultnr, selectionresult) in results.enumerate() {
-            //MAYBE TODO: the clone is a bit unfortunate but no big deal
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
                 Err(msg) => return self.output_error(msg),
                 Ok((resulttextselection, _, id)) => {
@@ -1201,34 +1206,96 @@ impl<'a> AnsiWriter<'a> {
                         highlights_results,
                     );
                     let resource = resulttextselection.resource();
-                    let mut begin: usize = resulttextselection.begin();
-                    let mut positions: Vec<_> = resulttextselection
-                        .positions(stam::PositionMode::Both)
-                        .copied()
-                        .collect();
-                    positions.push(resulttextselection.end());
-                    let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
-                    for i in positions {
-                        if i > begin {
-                            //output text in buffer
-                            let text = resource
-                                .text_by_offset(&Offset::simple(begin, i))
-                                .expect("offset should be valid");
-                            print!("{}", text);
-                            begin = i;
-                        }
-
-                        if let Some(position) = resource.as_ref().position(i) {
-                            for (_, textselectionhandle) in position.iter_end2begin() {
+                    span_annotations.clear();
+                    for segment in resulttextselection.segmentation() {
+                        new_span_annotations.clear();
+                        if let Some(beginpositionitem) = resource.as_ref().position(segment.begin())
+                        {
+                            //find and add annotations that begin here
+                            for (_, textselectionhandle) in beginpositionitem.iter_begin2end() {
                                 let textselection = resource
                                     .as_ref()
                                     .get(*textselectionhandle)
                                     .unwrap()
                                     .as_resultitem(resource.as_ref(), self.store);
-                                let close: Vec<_> =
-                                    textselection.annotations().map(|a| a.handle()).collect();
+                                new_span_annotations.extend(
+                                    textselection
+                                        .annotations()
+                                        .inspect(|a| {
+                                            // are there any zero-width annotations at the end of the segment?
+                                            // collect them they will get special treatment later
+                                            if let Some(ts) = a.textselections().next() {
+                                                if ts.begin() == ts.end()
+                                                    && ts.end() == textselection.end()
+                                                {
+                                                    zerowidth_annotations.insert(a.handle());
+                                                }
+                                            }
+                                        })
+                                        .map(|a| a.handle()),
+                                );
+                            }
+                        }
+
+                        if self.prune {
+                            //prunes everything that is not highlighted
+                            span_annotations.retain(|a| {
+                                for highlights_annotations in highlights_results.iter() {
+                                    if highlights_annotations.contains(a) {
+                                        return true;
+                                    }
+                                }
+                                false
+                            })
+                        }
+
+                        if !new_span_annotations.is_empty()
+                            && segment.end() <= resulttextselection.end()
+                        {
+                            //output the opening tags
+                            for (j, highlights_annotations) in highlights_results.iter().enumerate()
+                            {
+                                if new_span_annotations
+                                    .intersection(&highlights_annotations)
+                                    .filter(|a| !zerowidth_annotations.contains(a))
+                                    .next()
+                                    .is_some()
+                                {
+                                    self.writeansicol_bold(j + 1, "[");
+                                }
+                            }
+                            //the text is outputted alongside the closing tag
+                        }
+                        span_annotations.extend(new_span_annotations.iter());
+
+                        //output text
+                        endnewlines.clear();
+                        if segment.text().ends_with("\n") {
+                            for c in segment.text().chars().rev() {
+                                if c == '\n' {
+                                    endnewlines.push(c);
+                                } else {
+                                    break;
+                                }
+                            }
+                            print!("{}", segment.text().trim_end_matches('\n'));
+                        } else {
+                            print!("{}", segment.text());
+                        }
+
+                        if let Some(endpositionitem) = resource.as_ref().position(segment.end()) {
+                            for (_, textselectionhandle) in endpositionitem.iter_end2begin() {
+                                let textselection = resource
+                                    .as_ref()
+                                    .get(*textselectionhandle)
+                                    .unwrap()
+                                    .as_resultitem(resource.as_ref(), self.store);
+                                close_annotations.clear();
+                                close_annotations.extend(zerowidth_annotations.iter()); //add zero-width annotations
+                                close_annotations
+                                    .extend(textselection.annotations().map(|a| a.handle()));
                                 span_annotations.retain(|a| {
-                                    if close.contains(a) {
+                                    if close_annotations.contains(a) {
                                         //close tags and add labels
                                         for (j, (highlights, highlights_results)) in self
                                             .highlights
@@ -1242,10 +1309,18 @@ impl<'a> AnsiWriter<'a> {
                                                     //closing highlight after adding tag if needed
                                                     let tag = highlights.get_tag(annotation);
                                                     if !tag.is_empty() {
-                                                        self.writeansicol(
-                                                            j + 1,
-                                                            format!("|{}", &tag).as_str(),
-                                                        );
+                                                        if zerowidth_annotations.contains(a) {
+                                                            self.writeansicol_bold(j + 1, "[");
+                                                            self.writeansicol(
+                                                                j + 1,
+                                                                format!("{}", &tag).as_str(),
+                                                            );
+                                                        } else {
+                                                            self.writeansicol(
+                                                                j + 1,
+                                                                format!("|{}", &tag).as_str(),
+                                                            );
+                                                        }
                                                     }
                                                     self.writeansicol_bold(j + 1, "]");
                                                 }
@@ -1257,49 +1332,10 @@ impl<'a> AnsiWriter<'a> {
                                     }
                                 });
                             }
+                        }
 
-                            let mut new_span_annotations: BTreeSet<AnnotationHandle> =
-                                BTreeSet::new();
-
-                            if i != resulttextselection.end() {
-                                //find and add annotations that begin here
-                                for (_, textselectionhandle) in position.iter_begin2end() {
-                                    let textselection = resource
-                                        .as_ref()
-                                        .get(*textselectionhandle)
-                                        .unwrap()
-                                        .as_resultitem(resource.as_ref(), self.store);
-                                    new_span_annotations
-                                        .extend(textselection.annotations().map(|a| a.handle()));
-                                }
-                            }
-                            if self.prune {
-                                //prunes everything that is not highlighted
-                                span_annotations.retain(|a| {
-                                    for highlights_annotations in highlights_results.iter() {
-                                        if highlights_annotations.contains(a) {
-                                            return true;
-                                        }
-                                    }
-                                    false
-                                })
-                            }
-                            if !new_span_annotations.is_empty() && i != resulttextselection.end() {
-                                //output the opening tags
-                                for (j, highlights_annotations) in
-                                    highlights_results.iter().enumerate()
-                                {
-                                    if new_span_annotations
-                                        .intersection(&highlights_annotations)
-                                        .next()
-                                        .is_some()
-                                    {
-                                        self.writeansicol_bold(j + 1, "[");
-                                    }
-                                }
-                                //the text is outputted alongside the closing tag
-                            }
-                            span_annotations.extend(new_span_annotations.into_iter());
+                        if !endnewlines.is_empty() {
+                            print!("{}", endnewlines);
                         }
                     }
                 }
