@@ -1288,28 +1288,12 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
 
         match args.value_of("format") {
             Some("html") => {
-                let mut writer = HtmlWriter::new(&store, query);
+                let mut writer = HtmlWriter::new(&store, query).with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_prune(args.is_present("prune")).with_annotation_ids(args.is_present("verbose"));
                 for highlight in highlights {
                     writer = writer.with_highlight(highlight);
                 }
-
                 if args.is_present("auto-highlight") {
                     writer.add_highlights_from_query();
-                }
-                if args.is_present("no-legend") {
-                    writer = writer.with_legend(false)
-                }
-                if args.is_present("no-titles") {
-                    writer = writer.with_titles(false)
-                }
-                if args.is_present("prune") {
-                    writer = writer.with_prune(true);
-                }
-                if args.is_present("verbose") {
-                    writer = writer.with_annotation_ids(true);
-                }
-                if args.is_present("collapse") {
-                    writer = writer.with_autocollapse(true);
                 }
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);
