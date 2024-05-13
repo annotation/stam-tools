@@ -195,7 +195,7 @@ pub struct XmlElementConfig {
     key: Option<String>,
 
     /// The value to translate this element
-    value: Option<DataValue>,
+    value: Option<String>,
 }
 
 impl XmlElementConfig {
@@ -245,7 +245,7 @@ impl XmlElementConfig {
         self
     }
 
-    pub fn with_value(mut self, value: impl Into<DataValue>) -> Self {
+    pub fn with_value(mut self, value: impl Into<String>) -> Self {
         self.value = Some(value.into());
         self
     }
@@ -1091,27 +1091,40 @@ impl<'a> XmlToStamConverter<'a> {
         if let (Some(set), Some(key)) =
             (element_config.set.as_deref(), element_config.key.as_deref())
         {
-            AnnotationDataBuilder::new()
+            let builder = AnnotationDataBuilder::new()
                 .with_dataset(set.into())
-                .with_key(key.into())
-                .with_value(node.tag_name().name().into())
+                .with_key(key.into());
+            self.translate_element_value(builder, node, element_config)
         } else if let Some(namespace) = node.tag_name().namespace() {
-            if let Some(set) = element_config.set.as_deref() {
+            let builder = if let Some(set) = element_config.set.as_deref() {
                 AnnotationDataBuilder::new()
                     .with_dataset(set.into())
                     .with_key(node.tag_name().name().into())
-                    .with_value(DataValue::Null)
             } else {
                 AnnotationDataBuilder::new()
                     .with_dataset(namespace.into())
                     .with_key(node.tag_name().name().into())
-                    .with_value(DataValue::Null)
-            }
+            };
+            self.translate_element_value(builder, node, element_config)
         } else {
-            AnnotationDataBuilder::new()
+            let builder = AnnotationDataBuilder::new()
                 .with_dataset("urn:stam-fromxml".into())
-                .with_key(node.tag_name().name().into())
-                .with_value(DataValue::Null)
+                .with_key(node.tag_name().name().into());
+            self.translate_element_value(builder, node, element_config)
+        }
+    }
+
+    fn translate_element_value<'b>(
+        &self,
+        builder: AnnotationDataBuilder<'b>,
+        node: Node<'b, 'b>,
+        element_config: &'b XmlElementConfig,
+    ) -> AnnotationDataBuilder<'b> {
+        if let Some(value) = &element_config.value {
+            //string value may have a template we need to resolve
+            builder.with_value(resolve_variables(value.as_str(), node).into())
+        } else {
+            builder.with_value(DataValue::Null)
         }
     }
 
