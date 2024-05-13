@@ -48,16 +48,20 @@ pub(crate) fn textselection_from_queryresult<'a>(
 }
 
 /// Run a query and outputs the results as STAM JSON to standard output
-pub fn to_json<'a>(store: &'a AnnotationStore, query: Query<'a>) -> Result<(), StamError> {
+pub fn to_json<'a, W: std::io::Write>(
+    store: &'a AnnotationStore,
+    writer: &mut W,
+    query: Query<'a>,
+) -> Result<(), StamError> {
     let iter = store.query(query)?;
     let names = iter.names();
     let names_ordered = names.enumerate();
-    print!("[");
+    write!(writer, "[")?;
     for (i, resultrow) in iter.enumerate() {
         if i > 0 {
-            println!(",\n{{\n");
+            writeln!(writer, ",\n{{\n")?;
         } else {
-            println!("{{\n");
+            writeln!(writer, "{{\n")?;
         }
         for (j, result) in resultrow.iter().enumerate() {
             let varname = names_ordered.get(j).map(|x| x.1);
@@ -77,7 +81,8 @@ pub fn to_json<'a>(store: &'a AnnotationStore, query: Query<'a>) -> Result<(), S
                 QueryResultItem::TextSelection(tsel) => tsel.to_json()?,
             };
             let varnum = format!("{}", j + 1);
-            println!(
+            writeln!(
+                writer,
                 "\"{}\": {}{}",
                 if let Some(varname) = varname {
                     varname
@@ -86,18 +91,19 @@ pub fn to_json<'a>(store: &'a AnnotationStore, query: Query<'a>) -> Result<(), S
                 },
                 json,
                 if i < resultrow.len() - 1 { ",\n" } else { "\n" }
-            );
+            )?;
         }
-        print!("}}");
+        write!(writer, "}}")?;
     }
-    println!("]");
+    writeln!(writer, "]")?;
     Ok(())
 }
 
 /// Run a query and outputs the results as W3C Web Annotation to standard output.
 /// Each annotation will be formatted in JSON-LD on a single line, so the output is JSONL.
-pub fn to_w3anno<'a>(
+pub fn to_w3anno<'a, W: std::io::Write>(
     store: &'a AnnotationStore,
+    writer: &mut W,
     query: Query<'a>,
     use_var: &str,
     config: WebAnnoConfig,
@@ -109,11 +115,13 @@ pub fn to_w3anno<'a>(
             match result {
                 QueryResultItem::None => {}
                 QueryResultItem::Annotation(annotation) => {
-                    println!("{}", annotation.to_webannotation(&config));
+                    writeln!(writer, "{}", annotation.to_webannotation(&config))
+                        .expect("writer failed");
                 }
                 QueryResultItem::TextSelection(tsel) => {
                     for annotation in tsel.annotations() {
-                        println!("{}", annotation.to_webannotation(&config));
+                        writeln!(writer, "{}", annotation.to_webannotation(&config))
+                            .expect("writer failed");
                     }
                 }
                 _ => {

@@ -3,12 +3,9 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 
-use std::io::Write;
 use std::str::Chars;
 
 use crate::query::textselection_from_queryresult;
-
-const WRITEFAILURE: &'static str = "ERROR: Buffer write failure";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// Determines whether to display a Tag when highlighting annotations,
@@ -1005,7 +1002,7 @@ impl<'a> Display for HtmlWriter<'a> {
                     }
                     writeln!(f, "\n</div>")?;
                     if self.output_data {
-                        //TODO: call data_to_json()
+                        //MAYBE TODO: implement later?
                     }
                 }
             }
@@ -1077,51 +1074,58 @@ impl<'a> AnsiWriter<'a> {
         helper_add_highlights_from_query(&mut self.highlights, &self.selectionquery, self.store);
     }
 
-    fn writeansicol(&self, i: usize, s: &str) {
+    fn writeansicol<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+        i: usize,
+        s: &str,
+    ) -> Result<(), std::io::Error> {
         let color = if i > 6 { 30 } else { 30 + i };
-        let mut stdout = std::io::stdout();
-        stdout.write(b"\x1b[").expect(WRITEFAILURE);
-        stdout
-            .write(&format!("{}", color).into_bytes())
-            .expect(WRITEFAILURE);
-        stdout.write(b"m").expect(WRITEFAILURE);
-        stdout.flush().expect(WRITEFAILURE);
-        print!("{}", s);
-        stdout.write(b"\x1b[m").expect(WRITEFAILURE);
-        stdout.flush().expect(WRITEFAILURE);
+        writer.write(b"\x1b[")?;
+        writer.write(&format!("{}", color).into_bytes())?;
+        writer.write(b";m")?;
+        writer.flush()?;
+        write!(writer, "{}", s)?;
+        writer.write(b"\x1b[m")?;
+        writer.flush()
     }
 
-    fn writeansicol_bold(&self, i: usize, s: &str) {
+    fn writeansicol_bold<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+        i: usize,
+        s: &str,
+    ) -> Result<(), std::io::Error> {
         let color = if i > 6 { 30 } else { 30 + i };
-        let mut stdout = std::io::stdout();
-        stdout.write(b"\x1b[").expect(WRITEFAILURE);
-        stdout
-            .write(&format!("{}", color).into_bytes())
-            .expect(WRITEFAILURE);
-        stdout.write(b";1m").expect(WRITEFAILURE);
-        stdout.flush().expect(WRITEFAILURE);
-        print!("{}", s);
-        stdout.write(b"\x1b[m").expect(WRITEFAILURE);
-        stdout.flush().expect(WRITEFAILURE);
+        writer.write(b"\x1b[")?;
+        writer.write(&format!("{}", color).into_bytes())?;
+        writer.write(b";1m")?;
+        writer.flush()?;
+        write!(writer, "{}", s)?;
+        writer.write(b"\x1b[m")?;
+        writer.flush()
     }
 
-    fn writeheader(&self, s: &str) {
-        let mut stdout = std::io::stdout();
-        stdout.write(b"\x1b[37;1m").expect(WRITEFAILURE);
-        stdout.flush().expect(WRITEFAILURE);
-        print!("{}", s);
-        stdout.write(b"\x1b[m").expect(WRITEFAILURE);
-        stdout.flush().expect(WRITEFAILURE);
+    fn writeheader<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+        s: &str,
+    ) -> Result<(), std::io::Error> {
+        writer.write(b"\x1b[37;1m")?;
+        writer.flush()?;
+        write!(writer, "{}", s)?;
+        writer.write(b"\x1b[m")?;
+        writer.flush()
     }
 
-    /// Print to standard output. This is the main method.
-    pub fn print(&self) {
+    /// Write output
+    pub fn write<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
         let mut highlights_results: Vec<BTreeSet<AnnotationHandle>> = Vec::new();
         for _ in 0..self.highlights.len() {
             highlights_results.push(BTreeSet::new());
         }
         if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
-            println!("Legend:");
+            writeln!(writer, "Legend:")?;
             for (i, highlight) in self.highlights.iter().enumerate() {
                 if let Some(hlq) = highlight.query.as_ref() {
                     let s = format!(
@@ -1129,10 +1133,10 @@ impl<'a> AnsiWriter<'a> {
                         i + 1,
                         hlq.name().unwrap_or("(untitled)").replace("_", " ")
                     );
-                    self.writeansicol_bold(i + 1, s.as_str());
+                    self.writeansicol_bold(writer, i + 1, s.as_str())?;
                 }
             }
-            println!();
+            writeln!(writer)?;
         }
 
         let results = self
@@ -1151,7 +1155,7 @@ impl<'a> AnsiWriter<'a> {
         let mut prevresult = None;
         for (resultnr, selectionresult) in results.enumerate() {
             match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
-                Err(msg) => return self.output_error(msg),
+                Err(msg) => return Ok(self.output_error(msg)),
                 Ok((resulttextselection, _, id)) => {
                     if prevresult.as_ref() == Some(&resulttextselection) {
                         //prevent duplicates (especially relevant when --use is set)
@@ -1161,7 +1165,7 @@ impl<'a> AnsiWriter<'a> {
                     if self.titles {
                         if let Some(id) = id {
                             let s = format!("----------------------------------- {}. {} -----------------------------------\n", resultnr + 1, id,);
-                            self.writeheader(s.as_str());
+                            self.writeheader(writer, s.as_str())?;
                         }
                     }
                     highlights_results = get_highlights_results(
@@ -1229,7 +1233,7 @@ impl<'a> AnsiWriter<'a> {
                                     .next()
                                     .is_some()
                                 {
-                                    self.writeansicol_bold(j + 1, "[");
+                                    self.writeansicol_bold(writer, j + 1, "[")?;
                                 }
                             }
                             //the text is outputted alongside the closing tag
@@ -1246,9 +1250,9 @@ impl<'a> AnsiWriter<'a> {
                                     break;
                                 }
                             }
-                            print!("{}", segment.text().trim_end_matches('\n'));
+                            write!(writer, "{}", segment.text().trim_end_matches('\n'))?;
                         } else {
-                            print!("{}", segment.text());
+                            write!(writer, "{}", segment.text())?;
                         }
 
                         if let Some(endpositionitem) = resource.as_ref().position(segment.end()) {
@@ -1278,19 +1282,29 @@ impl<'a> AnsiWriter<'a> {
                                                     let tag = highlights.get_tag(annotation);
                                                     if !tag.is_empty() {
                                                         if zerowidth_annotations.contains(a) {
-                                                            self.writeansicol_bold(j + 1, "[");
+                                                            self.writeansicol_bold(
+                                                                writer,
+                                                                j + 1,
+                                                                "[",
+                                                            )
+                                                            .unwrap();
                                                             self.writeansicol(
+                                                                writer,
                                                                 j + 1,
                                                                 format!("{}", &tag).as_str(),
-                                                            );
+                                                            )
+                                                            .unwrap();
                                                         } else {
                                                             self.writeansicol(
+                                                                writer,
                                                                 j + 1,
                                                                 format!("|{}", &tag).as_str(),
-                                                            );
+                                                            )
+                                                            .unwrap();
                                                         }
                                                     }
-                                                    self.writeansicol_bold(j + 1, "]");
+                                                    self.writeansicol_bold(writer, j + 1, "]")
+                                                        .unwrap();
                                                 }
                                             }
                                         }
@@ -1303,13 +1317,14 @@ impl<'a> AnsiWriter<'a> {
                         }
 
                         if !endnewlines.is_empty() {
-                            print!("{}", endnewlines);
+                            write!(writer, "{}", endnewlines)?;
                         }
                     }
                 }
             }
-            println!();
+            writeln!(writer)?;
         }
+        Ok(())
     }
 }
 
@@ -1390,17 +1405,6 @@ fn get_highlights_results<'a>(
     }
     highlights_results
 }
-
-/*
-fn data_to_json(store: &AnnotationStore, annotations: impl Iterator<Item = AnnotationHandle>) -> String {
-        print!("annotations = {{");
-        for a_handle in all_annotations.iter() {
-            let annotation = store.get(*a_handle).unwrap();
-            print!("  \"\"
-        }
-        print!("}}");
-}
-*/
 
 #[derive(Copy, PartialEq, Clone, Debug)]
 enum BufferType {

@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::exit;
 use std::collections::VecDeque;
-use std::io::{self, BufRead};
+use std::io::{self, BufRead,Write};
 
 use stamtools::*;
 use stamtools::align::*;
@@ -977,7 +977,7 @@ fn main() {
 
     let changed: bool;
 
-    match run(&mut store, &rootargs, false) {
+    match run(&mut store, &mut std::io::stdout(), &rootargs, false) {
         Ok(newchanged) => {
             changed = newchanged;
         }
@@ -1002,12 +1002,20 @@ fn main() {
     }
 }
 
-fn parse_batch_line(line: &str) -> Vec<&str> {
+#[derive(Clone,Copy,PartialEq)]
+enum BatchOutput<'a> {
+    Stdout,
+    WriteToFile(&'a str),
+    AppendToFile(&'a str),
+}
+
+fn parse_batch_line(line: &str) -> (Vec<&str>, BatchOutput) {
     let mut fields = Vec::new();
     fields.push("stam"); //binary name
     let mut quote = false;
     let mut escaped = false;
     let mut begin = 0;
+    let mut output = BatchOutput::Stdout;
     for (i, c) in line.char_indices() {
         if c == '"' && !escaped {
             quote = !quote;
@@ -1024,14 +1032,20 @@ fn parse_batch_line(line: &str) -> Vec<&str> {
                     fields.push(&line[begin..i]);
                 }
                 begin = i + 1;
+            } else if c == '>' {
+                if line[i..].starts_with(">>") {
+                    output = BatchOutput::AppendToFile(&line[i+2..].trim());
+                } else {
+                    output = BatchOutput::WriteToFile(&line[i+1..].trim());
+                }
             }
         }
         escaped = c == '\\';
     }
-    fields
+    (fields, output)
 }
 
-fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> Result<bool,String> {
+fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMatches, batchmode: bool) -> Result<bool,String> {
     let mut args: Option<&ArgMatches> = None;
     let mut changed = false;
     for subcommand in SUBCOMMANDS.iter() {
@@ -1048,7 +1062,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
         if batchmode {
             return Err(format!("Batch can't be used when already in batch mode"));
         }
-        eprintln!("Batch mode enabled, enter stam commands as usual but without the initial 'stam' command\n but without store input/output arguments\ntype 'help' for help\ntype 'quit' or ^D to quit with saving (if applicable), 'cancel' or ^C to quit without saving");
+        eprintln!("Batch mode enabled, enter stam commands as usual but without the initial 'stam' command\n but without store input/output arguments\nintermediate output may be redirected to file rather than stdout with the > and >> operators\ntype 'help' for help\ntype 'quit' or ^D to quit with saving (if applicable), 'cancel' or ^C to quit without saving");
         let mut line = String::new();
         let is_tty = atty::is(atty::Stream::Stdin);
         let mut seqnr = 0;
@@ -1070,11 +1084,22 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                         changed = false;
                         break;
                     }
-                    let fields = parse_batch_line(&line);
+                    let (fields, output) = parse_batch_line(&line);
                     let batchapp = app(true);
                     match batchapp.try_get_matches_from(fields) {
-                        Ok(batchargs) => 
-                            match run(store, &batchargs, true) {
+                        Ok(batchargs) =>{  
+                            let result = match output {
+                                BatchOutput::Stdout => run(store, &mut io::stdout(), &batchargs, true),
+                                BatchOutput::WriteToFile(filename) => {
+                                    let mut f = fs::File::create(filename).map_err(|err| { format!("{}", err) })?;
+                                    run(store, &mut f, &batchargs, true)
+                                }
+                                BatchOutput::AppendToFile(filename) => {
+                                    let mut f = fs::File::options().append(true).open(filename).map_err(|err| { format!("{}", err) })?;
+                                    run(store, &mut f, &batchargs, true)
+                                }
+                            };
+                            match result {
                                 Ok(newchanged) => {
                                     changed = changed || newchanged;
                                 }
@@ -1082,6 +1107,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                                     eprintln!("[error] {}",&err);
                                 }
                             }
+                        }
                         Err(err) => {
                             eprintln!("[syntax error] {}",&err);
                         }
@@ -1170,6 +1196,7 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
 
             to_tsv(
                 &store,
+                writer,
                 query,
                 &columns,
                 args.is_present("verbose"),
@@ -1180,10 +1207,11 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
                 !args.is_present("strict-columns"),
             ).map_err(|err| format!("{}",err))?;
         } else if let Some("json") = args.value_of("format") {
-            to_json(&store, query).map_err(|err| format!("{}",err))?;
+            to_json(&store, writer, query).map_err(|err| format!("{}",err))?;
         } else if let Some("webanno") | Some("w3anno") | Some("jsonl") = args.value_of("format") {
             to_w3anno(
                 &store,
+                writer,
                 query,
                 args.value_of("use").unwrap_or(match resulttype {
                     stam::Type::Annotation => "annotation",
@@ -1288,41 +1316,41 @@ fn run(store:  &mut AnnotationStore, rootargs: &ArgMatches, batchmode: bool) -> 
 
         match args.value_of("format") {
             Some("html") => {
-                let mut writer = HtmlWriter::new(&store, query).with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_prune(args.is_present("prune")).with_annotation_ids(args.is_present("verbose"));
+                let mut htmlwriter = HtmlWriter::new(&store, query).with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_prune(args.is_present("prune")).with_annotation_ids(args.is_present("verbose"));
                 for highlight in highlights {
-                    writer = writer.with_highlight(highlight);
+                    htmlwriter = htmlwriter.with_highlight(highlight);
                 }
                 if args.is_present("auto-highlight") {
-                    writer.add_highlights_from_query();
+                    htmlwriter.add_highlights_from_query();
                 }
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);
-                    writer = writer.with_selectionvar(var);
+                    htmlwriter = htmlwriter.with_selectionvar(var);
                 }
-                print!("{}", writer);
+                write!(writer, "{}", htmlwriter).map_err(|e| format!("Failed to write HTML output: {}", e))?;
             }
             Some("ansi") => {
-                let mut writer = AnsiWriter::new(&store, query);
+                let mut ansiwriter = AnsiWriter::new(&store, query);
                 for highlight in highlights {
-                    writer = writer.with_highlight(highlight);
+                    ansiwriter = ansiwriter.with_highlight(highlight);
                 }
                 if args.is_present("auto-highlight") {
-                    writer.add_highlights_from_query();
+                    ansiwriter.add_highlights_from_query();
                 }
                 if args.is_present("no-legend") {
-                    writer = writer.with_legend(false)
+                    ansiwriter = ansiwriter.with_legend(false)
                 }
                 if args.is_present("no-titles") {
-                    writer = writer.with_titles(false)
+                    ansiwriter = ansiwriter.with_titles(false)
                 }
                 if args.is_present("prune") {
-                    writer = writer.with_prune(true);
+                    ansiwriter = ansiwriter.with_prune(true);
                 }
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);
-                    writer = writer.with_selectionvar(var);
+                    ansiwriter = ansiwriter.with_selectionvar(var);
                 }
-                writer.print();
+                ansiwriter.write(writer).map_err(|e| format!("Failed to write ANSI output: {}", e))?;
             }
             Some(s) => {
                 eprintln!("[error] Unknown output format: {}", s);

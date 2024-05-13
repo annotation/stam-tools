@@ -206,29 +206,36 @@ impl Column {
         }
     }
 
-    fn print(
+    fn print<W: std::io::Write>(
         &self,
+        writer: &mut W,
         tp: Type,
         colnr: usize,
         col_len: usize,
         context: &Context,
         delimiter: &str,
         null: &str,
-    ) {
+    ) -> Result<(), std::io::Error> {
         if colnr > 0 {
-            print!("\t");
+            write!(writer, "\t")?;
         }
         match self {
-            Column::SeqNr => print!("{}", context.seqnr),
-            Column::VarName => print!(
+            Column::SeqNr => write!(writer, "{}", context.seqnr)?,
+            Column::VarName => write!(
+                writer,
                 "{}",
                 context.varname.as_ref().unwrap_or(&Cow::Borrowed(null))
-            ),
-            Column::Type => print!("{}", tp),
-            Column::Id => print!("{}", context.id.as_ref().unwrap_or(&Cow::Borrowed(null))),
+            )?,
+            Column::Type => write!(writer, "{}", tp)?,
+            Column::Id => write!(
+                writer,
+                "{}",
+                context.id.as_ref().unwrap_or(&Cow::Borrowed(null))
+            )?,
             Column::TextSelection => {
                 if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
@@ -242,14 +249,15 @@ impl Column {
                             })
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    );
+                    )?;
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
             Column::Offset => {
                 if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
@@ -258,42 +266,45 @@ impl Column {
                             })
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    );
+                    )?;
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
             Column::BeginOffset => {
                 if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
                             .map(|textselection| { format!("{}", textselection.begin()) })
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    );
+                    )?;
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
             Column::EndOffset => {
                 if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
                             .map(|textselection| { format!("{}", textselection.end()) })
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    );
+                    )?;
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
             Column::Utf8Offset => {
                 if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
@@ -312,14 +323,15 @@ impl Column {
                             })
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    );
+                    )?;
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
             Column::BeginUtf8Offset => {
                 if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
@@ -334,14 +346,15 @@ impl Column {
                             })
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    );
+                    )?;
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
             Column::EndUtf8Offset => {
                 if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
@@ -356,28 +369,30 @@ impl Column {
                             })
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    );
+                    )?;
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
             Column::Text => {
                 if let Some(text) = context.text {
-                    print!("{}", text)
+                    write!(writer, "{}", text)?
                 } else if let Some(textselections) = context.textselections {
-                    print!(
+                    write!(
+                        writer,
                         "{}",
                         textselections
                             .iter()
                             .map(|textselection| textselection.text().replace("\n", " "))
                             .collect::<Vec<String>>()
                             .join(delimiter)
-                    )
+                    )?
                 } else {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
-            Column::Annotation => print!(
+            Column::Annotation => write!(
+                writer,
                 "{}",
                 context
                     .annotation
@@ -387,70 +402,77 @@ impl Column {
                         .map(|x| x.to_string())
                         .unwrap_or_else(|| annotation.as_ref().temp_id().unwrap()))
                     .unwrap_or(null.to_string())
-            ),
-            Column::AnnotationData => print!(
+            )?,
+            Column::AnnotationData => write!(
+                writer,
                 "{}",
                 context
                     .data
                     .as_ref()
                     .map(|data| data.id().unwrap_or(null))
                     .unwrap_or(null)
-            ),
-            Column::AnnotationDataSet => print!(
+            )?,
+            Column::AnnotationDataSet => write!(
+                writer,
                 "{}",
                 context
                     .set
                     .as_ref()
                     .map(|set| set.id().unwrap_or(null))
                     .unwrap_or(null)
-            ),
-            Column::TextResource => print!(
+            )?,
+            Column::TextResource => write!(
+                writer,
                 "{}",
                 context
                     .resource
                     .as_ref()
                     .map(|resource| resource.id().unwrap_or(null))
                     .unwrap_or(null)
-            ),
-            Column::DataKey => print!(
+            )?,
+            Column::DataKey => write!(
+                writer,
                 "{}",
                 context
                     .key
                     .as_ref()
                     .map(|key| key.id().unwrap_or(null))
                     .unwrap_or(null)
-            ),
-            Column::DataValue => print!(
+            )?,
+            Column::DataValue => write!(
+                writer,
                 "{}",
                 context
                     .value
                     .as_ref()
                     .map(|value| value.to_string())
                     .unwrap_or(null.to_string())
-            ),
+            )?,
             Column::Custom { set, key } => {
                 let mut found = false;
                 if let Some(annotation) = &context.annotation {
                     if let Some(key) = annotation.store().key(set.as_str(), key.as_str()) {
                         for (i, annotationdata) in annotation.data().filter_key(&key).enumerate() {
                             found = true;
-                            print!(
+                            write!(
+                                writer,
                                 "{}{}",
                                 if i > 0 { delimiter } else { "" },
                                 annotationdata.value()
-                            )
+                            )?
                         }
                     }
                 }
                 if !found {
-                    print!("{}", null)
+                    write!(writer, "{}", null)?
                 }
             }
-            _ => print!("{}", null),
+            _ => write!(writer, "{}", null)?,
         }
         if colnr == col_len - 1 {
-            print!("\n");
+            write!(writer, "\n")?;
         }
+        Ok(())
     }
 }
 
@@ -459,22 +481,31 @@ impl Column {
 pub struct Columns(Vec<Column>);
 
 impl Columns {
-    fn printrow(&self, tp: Type, context: &Context, delimiter: &str, null: &str) {
+    fn printrow<W: std::io::Write>(
+        &self,
+        writer: &mut W,
+        tp: Type,
+        context: &Context,
+        delimiter: &str,
+        null: &str,
+    ) -> Result<(), std::io::Error> {
         for (i, column) in self.0.iter().enumerate() {
-            column.print(tp, i, self.len(), context, delimiter, null);
+            column.print(writer, tp, i, self.len(), context, delimiter, null)?;
         }
+        Ok(())
     }
 
-    fn printheader(&self) {
+    fn printheader<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
         for (i, column) in self.0.iter().enumerate() {
             if i > 0 {
-                print!("\t")
+                write!(writer, "\t")?;
             }
-            print!("{}", column);
+            write!(writer, "{}", column)?;
             if i == self.len() - 1 {
-                print!("\n")
+                write!(writer, "\n")?;
             }
         }
+        Ok(())
     }
 
     fn index(&self, coltype: &Column) -> Option<usize> {
@@ -516,8 +547,9 @@ impl Columns {
     }
 }
 
-pub fn to_tsv<'a>(
+pub fn to_tsv<'a, W: std::io::Write>(
     store: &'a AnnotationStore,
+    writer: &mut W,
     query: Query<'a>,
     columnconfig: &[&str],
     verbose: bool,
@@ -554,7 +586,7 @@ pub fn to_tsv<'a>(
     }
 
     if header {
-        columns.printheader();
+        columns.printheader(writer)?;
     }
 
     let want_textselections =
@@ -587,7 +619,7 @@ pub fn to_tsv<'a>(
                         textselections: textselections.as_ref(),
                         ..Context::default()
                     };
-                    columns.printrow(Type::Annotation, &context, delimiter, null);
+                    columns.printrow(writer, Type::Annotation, &context, delimiter, null)?;
                     if verbose {
                         for data in annotation.data() {
                             let context = Context {
@@ -600,7 +632,13 @@ pub fn to_tsv<'a>(
                                 value: Some(data.value()),
                                 ..Context::default()
                             };
-                            columns.printrow(Type::AnnotationData, &context, delimiter, null);
+                            columns.printrow(
+                                writer,
+                                Type::AnnotationData,
+                                &context,
+                                delimiter,
+                                null,
+                            )?;
                         }
                     }
                 }
@@ -614,7 +652,7 @@ pub fn to_tsv<'a>(
                         value: Some(data.value()),
                         ..Context::default()
                     };
-                    columns.printrow(Type::AnnotationData, &context, delimiter, null);
+                    columns.printrow(writer, Type::AnnotationData, &context, delimiter, null)?;
                 }
                 QueryResultItem::DataKey(key) => {
                     let context = Context {
@@ -625,7 +663,7 @@ pub fn to_tsv<'a>(
                         key: Some(key.clone()),
                         ..Context::default()
                     };
-                    columns.printrow(Type::DataKey, &context, delimiter, null);
+                    columns.printrow(writer, Type::DataKey, &context, delimiter, null)?;
                 }
                 QueryResultItem::AnnotationDataSet(dataset) => {
                     let context = Context {
@@ -635,7 +673,7 @@ pub fn to_tsv<'a>(
                         set: Some(dataset.clone()),
                         ..Context::default()
                     };
-                    columns.printrow(Type::AnnotationDataSet, &context, delimiter, null);
+                    columns.printrow(writer, Type::AnnotationDataSet, &context, delimiter, null)?;
                     if verbose {
                         for key in dataset.keys() {
                             let context = Context {
@@ -645,7 +683,7 @@ pub fn to_tsv<'a>(
                                 key: Some(key.clone()),
                                 ..Context::default()
                             };
-                            columns.printrow(Type::DataKey, &context, delimiter, null);
+                            columns.printrow(writer, Type::DataKey, &context, delimiter, null)?;
                         }
                         for data in dataset.data() {
                             let context = Context {
@@ -656,7 +694,13 @@ pub fn to_tsv<'a>(
                                 value: Some(data.value()),
                                 ..Context::default()
                             };
-                            columns.printrow(Type::AnnotationData, &context, delimiter, null);
+                            columns.printrow(
+                                writer,
+                                Type::AnnotationData,
+                                &context,
+                                delimiter,
+                                null,
+                            )?;
                         }
                     }
                 }
@@ -668,7 +712,7 @@ pub fn to_tsv<'a>(
                         resource: Some(resource.clone()),
                         ..Context::default()
                     };
-                    columns.printrow(Type::TextResource, &context, delimiter, null);
+                    columns.printrow(writer, Type::TextResource, &context, delimiter, null)?;
                 }
                 QueryResultItem::TextSelection(textselection) => {
                     let id = format!(
@@ -688,7 +732,7 @@ pub fn to_tsv<'a>(
                         text,
                         ..Context::default()
                     };
-                    columns.printrow(Type::TextSelection, &context, delimiter, null);
+                    columns.printrow(writer, Type::TextSelection, &context, delimiter, null)?;
                 }
             }
         }
