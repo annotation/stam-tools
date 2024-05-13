@@ -232,6 +232,15 @@ div.resource, div.textselection {
     margin-left: auto;
     margin-right: auto;
 }
+:root {
+    --hi1: #00aa00; /* green */
+    --hi2: #aa0000; /* red */
+    --hi3: #0000aa; /* blue */
+    --hi4: #aaaa00; /* yellow */
+    --hi5: #00aaaa; /* ayan */
+    --hi6: #aa00aa; /* magenta */
+    --hiX: #666666; /* gray */
+}
 body {
     background: #b7c8c7;
 }
@@ -240,15 +249,11 @@ body {
     vertical-align: bottom;
 }
 label {
+    font-weight: bold;
     display: inline-block;
-    margin-top: 10px;
-    border-radius: 0px 20px 0px 0px;
-}
-label.zw {
-    border-radius: 20px;
-    border-right: none !important;
 }
 label em {
+    color: white;
     display: inline-block;
     font-size: 70%;
     padding-left: 5px;
@@ -257,90 +262,54 @@ label em {
 }
 /* highlights for labels/tags */
 label.tag1 {
-    color: #1d610d;
-    border-right: 5px solid #b4e0aa;
-    background: #b4e0aa77;
+    background: var(--hi1);
 }
 label.tag2 {
-    color: #181c6b;
-    border-right: 5px solid #aaace0;
-    background: #aaace077;
+    background: var(--hi2);
 }
 label.tag3 {
-    color: #661818;
-    border-right: 5px solid #e19898;
-    background: #e1989877;
+    background: var(--hi3);
 }
 label.tag4 {
-    color: #585712;
-    border-right: 5px solid #e1e098;
-    background: #e1e09877;
+    background: var(--hi4);
 }
 label.tag5 {
-    color: #126460;
-    border-right: 5px solid #126460;
-    background: #12646077;
+    background: var(--hi5);
 }
 label.tag6 {
-    color: #5e1457;
-    border-right: 5px solid #dcc6da;
-    background: #dcc6da77;
+    background: var(--hi6);
 }
-label.tag7 {
-    color: #5d3f14;
-    border-right: 5px solid #e1c398;
-    background: #e1c39877;
-}
-label.tag8 {
-    color: #1a570b;
-    border-right: 5px solid #6faa61;
-    background: #6faa6177;
-}
-span.hi9 {
-    background: #79a3cb; /*blue */
-}
-span.hi10 {
-    background: #bc5858; /*red*/
-}
-span.hi11 {
-    background: #b2b158; /*yellow */
-}
-span.hi12 {
-    background: #49b2ac; /*cyan*/
-}
-span.hi13 {
-    background: #b977b3; /*pink*/
-}
-span.hi14 {
-    background: #b9a161; /*orange*/
+label.tag7, label.tag8, label.tag9, label.tag10, label.tag11, label.tag12, label.tag13, label.tag14, label.tag15, label.tag16 {
+    background: var(--hiX);
 }
 span.l1, span.l2, span.l3, span.l4, span.l5, span.l6, span.l7, span.l8, span.l9, span.l10, span.l11, span.l12, span.l13, span.l14 {
     display: inline-block;
     border-bottom: 3px solid white;
 }
 .hi1 span.l1 {
-    border-bottom: 3px solid #b4e0aa; /* green */
+    border-bottom: 3px solid var(--hi1);
 }
 .hi2 span.l2 {
-    border-bottom: 3px solid #aaace0; /* blueish/purple */
+    border-bottom: 3px solid var(--hi2);
 }
 .hi3 span.l3 {
-    border-bottom: 3px solid #e19898; /* red */
+    border-bottom: 3px solid var(--hi3);
 }
 .hi4 span.l4 {
-    border-bottom: 3px solid #e1e098; /* yellow */
+    border-bottom: 3px solid var(--hi4);
 }
 .hi5 span.l5 {
-    border-bottom: 3px solid #98e1dd; /* cyan */
+    border-bottom: 3px solid var(--hi5);
 }
 .hi6 span.l6 {
-    border-bottom: 3px solid #dcc6da; /* pink */
-}
+    border-bottom: 3px solid var(--hi6);
+    }
 .hi7 span.l7 {
-    border-bottom: 3px solid #e1c398; /* orange */
+    border-bottom: 3px solid var(--hiX);
 }
 
 div#legend {
+    background: white;
     color: black;
     width: 40%;
     min-width: 320px;
@@ -348,7 +317,6 @@ div#legend {
     margin-right: auto;
     font-family: sans-serif;
     padding: 5px;
-    border: 1px dashed #ccc;
     border-radius: 20px;
 }
 div#legend ul {
@@ -359,40 +327,42 @@ div#legend ul li span {
     width: 15px;
     border-radius: 15px;
     border: 1px #555 solid;
+    font-weight: bold;
     min-height: 15px;
 }
 div#legend li:hover {
     font-weight: bold;
 }
 div#legend li.hidetags {
-    text-decoration: line-through;
+    text-decoration: none;
+    font-style: normal;
+    color: #333;
 }
 div#legend span.hi1 {
-    background: #b4e0aa; /* green */
+    background: var(--hi1);
 }
 div#legend span.hi2 {
-    background: #aaace0; /* blueish/purple */
+    background: var(--hi2);
 }
 div#legend span.hi3 {
-    background: #e19898; /*red*/
+    background: var(--hi3);
 }
 div#legend span.hi4 {
-    background: #e1e098; /*yellow */
+    background: var(--hi4);
 }
 div#legend span.hi5 {
-    background: #98e1dd; /*cyan*/
+    background: var(--hi5);
 }
 div#legend span.hi6 {
-    background: #dcc6da; /*pink*/
+    background: var(--hi6);
 }
 div#legend span.hi7 {
-    background: #e1c398; /*orange*/
-}
-div#legend span.hi8 {
-    background: #6faa61; /*green*/
+    background: var(--hi7);
 }
 div#legend li {
     cursor: pointer;
+    text-decoration: underline;
+    font-style: italic;
 }
 body>h2 {
     color: black;
@@ -407,9 +377,9 @@ span:hover + label.h em {
     display: block;
     padding: 2px;
     background: black;
+    color: white;
 }
-label.h.tag1 em {
-    color: #b4e0aa; /* green */
+label.h em, {
     font-weight: bold;
 }
 span:hover + label + label.h em {
@@ -419,20 +389,12 @@ span:hover + label + label.h em {
     padding: 2px;
     background: black;
 }
-label.h.tag2 em {
-    color: #aaace0; /* blueish/purple */
-    font-weight: bold;
-}
 span:hover + label + label + label.h em {
     position: absolute;
     margin-top: 40px;
     display: block;
     padding: 2px;
     background: black;
-}
-label.h.tag3 em {
-    color: #e19898; /*red*/
-    font-weight: bold;
 }
 /* generic style classes */
 .italic, .italics { font-style: italic; }
