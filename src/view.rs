@@ -840,8 +840,10 @@ impl<'a> Display for HtmlWriter<'a> {
                                 }
                                 BufferType::Whitespace => {
                                     if !span_annotations.is_empty() {
-                                        for _ in 0..self.highlights.len() {
-                                            write!(f, "</span>")?;
+                                        for highlight in self.highlights.iter() {
+                                            if !highlight.hide {
+                                                write!(f, "</span>")?;
+                                            }
                                         }
                                         write!(f, "</span>")?;
                                         write!(f, "{}", openingtags)?;
@@ -857,8 +859,10 @@ impl<'a> Display for HtmlWriter<'a> {
                                 }
                                 BufferType::NewLines => {
                                     if !span_annotations.is_empty() {
-                                        for _ in 0..self.highlights.len() {
-                                            write!(f, "</span>")?;
+                                        for highlight in self.highlights.iter() {
+                                            if !highlight.hide {
+                                                write!(f, "</span>")?;
+                                            }
                                         }
                                         write!(f, "</span>")?;
                                         if !done {
@@ -883,8 +887,10 @@ impl<'a> Display for HtmlWriter<'a> {
 
                         // Close </span> layers for this segment (if not already done during newline handling)
                         if !span_annotations.is_empty() && needclosure {
-                            for _ in 0..self.highlights.len() {
-                                write!(f, "</span>")?;
+                            for highlight in self.highlights.iter() {
+                                if !highlight.hide {
+                                    write!(f, "</span>")?;
+                                }
                             }
                             write!(f, "</span>")?;
                         }
