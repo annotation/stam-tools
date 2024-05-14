@@ -20,6 +20,7 @@ Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 * ``stam info``      - Return information regarding a STAM model. 
 * ``stam init``      - Initialize a new STAM annotationstore (either from scratch or as a copy/merge of others)
 * ``stam import``    - Import STAM data in tabular from a simple TSV (Tab Separated Values) format, allows custom columns.
+* ``stam fromxml``   - Import data from XML-based formats (like xHTML, TEI) to STAM. Effectively 'untangling' text and annotations.
 * ``stam print``     - Output the text of any resources in the model.
 * ``stam query`` or ``stam export``  -  Query the annotation store and export the output in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
 * ``stam validate``  - Validate a STAM model.  
