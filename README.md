@@ -304,7 +304,7 @@ be anything you can query that has text (i.e. resources, annotations, text
 selections).
 
 Any subsequent queries are *highlight queries*, they determine what parts of
-the selections produces by the selection query you want to highlight.
+the selections produced by the selection query you want to highlight.
 Highlighting is done by drawing a line underneath the text and optionally by a *tag* that shows extra information.
 
 ![STAM view example](https://github.com/annotation/stam-tools/raw/master/stamvis1.png)
