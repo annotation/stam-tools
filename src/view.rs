@@ -248,6 +248,7 @@ body {
 label {
     font-weight: bold;
     display: inline-block;
+    margin-top: 5px;
 }
 label em {
     color: white;
@@ -256,7 +257,6 @@ label em {
     padding-left: 5px;
     padding-right: 5px;
     vertical-align: bottom;
-    margin-top: 5px;
 }
 /* highlights for labels/tags */
 label.tag1 {
