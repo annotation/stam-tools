@@ -15,7 +15,7 @@ A collection of command-line tools for working with [STAM](https://github.com/an
 Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 
 * ``stam align``     - Align two similar texts, mapping their coordinate spaces.
-* ``stam annotate`` or ``stam add``  - Add annotations or datasets or resources (from file).
+* ``stam annotate`` or ``stam add``  - Add annotations or datasets or resources (from file or by query).
 * ``stam batch`` or `stam shell`     - Process multiple subcommands in sequence, or run interactively.
 * ``stam info``      - Return information regarding a STAM model. 
 * ``stam init``      - Initialize a new STAM annotationstore (either from scratch or as a copy/merge of others)
@@ -95,8 +95,15 @@ STAM CSV. Example:
 
 ```
 $ stam init --output merged.store.stam.csv mystore1.store.stam.json mystore2.store.stam.json
+```
+
+You can also pass [STAMQL](https://github.com/annotation/stam/blob/master/extensions/stam-query/README.md) queries
+to `stam annotate` to add (or delete) annotations:
 
 ```
+stam annotate --query 'ADD ANNOTATION WITH DATA "my-vocab" "type" "sentence"; TARGET ?x { SELECT TEXT ?x WHERE RESOURCE "smallquote.txt" OFFSET 0 25; }' demo.store.stam.json
+```
+
 
 ### stam info
 
@@ -179,6 +186,8 @@ This will result in a TSV file where the sentence will be repeated for each word
 The TSV output produced by this tool is not lossless, that is, it can not encode everything
 that STAM supports, unlike STAM JSON and STAM CSV. It does, however, give you a great
 deal of flexibility to quickly output only the data relevant for whatever your specific purpose is.
+
+For queries that modify the annotation store, use `stam annotate` rather than `stam query`.
 
 ### stam export
 

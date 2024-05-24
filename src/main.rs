@@ -841,7 +841,8 @@ If no attribute is provided, there will be no tags shown for that query, only a 
                 .args(&common_arguments())
                 .args(&store_arguments(true,true, batchmode))
                 .args(&annotate_arguments())
-                .args(&config_arguments()),
+                .args(&config_arguments())
+                .args(&query_arguments("A query in STAMQL to ADD or DELETE items. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. ")),
         )
         .subcommand(
             SubCommand::with_name("annotate")
@@ -850,7 +851,8 @@ If no attribute is provided, there will be no tags shown for that query, only a 
                 .args(&store_arguments(true,true, batchmode))
                 .args(&annotate_arguments())
                 .args(&common_arguments())
-                .args(&config_arguments()),
+                .args(&config_arguments())
+                .args(&query_arguments("A query in STAMQL to ADD or DELETE items. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. ")),
         )
         .subcommand(
             SubCommand::with_name("tag")
@@ -1398,6 +1400,17 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             &annotationfiles,
         )?;
         changed = true;
+
+        if args.is_present("query") {
+            let querystring = args.value_of("query").into_iter().next().unwrap();
+            let (query, _) = stam::Query::parse(querystring).map_err(|err| {
+                format!("{}", err)
+            })?;
+            store.query_mut(query).map_err(|err| {
+                format!("{}", err)
+            })?;
+        }
+
         eprintln!("  total: {} annotation(s), {} resource(s), {} annotationset(s)", store.annotations_len(), store.resources_len(), store.datasets_len());
     } else if rootargs.subcommand_matches("tag").is_some() {
         //load the store
