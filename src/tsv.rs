@@ -788,6 +788,15 @@ impl ParseMode {
                     }
                 }
             }
+        } else if columns.has(&Column::TextResource) || existing_resource.is_some() {
+            if columns.has(&Column::Offset)
+                || (columns.has(&Column::BeginOffset) && columns.has(&Column::EndOffset))
+                || columns.has(&Column::TextSelection)
+            {
+                Ok(Self::Simple)
+            } else {
+                Err("Unable to determine how to parse this data based on the available columns. Make sure there is at least an Offset column (or BeginOffset, EndOffset columns)")
+            }
         } else if !columns.has(&Column::Offset)
             && !columns.has(&Column::BeginOffset)
             && !columns.has(&Column::EndOffset)
@@ -800,7 +809,7 @@ impl ParseMode {
                 Err("Data has neither a Text nor an Offset column")
             }
         } else {
-            Err("Unable to determine how to parse this data based on the available columns. Make sure there is at least an Offset or Text column")
+            Err("Unable to determine how to parse this data based on the available columns. Make sure there is at least an Offset, Text or Resource column (or supply --resource)")
         }
     }
 }
