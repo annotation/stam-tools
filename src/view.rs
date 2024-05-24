@@ -1084,7 +1084,7 @@ impl<'a> AnsiWriter<'a> {
         let color = if i > 6 { 30 } else { 30 + i };
         writer.write(b"\x1b[")?;
         writer.write(&format!("{}", color).into_bytes())?;
-        writer.write(b";m")?;
+        writer.write(b"m")?;
         writer.flush()?;
         write!(writer, "{}", s)?;
         writer.write(b"\x1b[m")?;
