@@ -1,16 +1,31 @@
-use stam::{AnnotationStore, Configurable, ToJson};
+use stam::AnnotationStore;
 
-pub fn validate(store: &AnnotationStore, verbose: bool) -> Result<(), String> {
-    let result = store.to_json_string(&store.config().clone().with_use_include(false));
-    match result {
-        Ok(result) => {
-            if verbose {
-                println!("{}", result)
+pub fn validate(
+    store: &AnnotationStore,
+    verbose: bool,
+    allow_incomplete: bool,
+) -> Result<(), String> {
+    let result = store.validate_text(!verbose);
+    let valid = if allow_incomplete {
+        result.is_ok_maybe_incomplete()
+    } else {
+        result.is_ok()
+    };
+    if valid {
+        if verbose {
+            eprintln!("Succesfully validated {} annotations", result.valid());
+        }
+        Ok(())
+    } else {
+        Err(format!(
+            "Failed to validate {} annotations, {} missing. {}",
+            result.invalid(),
+            result.missing(),
+            if result.missing() > 0 {
+                "Did you generate validation information? (run: stam validate --make)"
+            } else {
+                ""
             }
-        }
-        Err(err) => {
-            return Err(format!("Error during serialization: {}", err));
-        }
+        ))
     }
-    Ok(())
 }

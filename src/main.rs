@@ -238,7 +238,7 @@ fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("columns")
             .long("columns")
             .short('C')
-            .help("Column Format, comma separated list of column names to output")
+            .help("Column Format, comma separated list of column names to output (or input depending on context)")
             .long_help(
                 "In most cases, you do not need to explicitly specify this as it will be automatically guessed based on the --type or --query parameter.
 However, if you want full control, you can choose from the following known columns names (case insensitive, comma seperated list):
@@ -380,7 +380,7 @@ In addition of the above columns, you may also parse a *custom* column by specif
         Arg::with_name("validate")
             .long("validate")
             .help(
-                "Do text validation, values: strict, loose (case insensitive testing, this is the default), no"
+                "Do text validation on the TSV, values: strict, loose (case insensitive testing, this is the default), no"
             )
             .default_value("loose")
             .takes_value(true),
@@ -655,6 +655,21 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn validation_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("make")
+            .long("make")
+            .help("Compute text validation information, allowing the model to be validated later.")
+    );
+    args.push(
+        Arg::with_name("allow-incomplete")
+            .long("allow-incomplete")
+            .help("Allow validation to pass even if validation information is missing for certain annotations (or for all)")
+    );
+    args
+}
+
 fn store_exists(args: &ArgMatches) -> bool {
     if args.is_present("annotationstore") {
         for filename in args
@@ -718,10 +733,11 @@ fn app<'a>(batchmode: bool) -> App<'a> {
         )
         .subcommand(
             SubCommand::with_name("validate")
-                .about("Validate a STAM model. Set --verbose to have it output the STAM JSON or STAM CSV to standard output.")
+                .about("Validate a STAM model. Checks if the integrity of the annotations is still valid by checking if the text they point at remains unchanged.")
                 .args(&common_arguments())
                 .args(&store_arguments(true, false, batchmode))
-                .args(&config_arguments()),
+                .args(&config_arguments())
+                .args(&validation_arguments()),
         )
         .subcommand(
             SubCommand::with_name("export")
@@ -1366,7 +1382,12 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             None => unreachable!(),
         }
     } else if rootargs.subcommand_matches("validate").is_some() {
-        validate(&store, args.is_present("verbose"))?;
+        if args.is_present("make") {
+            store.protect_text(stam::TextValidationMode::Auto).map_err(|e| format!("Failed to generate validation information: {}", e))?;
+            changed = true;
+        } else {
+            validate(&store, args.is_present("verbose"), args.is_present("allow-incomplete"))?;
+        }
     } else if rootargs.subcommand_matches("init").is_some()
         || rootargs.subcommand_matches("annotate").is_some()
     {
