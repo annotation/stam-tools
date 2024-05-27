@@ -39,6 +39,10 @@ Alternatively, the functionality provided by the tools is also exposed as a libr
 $ cargo install stam-tools
 ```
 
+## Demo
+
+[![STAM demo](https://github.com/CLARIAH/wp3-demos/blob/master/stamvideothumbnail.jpg?raw=true)](https://download.anaproy.nl/stamdemo.webm)
+
 ## Usage
 
 Add the ``--help`` flag after the subcommand for extensive usage instructions.
