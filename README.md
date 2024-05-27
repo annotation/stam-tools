@@ -41,7 +41,7 @@ $ cargo install stam-tools
 
 ## Demo
 
-[![STAM demo](https://github.com/CLARIAH/wp3-demos/blob/master/stamvideothumbnail.jpg?raw=true)](https://download.anaproy.nl/stamdemo.webm)
+[![STAM demo](https://github.com/CLARIAH/wp3-demos/blob/master/stamvideothumbnail.jpg?raw=true)](https://annotation.github.io/assets/stam.webm)
 
 ## Usage
 
