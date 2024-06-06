@@ -451,16 +451,11 @@ fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Trim leading and trailing whitespace (including newlines) from matches, ensuring the aligned matches are minimal. This may lead to whitespace being unaligned even though there is an alignment."),
     );
     args.push(
-        Arg::with_name("global")
-            .long("global")
-            .help("Perform global alignment instead of local"),
-    );
-    args.push(
         Arg::with_name("algorithm")
             .long("algorithm")
             .takes_value(true)
             .default_value("smith_waterman")
-            .help("Alignment algorithm, can be smith_waterman (default) or needleman_wunsch"),
+            .help("Alignment algorithm, can be smith_waterman (default) or needleman_wunsch. The former is intended for local alignment (align a subsequence with larger sequence), the latter for global alignment (aligning two complete sequences)"),
     );
     args.push(
         Arg::with_name("id-prefix")
@@ -1490,11 +1485,6 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                         return Err(format!("[error] Not a valid alignment algorithm: {}, set smith_waterman or needleman_wunsch", x));
                     }
                     None => unreachable!("No alignment algorithm set")
-                },
-                alignment_scope: if args.is_present("global") {
-                    AlignmentScope::Global
-                } else {
-                    AlignmentScope::Local
                 },
                 annotation_id_prefix: args.value_of("id-prefix").map(|x| x.to_string()),
                 simple_only: args.is_present("simple-only"),

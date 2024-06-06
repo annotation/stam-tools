@@ -8,11 +8,8 @@ pub struct AlignmentConfig {
     /// Case-insensitive matching has more performance overhead
     pub case_sensitive: bool,
 
-    // The Alignment algorithm (Experimental)
+    // The Alignment algorithm
     pub algorithm: AlignmentAlgorithm,
-
-    /// Alignment scope (Experimental)
-    pub alignment_scope: AlignmentScope,
 
     /// Prefix to use when assigning annotation IDs. The actual ID will have a random component
     pub annotation_id_prefix: Option<String>,
@@ -32,7 +29,6 @@ impl Default for AlignmentConfig {
     fn default() -> Self {
         Self {
             case_sensitive: true,
-            alignment_scope: AlignmentScope::Local,
             algorithm: AlignmentAlgorithm::default(),
             annotation_id_prefix: None,
             trim: false,
@@ -44,12 +40,14 @@ impl Default for AlignmentConfig {
 
 #[derive(Clone, Debug)]
 pub enum AlignmentAlgorithm {
+    /// Needleman-Wunsch, global sequence alignment
     NeedlemanWunsch {
         equal: isize,
         align: isize,
         insert: isize,
         delete: isize,
     },
+    /// Smith-Waterman, local sequence alignment
     SmithWaterman {
         equal: isize,
         align: isize,
@@ -148,12 +146,6 @@ pub fn align<'store>(
     }
     eprintln!("{} annotations(s) created", transpositions.len());
     Ok(transpositions)
-}
-
-#[derive(Clone, PartialEq, Copy, Debug)]
-pub enum AlignmentScope {
-    Local,
-    Global,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -307,9 +299,9 @@ pub fn align_texts<'store>(
 
     match alignment_set {
         Ok(alignment_set) => {
-            let alignment = match config.alignment_scope {
-                AlignmentScope::Local => alignment_set.local_alignment(),
-                AlignmentScope::Global => alignment_set.global_alignment(),
+            let alignment = match config.algorithm {
+                AlignmentAlgorithm::SmithWaterman { .. } => alignment_set.local_alignment(),
+                AlignmentAlgorithm::NeedlemanWunsch { .. } => alignment_set.global_alignment(),
             };
             let mut select1: Vec<SelectorBuilder<'static>> = Vec::new();
             let mut select2: Vec<SelectorBuilder<'static>> = Vec::new();
