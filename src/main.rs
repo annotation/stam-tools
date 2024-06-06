@@ -455,7 +455,7 @@ fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("algorithm")
             .takes_value(true)
             .default_value("smith_waterman")
-            .help("Alignment algorithm, can be smith_waterman (default) or needleman_wunsch. The former is intended for local alignment (align a subsequence with larger sequence), the latter for global alignment (aligning two complete sequences)"),
+            .help("Alignment algorithm, can be 'smith_waterman' (aka 'local', default) or 'needleman_wunsch' (aka 'global'). The former is intended for local alignment (align a subsequence with larger sequence), the latter for global alignment (aligning two complete sequences)"),
     );
     args.push(
         Arg::with_name("id-prefix")
@@ -1469,13 +1469,13 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             &AlignmentConfig {
                 case_sensitive: !args.is_present("ignore-case"),
                 algorithm: match args.value_of("algorithm") {
-                    Some("smith_waterman") => AlignmentAlgorithm::SmithWaterman { 
+                    Some("smith_waterman") | Some("local") => AlignmentAlgorithm::SmithWaterman { 
                         equal: args.value_of("match-score").unwrap().parse().expect("score must be integer"),
                         align: args.value_of("mismatch-score").unwrap().parse().expect("score must be integer"),
                         insert: args.value_of("insertion-score").unwrap().parse().expect("score must be integer"),
                         delete: args.value_of("deletion-score").unwrap().parse().expect("score must be integer")
                     },
-                    Some("needleman_wunsch") => AlignmentAlgorithm::NeedlemanWunsch  {
+                    Some("needleman_wunsch") | Some("global") => AlignmentAlgorithm::NeedlemanWunsch  {
                         equal: args.value_of("match-score").unwrap().parse().expect("score must be integer"),
                         align: args.value_of("mismatch-score").unwrap().parse().expect("score must be integer"),
                         insert: args.value_of("insertion-score").unwrap().parse().expect("score must be integer"),
