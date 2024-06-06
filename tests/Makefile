@@ -10,25 +10,25 @@ clean:
 	-rm importtest*.annotationstore.stam.json
 
 importtest1.annotationstore.stam.json:
-	@echo "Test 1 - stam import - Simple parse mode"
+	@echo "Import - Test 1 - Simple parse mode"
 	cargo run import --inputfile test1.tsv --annotationset default --resource hello.txt --verbose $@
 
-importtest1: test1.annotationstore.stam.json
+importtest1: importtest1.annotationstore.stam.json
 
 importtest2.annotationstore.stam.json:
-	@echo "Test 2 - stam import - Align with text parse mode"
+	@echo "Import - Test 2 - Align with text parse mode"
 	cargo run import --inputfile test2.tsv --annotationset default --resource hello.txt --verbose $@
 
-importtest2: test2.annotationstore.stam.json
+importtest2: importtest2.annotationstore.stam.json
 
 importtest3:
-	@echo "Test 3 - stam import - Simple parse mode with failed validation"
+	@echo "Import - Test 3 - Simple parse mode with failed validation"
 	cargo run import --inputfile test3.tsv --annotationset default --resource hello.txt --verbose importtest3.annotationstore.stam.json; test $$? -ne 0
 
-importtest4: test4.annotationstore.stam.json
+importtest4: importtest4.annotationstore.stam.json
 
 importtest4.annotationstore.stam.json:
-	@echo "Test 4 - stam import - Reconstruct text"
+	@echo "Import - Test 4 - Reconstruct text"
 	cargo run import --inputfile test2.tsv --annotationset default --new-resource hello2.txt --verbose $@
 
 
