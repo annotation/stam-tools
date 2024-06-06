@@ -1,30 +1,34 @@
-.PHONY: test3 clean all
+.PHONY: importtest3 clean all
 
-all: test1 test2 test3 test4
+test: all
+
+all: test_import
+
+test_import: importtest1 importtest2 importtest3 importtest4
 
 clean:
-	rm test1.annotationstore.stam.json test2.annotationstore.stam.json test4.annotationstore.stam.json
+	-rm importtest*.annotationstore.stam.json
 
-test1.annotationstore.stam.json:
+importtest1.annotationstore.stam.json:
 	@echo "Test 1 - stam import - Simple parse mode"
-	../target/debug/stam import --inputfile test1.tsv --annotationset default --resource hello.txt --verbose test1.annotationstore.stam.json
+	cargo run import --inputfile test1.tsv --annotationset default --resource hello.txt --verbose $@
 
-test1: test1.annotationstore.stam.json
+importtest1: test1.annotationstore.stam.json
 
-test2.annotationstore.stam.json:
+importtest2.annotationstore.stam.json:
 	@echo "Test 2 - stam import - Align with text parse mode"
-	../target/debug/stam import --inputfile test2.tsv --annotationset default --resource hello.txt --verbose test2.annotationstore.stam.json
+	cargo run import --inputfile test2.tsv --annotationset default --resource hello.txt --verbose $@
 
-test2: test2.annotationstore.stam.json
+importtest2: test2.annotationstore.stam.json
 
-test3:
+importtest3:
 	@echo "Test 3 - stam import - Simple parse mode with failed validation"
-	../target/debug/stam import --inputfile test3.tsv --annotationset default --resource hello.txt --verbose test3.annotationstore.stam.json; test $$? -ne 0
+	cargo run import --inputfile test3.tsv --annotationset default --resource hello.txt --verbose importtest3.annotationstore.stam.json; test $$? -ne 0
 
+importtest4: test4.annotationstore.stam.json
 
-test4: test4.annotationstore.stam.json
-
-test4.annotationstore.stam.json:
+importtest4.annotationstore.stam.json:
 	@echo "Test 4 - stam import - Reconstruct text"
-	../target/debug/stam import --inputfile test2.tsv --annotationset default --new-resource hello2.txt --verbose test4.annotationstore.stam.json
+	cargo run import --inputfile test2.tsv --annotationset default --new-resource hello2.txt --verbose $@
+
 
