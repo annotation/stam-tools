@@ -1668,7 +1668,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             return Err(format!("Expected either --keep or --remove, not both"));
         };
 
-        split(store, queries, mode);
+        split(store, queries, mode, args.is_present("verbose"));
         changed = true;
     }
     Ok(changed)
