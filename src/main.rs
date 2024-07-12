@@ -20,6 +20,7 @@ use stamtools::info::*;
 use stamtools::annotate::*;
 use stamtools::transpose::*;
 use stamtools::xml::*;
+use stamtools::split::*;
 
 fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -44,7 +45,7 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
 const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one.";
 const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set.";
 const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an annotation store in STAM JSON or STAM CSV. If the file exists, it will be loaded and augmented. Multiple store files are allowed but will only act as input and will be merged into one. (the *first* file mentioned).  If  --dry-run or --output is set, this will not be used for output.";
-const SUBCOMMANDS: [&'static str; 15] = ["batch","info","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose","fromxml"];
+const SUBCOMMANDS: [&'static str; 16] = ["batch","info","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose","fromxml","split"];
 
 fn store_arguments<'a>(input_required: bool, outputs: bool, batchmode: bool) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -665,6 +666,21 @@ fn validation_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn split_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("keep")
+            .long("keep")
+            .help("Queries will be interpreted as items to retain, others will be deleted")
+    );
+    args.push(
+        Arg::with_name("remove")
+            .long("remove")
+            .help("Queries will be interpreted as items to delete, others will be retained")
+    );
+    args
+}
+
 fn store_exists(args: &ArgMatches) -> bool {
     if args.is_present("annotationstore") {
         for filename in args
@@ -944,6 +960,15 @@ You need to specify this parameter twice, the text of first query will be aligne
 The first query should retrieve the transposition annotation to transpose over, it should produce only one result. Subsequent queries are the annotations to transpose."))
                 .args(&transpose_arguments())
             )
+        .subcommand(
+            SubCommand::with_name("split")
+                .about("Load an annotation model and split one part off into a new one")
+                .args(&common_arguments())
+                .args(&store_arguments(true,true, batchmode))
+                .args(&config_arguments())
+                .args(&split_arguments())
+                .args(&query_arguments("A query in STAMQL with the items to --keep or --remove. Use ?split as variable name if you use subqueries (otherwise the last/deepest variable is taken). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Multiple queries are allowed."))
+        )
 }
 
 fn main() {
@@ -1589,6 +1614,28 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         if !has_input {
             return Err(format!("No input files specified"));
         }
+        changed = true;
+    } else if rootargs.subcommand_matches("split").is_some() {
+        let querystrings: Vec<_> = args.values_of("query").unwrap_or_default().collect();
+        let mut queries = Vec::new();
+        for (i, querystring) in querystrings.into_iter().enumerate() {
+            queries.push(stam::Query::parse(querystring).map_err(|err| {
+                format!("Query syntax error query {}: {}", i+1, err)
+            })?.0);
+        }
+        if queries.len() < 1 {
+            return Err(format!("Expected at least one --query parameter"));
+        }
+
+        let mode = if args.is_present("remove") {
+            SplitMode::Delete
+        } else if args.is_present("keep") {
+            SplitMode::Retain
+        } else {
+            return Err(format!("Expected either --keep or --remove, not both"));
+        };
+
+        split(store, queries, mode);
         changed = true;
     }
     Ok(changed)

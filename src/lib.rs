@@ -15,6 +15,7 @@ pub mod annotate;
 pub mod grep;
 pub mod info;
 pub mod query;
+pub mod split;
 pub mod tag;
 pub mod to_text;
 pub mod transpose;
