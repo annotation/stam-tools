@@ -678,6 +678,20 @@ fn split_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("remove")
             .help("Queries will be interpreted as items to delete, others will be retained")
     );
+    args.push(
+        Arg::with_name("resource")
+            .long("resource")
+            .help("Specify the ID of a resource to either --keep or --remove (depending on that parameter). This is a shortcut to use instead of specifying a full --query. May be used multiple times.")
+            .action(ArgAction::Append)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("dataset")
+            .long("dataset")
+            .help("Specify the ID of a dataset to either --keep or --remove (depending on that parameter). This is a shortcut to use instead of specifying a full --query. May be used multiple times.")
+            .action(ArgAction::Append)
+            .takes_value(true),
+    );
     args
 }
 
@@ -1618,11 +1632,30 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
     } else if rootargs.subcommand_matches("split").is_some() {
         let querystrings: Vec<_> = args.values_of("query").unwrap_or_default().collect();
         let mut queries = Vec::new();
+
+
         for (i, querystring) in querystrings.into_iter().enumerate() {
             queries.push(stam::Query::parse(querystring).map_err(|err| {
                 format!("Query syntax error query {}: {}", i+1, err)
             })?.0);
         }
+
+        let resources: Vec<_> = args.values_of("resource").unwrap_or_default().collect();
+        let mut extraquerystrings: Vec<String> = Vec::new();
+        for resource in resources.iter() {
+            extraquerystrings.push(format!("SELECT RESOURCE ?split WHERE ID \"{}\";",resource));
+        }
+        let datasets: Vec<_> = args.values_of("dataset").unwrap_or_default().collect();
+        for dataset in datasets.iter() {
+            extraquerystrings.push(format!("SELECT DATASET ?split WHERE ID \"{}\";",dataset));
+        }
+
+        for (i, querystring) in extraquerystrings.iter().enumerate() {
+            queries.push(stam::Query::parse(querystring.as_str()).map_err(|err| {
+                format!("Query syntax error query {}: {}", i+1, err)
+            })?.0);
+        }
+
         if queries.len() < 1 {
             return Err(format!("Expected at least one --query parameter"));
         }
