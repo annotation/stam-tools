@@ -453,3 +453,5 @@ formulated in XML, such as are present for instance in
 ### stam split
 
 With `stam split` you can split an annotation store by removing resources, data sets or annotations. The items to be removed are specified via the ``--query`` parameter (multiple allowed). The default behaviour is to remove the selected items, but you can reverse the behaviour by passing ``--keep``; then all non-matching items will be removed. Use with `--output` to set an output filename if you don't want to overwrite and truncate your input store.
+
+Instead of passing full queries, you can also pass resources or datasets directly via respectively ``--resource`` and ``--dataset``.
