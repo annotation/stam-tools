@@ -25,6 +25,7 @@ Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 * ``stam query`` or ``stam export``  -  Query the annotation store and export the output in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
 * ``stam validate``  - Validate a STAM model.  
 * ``stam tag``       - Regular-expression based tagger on plain text. 
+* ``stam split``     - Split an annotation store by removing specific resources, data sets or annotations.
 * ``stam view``      - View annotations as queried by outputting to HTML (or ANSI coloured text).
 
 For many of these, you can set `--verbose` for extra details in the output.
@@ -448,3 +449,7 @@ formulated in XML, such as are present for instance in
 [FoLiA](http://proycon.github.io/folia/). For that format, a dedicated
 `stam2folia` converter is available as part of
 [foliatools](https://github.com/proycon/foliatools).
+
+### stam split
+
+With `stam split` you can split an annotation store by removing resources, data sets or annotations. The items to be removed are specified via the ``--query`` parameter (multiple allowed). The default behaviour is to remove the selected items, but you can reverse the behaviour by passing ``--keep``; then all non-matching items will be removed. Use with `--output` to set an output filename if you don't want to overwrite and truncate your input store.
