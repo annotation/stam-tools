@@ -9,7 +9,7 @@ pub(crate) fn textselection_from_queryresult<'a>(
     let resultitem = if let Some(var) = var {
         resultitems.get_by_name(names, var).ok()
     } else {
-        resultitems.iter().last()
+        resultitems.iter().next()
     };
     let (resulttextselection, whole_resource, id) = match resultitem {
         Some(QueryResultItem::TextSelection(textselection)) => (textselection.clone(), false, None),

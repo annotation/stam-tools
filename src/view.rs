@@ -516,6 +516,11 @@ impl<'a> HtmlWriter<'a> {
         self
     }
 
+    pub fn with_subquery_highlights(mut self) -> Self {
+        self.add_highlights_from_subquery();
+        self
+    }
+
     fn output_error(&self, f: &mut Formatter, msg: &str) -> std::fmt::Result {
         write!(f, "<span class=\"error\">{}</span>", msg)?;
         if let Some(footer) = self.footer {
@@ -524,8 +529,13 @@ impl<'a> HtmlWriter<'a> {
         return Ok(());
     }
 
-    pub fn add_highlights_from_query(&mut self) {
-        helper_add_highlights_from_query(&mut self.highlights, &self.selectionquery, self.store);
+    pub fn add_highlights_from_subquery(&mut self) {
+        helper_add_highlights_from_subquery(
+            &mut self.highlights,
+            &self.selectionquery,
+            self.store,
+            self.selectionvar,
+        );
     }
 }
 
@@ -550,16 +560,29 @@ fn get_key_from_query<'a>(
     None
 }
 
-fn helper_add_highlights_from_query<'a>(
+fn helper_add_highlights_from_subquery<'a>(
     highlights: &mut Vec<Highlight<'a>>,
     query: &Query<'a>,
     store: &'a AnnotationStore,
+    selectionvar: Option<&'a str>,
 ) {
-    if let Some(key) = get_key_from_query(query, 0, store) {
+    /*if let Some(key) = get_key_from_query(query, 0, store) {
         //TODO: translate to queries now highlights are no longer supported
-        highlights.push(Highlight::default().with_tag(Tag::KeyAndValue(key)))
-    } else if let Some(subquery) = query.subquery() {
-        helper_add_highlights_from_query(highlights, subquery, store);
+        //highlights.push(Highlight::default().with_tag(Tag::KeyAndValue(key)))
+    } else */
+    if let Some(subquery) = query.subquery() {
+        if selectionvar.is_some() {
+            if query.name() != selectionvar {
+                //recurse without adding the highlight until we find the selectionvar
+                //we only add subqueries below the selectionvar
+                helper_add_highlights_from_subquery(highlights, subquery, store, selectionvar);
+                return;
+            }
+        }
+
+        //normal behaviour
+        highlights.push(Highlight::default().with_query(subquery.clone()));
+        helper_add_highlights_from_subquery(highlights, subquery, store, selectionvar);
     }
 }
 
@@ -1071,8 +1094,13 @@ impl<'a> AnsiWriter<'a> {
         eprintln!("ERROR: {}", msg);
     }
 
-    pub fn add_highlights_from_query(&mut self) {
-        helper_add_highlights_from_query(&mut self.highlights, &self.selectionquery, self.store);
+    pub fn add_highlights_from_subquery(&mut self) {
+        helper_add_highlights_from_subquery(
+            &mut self.highlights,
+            &self.selectionquery,
+            self.store,
+            self.selectionvar,
+        );
     }
 
     fn writeansicol<W: std::io::Write>(

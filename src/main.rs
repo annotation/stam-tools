@@ -850,6 +850,14 @@ If no attribute is provided, there will be no tags shown for that query, only a 
                     ),
                 )
                 .arg(
+                    Arg::with_name("no-subquery-highlights")
+                        .long("no-subquery-highlights")
+                        .short('N')
+                        .help(
+                        "Do not automatically add highlights from subqueries",
+                    ),
+                )
+                .arg(
                     Arg::with_name("collapse")
                         .long("collapse")
                         .help(
@@ -1378,8 +1386,8 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 for highlight in highlights {
                     htmlwriter = htmlwriter.with_highlight(highlight);
                 }
-                if args.is_present("auto-highlight") {
-                    htmlwriter.add_highlights_from_query();
+                if !args.is_present("no-subquery-highlights") {
+                    htmlwriter.add_highlights_from_subquery();
                 }
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);
@@ -1392,8 +1400,8 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 for highlight in highlights {
                     ansiwriter = ansiwriter.with_highlight(highlight);
                 }
-                if args.is_present("auto-highlight") {
-                    ansiwriter.add_highlights_from_query();
+                if !args.is_present("no-subquery-highlights") {
+                    ansiwriter.add_highlights_from_subquery();
                 }
                 if args.is_present("no-legend") {
                     ansiwriter = ansiwriter.with_legend(false)
