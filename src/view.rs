@@ -1378,27 +1378,7 @@ fn get_highlights_results<'a>(
                     .expect("you must name the variables in your SELECT statements"),
             );
             if let Some(parentresult) = selectionresult.get_by_name(names, varname).ok() {
-                match parentresult {
-                    QueryResultItem::None => {}
-                    QueryResultItem::Annotation(x) => {
-                        hlquery.bind_annotationvar(varname, x);
-                    }
-                    QueryResultItem::TextSelection(x) => {
-                        hlquery.bind_textvar(varname, x);
-                    }
-                    QueryResultItem::AnnotationData(x) => {
-                        hlquery.bind_datavar(varname, x);
-                    }
-                    QueryResultItem::TextResource(x) => {
-                        hlquery.bind_resourcevar(varname, x);
-                    }
-                    QueryResultItem::AnnotationDataSet(x) => {
-                        hlquery.bind_datasetvar(varname, x);
-                    }
-                    QueryResultItem::DataKey(x) => {
-                        hlquery.bind_keyvar(varname, x);
-                    }
-                }
+                hlquery.bind_from_result(varname, parentresult);
             } else {
                 eprintln!(
                     "WARNING: unable to retrieve variable {} from main query",
