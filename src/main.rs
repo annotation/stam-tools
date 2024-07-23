@@ -842,33 +842,10 @@ If no attribute is provided, there will be no tags shown for that query, only a 
                         .default_value("html")
                 )
                 .arg(
-                    Arg::with_name("auto-highlight")
-                        .long("auto")
-                        .short('a')
-                        .help(
-                        "Automatically add highlights based on DATA constraints found in the main (first) query",
-                    ),
-                )
-                .arg(
-                    Arg::with_name("no-subquery-highlights")
-                        .long("no-subquery-highlights")
-                        .short('N')
-                        .help(
-                        "Do not automatically add highlights from subqueries",
-                    ),
-                )
-                .arg(
                     Arg::with_name("collapse")
                         .long("collapse")
                         .help(
                         "Collapse all tags by default on loading HTML documents",
-                    ),
-                )
-                .arg(
-                    Arg::with_name("prune")
-                        .long("prune")
-                        .help(
-                        "Prune results to show only the highlights",
                     ),
                 )
                 .arg(
@@ -1371,24 +1348,10 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         let (query, _) = stam::Query::parse(querystring).map_err(|err| {
             format!("Query syntax error in first query: {}", err)
         })?;
-        let mut highlights = Vec::new();
-        for (i, highlightquery) in queries_iter.enumerate() {
-            let highlight =
-                Highlight::parse_query(highlightquery, &store, i + 1).map_err(|err| {
-                    format!("Syntax error in query {}: {}", i + 1, err)
-                })?;
-            highlights.push(highlight);
-        }
 
         match args.value_of("format") {
             Some("html") => {
-                let mut htmlwriter = HtmlWriter::new(&store, query).with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_prune(args.is_present("prune")).with_annotation_ids(args.is_present("verbose"));
-                for highlight in highlights {
-                    htmlwriter = htmlwriter.with_highlight(highlight);
-                }
-                if !args.is_present("no-subquery-highlights") {
-                    htmlwriter.add_highlights_from_subquery();
-                }
+                let mut htmlwriter = HtmlWriter::new(&store, query).with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_annotation_ids(args.is_present("verbose"));
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);
                     htmlwriter = htmlwriter.with_selectionvar(var);
@@ -1397,20 +1360,11 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             }
             Some("ansi") => {
                 let mut ansiwriter = AnsiWriter::new(&store, query);
-                for highlight in highlights {
-                    ansiwriter = ansiwriter.with_highlight(highlight);
-                }
-                if !args.is_present("no-subquery-highlights") {
-                    ansiwriter.add_highlights_from_subquery();
-                }
                 if args.is_present("no-legend") {
                     ansiwriter = ansiwriter.with_legend(false)
                 }
                 if args.is_present("no-titles") {
                     ansiwriter = ansiwriter.with_titles(false)
-                }
-                if args.is_present("prune") {
-                    ansiwriter = ansiwriter.with_prune(true);
                 }
                 if let Some(var) = args.value_of("use") {
                     eprintln!("[info] Selecting variable ?{}...", var);

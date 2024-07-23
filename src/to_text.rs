@@ -8,10 +8,9 @@ pub fn to_text<'a>(
     varname: Option<&'a str>,
 ) -> Result<(), String> {
     let results = store.query(query).map_err(|e| format!("{}", e))?;
-    let names = results.names();
     let mut prevresult = None;
     for selectionresult in results {
-        match textselection_from_queryresult(&selectionresult, varname, &names) {
+        match textselection_from_queryresult(&selectionresult, varname) {
             Err(msg) => {
                 return Err(format!("{}", msg));
             }
