@@ -3,11 +3,10 @@ use stam::*;
 pub(crate) fn textselection_from_queryresult<'a>(
     resultitems: &QueryResultItems<'a>,
     var: Option<&str>,
-    names: &QueryNames,
 ) -> Result<(ResultTextSelection<'a>, bool, Option<&'a str>), &'a str> {
     //convert query result to text selection
     let resultitem = if let Some(var) = var {
-        resultitems.get_by_name(names, var).ok()
+        resultitems.get_by_name(var).ok()
     } else {
         resultitems.iter().next()
     };
