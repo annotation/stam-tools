@@ -541,7 +541,7 @@ impl Columns {
                 _ => {}
             }
         }
-        if let Some(subquery) = query.subquery() {
+        for subquery in query.subqueries() {
             self.add_from_query(subquery);
         }
     }
@@ -573,11 +573,11 @@ pub fn to_tsv<'a, W: std::io::Write>(
     );
 
     if autocolumns {
-        if (verbose || query.subquery().is_some()) && !columns.0.contains(&Column::SeqNr) {
+        if (verbose || query.has_subqueries()) && !columns.0.contains(&Column::SeqNr) {
             //output the sequence (row) number in verbose mode or if we have subqueries
             columns.0.insert(0, Column::SeqNr);
         }
-        if query.subquery().is_some() && !columns.0.contains(&Column::VarName) {
+        if query.has_subqueries() && !columns.0.contains(&Column::VarName) {
             //output the variable name if we have subqueries
             columns.0.insert(1, Column::VarName);
         }
@@ -593,12 +593,9 @@ pub fn to_tsv<'a, W: std::io::Write>(
         columns.0.contains(&Column::TextSelection) || columns.0.contains(&Column::Text);
 
     let iter = store.query(query)?;
-    let names = iter.names();
-    let names_ordered = names.enumerate();
     for (seqnr, resultrow) in iter.enumerate() {
         let seqnr = seqnr + 1; //1-indexed
-        for (i, result) in resultrow.iter().enumerate() {
-            let varname = names_ordered.get(i).map(|x| Cow::Borrowed(x.1));
+        for (result, varname) in resultrow.iter().zip(resultrow.names()) {
             match result {
                 QueryResultItem::None => {}
                 QueryResultItem::Annotation(annotation) => {
@@ -614,7 +611,7 @@ pub fn to_tsv<'a, W: std::io::Write>(
                             Some(Cow::Owned(annotation.as_ref().temp_id().unwrap()))
                         },
                         seqnr,
-                        varname,
+                        varname: varname.map(|s| Cow::Borrowed(s)),
                         annotation: Some(annotation.clone()), //clones only the ResultItem, cheap
                         textselections: textselections.as_ref(),
                         ..Context::default()
@@ -646,7 +643,7 @@ pub fn to_tsv<'a, W: std::io::Write>(
                     let context = Context {
                         id: data.id().map(|x| Cow::Borrowed(x)),
                         seqnr,
-                        varname,
+                        varname: varname.map(|s| Cow::Borrowed(s)),
                         set: Some(data.set()),
                         key: Some(data.key()),
                         value: Some(data.value()),
@@ -658,7 +655,7 @@ pub fn to_tsv<'a, W: std::io::Write>(
                     let context = Context {
                         id: key.id().map(|x| Cow::Borrowed(x)),
                         seqnr,
-                        varname,
+                        varname: varname.map(|s| Cow::Borrowed(s)),
                         set: Some(key.set()),
                         key: Some(key.clone()),
                         ..Context::default()
@@ -669,7 +666,7 @@ pub fn to_tsv<'a, W: std::io::Write>(
                     let context = Context {
                         id: dataset.id().map(|x| Cow::Borrowed(x)),
                         seqnr,
-                        varname: varname.clone(),
+                        varname: varname.map(|s| Cow::Borrowed(s)),
                         set: Some(dataset.clone()),
                         ..Context::default()
                     };
@@ -707,7 +704,7 @@ pub fn to_tsv<'a, W: std::io::Write>(
                 QueryResultItem::TextResource(resource) => {
                     let context = Context {
                         id: resource.id().map(|x| Cow::Borrowed(x)),
-                        varname: varname.clone(),
+                        varname: varname.map(|s| Cow::Borrowed(s)),
                         seqnr,
                         resource: Some(resource.clone()),
                         ..Context::default()
@@ -726,7 +723,7 @@ pub fn to_tsv<'a, W: std::io::Write>(
                     let context = Context {
                         id: Some(Cow::Owned(id)),
                         seqnr,
-                        varname,
+                        varname: varname.map(|s| Cow::Borrowed(s)),
                         resource: Some(textselection.resource()),
                         textselections: Some(&textselections),
                         text,
