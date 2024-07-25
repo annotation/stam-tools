@@ -32,16 +32,25 @@ pub enum Tag<'a> {
 pub struct Highlight<'a> {
     tag: Tag<'a>,
     style: Option<String>,
-    query: Option<Query<'a>>,
+    source: HighlightSource<'a>,
     label: Option<&'a str>,
     hide: bool, //hide the highlight?
+}
+
+#[derive(Clone, Debug)]
+pub enum HighlightSource<'a> {
+    None,
+    /// New independent query
+    Query(Query<'a>),
+    /// Subquery variable
+    Variable(&'a str),
 }
 
 impl<'a> Default for Highlight<'a> {
     fn default() -> Self {
         Self {
             label: None,
-            query: None,
+            source: HighlightSource::None,
             tag: Tag::None,
             style: None,
             hide: false,
@@ -128,7 +137,7 @@ impl<'a> Highlight<'a> {
         Ok(Highlight {
             tag,
             style,
-            query: Some(query),
+            source: HighlightSource::Query(query),
             label: None,
             hide,
         })
@@ -140,7 +149,12 @@ impl<'a> Highlight<'a> {
     }
 
     pub fn with_query(mut self, query: Query<'a>) -> Self {
-        self.query = Some(query);
+        self.source = HighlightSource::Query(query);
+        self
+    }
+
+    pub fn with_subquery(mut self, var: &'a str) -> Self {
+        self.source = HighlightSource::Variable(var);
         self
     }
 
@@ -566,22 +580,10 @@ fn helper_add_highlights_from_subquery<'a>(
     store: &'a AnnotationStore,
     selectionvar: Option<&'a str>,
 ) {
-    /*if let Some(key) = get_key_from_query(query, 0, store) {
-        //TODO: translate to queries now highlights are no longer supported
-        //highlights.push(Highlight::default().with_tag(Tag::KeyAndValue(key)))
-    } else */
     if let Some(subquery) = query.subquery() {
-        if selectionvar.is_some() {
-            if query.name() != selectionvar {
-                //recurse without adding the highlight until we find the selectionvar
-                //we only add subqueries below the selectionvar
-                helper_add_highlights_from_subquery(highlights, subquery, store, selectionvar);
-                return;
-            }
+        if let Some(varname) = subquery.name() {
+            highlights.push(Highlight::default().with_subquery(varname));
         }
-
-        //normal behaviour
-        highlights.push(Highlight::default().with_query(subquery.clone()));
         helper_add_highlights_from_subquery(highlights, subquery, store, selectionvar);
     }
 }
@@ -591,6 +593,12 @@ pub struct SelectionWithHighlightsIterator<'a> {
     selectionvar: Option<&'a str>,
     highlights: &'a Vec<Highlight<'a>>,
     names: &'a QueryNames,
+
+    //the following are buffers:
+    highlight_results: Vec<HighlightResults>,
+    previous: Option<ResultTextSelection<'a>>,
+    whole_resource: bool,
+    id: Option<&'a str>,
 }
 
 impl<'a> SelectionWithHighlightsIterator<'a> {
@@ -604,8 +612,17 @@ impl<'a> SelectionWithHighlightsIterator<'a> {
             iter,
             selectionvar,
             highlights,
+            highlight_results: Self::new_highlight_results(highlights.len()),
             names,
         }
+    }
+
+    fn new_highlight_results(len: usize) -> Vec<HighlightResults> {
+        let mut highlight_results: Vec<HighlightResults> = Vec::with_capacity(len);
+        for _ in 0..len {
+            highlight_results.push(HighlightResults::new());
+        }
+        highlight_results
     }
 }
 
@@ -614,20 +631,56 @@ type HighlightResults = BTreeMap<TextSelectionHandle, Option<AnnotationHandle>>;
 struct SelectionWithHighlightResult<'a> {
     textselection: ResultTextSelection<'a>,
     highlights: Vec<HighlightResults>,
-
-    /// will hold all annotations that are highlighted
-    annotations: BTreeSet<AnnotationHandle>,
+    whole_resource: bool,
+    id: Option<&'a str>,
 }
 
 impl<'a> Iterator for SelectionWithHighlightsIterator<'a> {
     type Item = Result<SelectionWithHighlightResult<'a>, &'a str>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut highlights_results: Vec<HighlightResults> = Vec::new();
-        for _ in 0..self.highlights.len() {
-            highlights_results.push(HighlightResults::new());
+        if let Some(queryresultitems) = self.iter.next() {
+            match textselection_from_queryresult(&queryresultitems, self.selectionvar, self.names) {
+                Err(msg) => Some(Err(msg)),
+                Ok((resulttextselection, whole_resource, id)) => {
+                    //resulttextselection may match the same item multiple times with other highlights (subqueries)
+                    //if so, we need to aggregate these highlights
+                    if self.previous.is_some() && Some(resulttextselection) != self.previous {
+                        //we start a new resultselection, so return the previous one:
+                        let return_highlight_results = std::mem::replace(
+                            &mut self.highlight_results,
+                            Self::new_highlight_results(self.highlights.len()),
+                        );
+                        Some(Ok(SelectionWithHighlightResult {
+                            textselection: std::mem::replace(
+                                &mut self.previous,
+                                Some(resulttextselection),
+                            )
+                            .unwrap(),
+                            highlights: return_highlight_results,
+                            whole_resource: self.whole_resource,
+                            id: self.id,
+                        }))
+                    } else {
+                        //same text selection result, mark highlights in buffer:
+                    }
+                }
+            }
+        } else if let Some(resulttextselection) = self.previous.take() {
+            //don't forget the last item
+            let return_highlight_results = std::mem::replace(
+                &mut self.highlight_results,
+                Self::new_highlight_results(self.highlights.len()),
+            );
+            Some(Ok(SelectionWithHighlightResult {
+                textselection: resulttextselection,
+                highlights: return_highlight_results,
+                whole_resource: self.whole_resource,
+                id: self.id,
+            }))
+        } else {
+            None
         }
-        if let Some(item) = self.iter.next() {}
     }
 }
 
@@ -663,41 +716,51 @@ impl<'a> Display for HtmlWriter<'a> {
             classnames.push(format!("hi{}", i + 1));
 
             // and output the highlight queries as comments, just for reference
-            if let Some(query) = highlight.query.as_ref() {
-                write!(
+            match &highlight.source {
+                HighlightSource::Query(query) => write!(
                     f,
                     "<!-- Highlight Query #{}:\n\n{}\n\n-->\n",
                     i + 1,
                     query.to_string().unwrap_or_else(|err| format!("{}", err))
-                )?;
+                )?,
+                HighlightSource::Variable(varname) => write!(
+                    f,
+                    "<!-- Highlight Query #{} is subquery {}\n",
+                    i + 1,
+                    varname
+                )?,
+                HighlightSource::None => panic!("Highlightsource can never be none"),
             }
         }
 
         // output the legend
-        if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
+        if self.legend {
             write!(f, "<div id=\"legend\" title=\"Click the items in this legend to toggle visibility of tags (if any)\"><ul>")?;
             for (i, highlight) in self.highlights.iter().enumerate() {
                 if !highlight.hide {
-                    if let Some(hlq) = highlight.query.as_ref() {
-                        write!(
-                            f,
-                            "<li id=\"legend{}\"{}><span class=\"hi{}\"></span> {}</li>",
-                            i + 1,
-                            if self.interactive {
-                                " title=\"Click to toggle visibility of tags (if any)\""
-                            } else {
-                                ""
-                            },
-                            i + 1,
-                            hlq.name().unwrap_or("(untitled)").replace("_", " ")
-                        )?;
-                    }
+                    write!(
+                        f,
+                        "<li id=\"legend{}\"{}><span class=\"hi{}\"></span> {}</li>",
+                        i + 1,
+                        if self.interactive {
+                            " title=\"Click to toggle visibility of tags (if any)\""
+                        } else {
+                            ""
+                        },
+                        i + 1,
+                        match &highlight.source {
+                            HighlightSource::Query(query) =>
+                                query.name().unwrap_or("(untitled)").replace("_", " "),
+                            HighlightSource::Variable(variable) => variable.replace("_", " "),
+                            HighlightSource::None => panic!("Highlightsource can never be none"),
+                        }
+                    )?;
                 }
             }
             write!(f, "</ul></div>")?;
         }
 
-        //run the selection query (the primary query), bail out on error
+        //run the selection query (the primary query), bail out on error (this is lazy, doesn't return yet until we iterate over the results)
         let results = self.store.query(self.selectionquery.clone()).map_err(|e| {
             eprintln!("{}", e);
             std::fmt::Error
@@ -1324,48 +1387,53 @@ fn get_highlights_results<'a>(
     mut highlights_results: Vec<BTreeSet<AnnotationHandle>>,
 ) -> Vec<BTreeSet<AnnotationHandle>> {
     //gather annotations for the textselection under consideration
-    for (j, highlights) in highlights.iter().enumerate() {
-        if let Some(mut hlquery) = highlights.query.clone() {
-            let mut annotations = BTreeSet::new();
-            //make variable from selection query available in the highlight query:
-            let varname = selectionvar.unwrap_or(
-                selectionquery
-                    .name()
-                    .expect("you must name the variables in your SELECT statements"),
-            );
-            if let Some(parentresult) = selectionresult.get_by_name(names, varname).ok() {
-                hlquery.bind_from_result(varname, parentresult);
-            } else {
-                eprintln!(
-                    "WARNING: unable to retrieve variable {} from main query",
-                    varname
+    for (j, highlight) in highlights.iter().enumerate() {
+        match highlight.source {
+            HighlightSource::None => panic!("highlightsource can not be none"),
+            HighlightSource::Query(hlquery) => {
+                let mut hlquery = hlquery.clone();
+                let mut annotations = BTreeSet::new();
+                //make variable from selection query available in the highlight query:
+                let varname = selectionvar.unwrap_or(
+                    selectionquery
+                        .name()
+                        .expect("you must name the variables in your SELECT statements"),
                 );
-            }
-            //process result of highlight query and extra annotations
-            for results in store.query(hlquery).expect("query failed") {
-                if let Some(result) = results.iter().last() {
-                    match result {
-                        &QueryResultItem::Annotation(ref annotation) => {
-                            annotations.insert(annotation.handle());
-                        }
-                        &QueryResultItem::TextSelection(ref ts) => {
-                            annotations.extend(ts.annotations().map(|x| x.handle()));
-                        }
-                        &QueryResultItem::AnnotationData(ref data) => {
-                            annotations.extend(data.annotations().map(|x| x.handle()));
-                        }
-                        _ => {
-                            eprintln!(
-                                "WARNING: query for highlight {} has invalid resulttype",
-                                j + 1
-                            )
+                if let Some(parentresult) = selectionresult.get_by_name(names, varname).ok() {
+                    hlquery.bind_from_result(varname, parentresult);
+                } else {
+                    eprintln!(
+                        "WARNING: unable to retrieve variable {} from main query",
+                        varname
+                    );
+                }
+                //process result of highlight query and extra annotations
+                for results in store.query(hlquery).expect("query failed") {
+                    if let Some(result) = results.iter().last() {
+                        match result {
+                            &QueryResultItem::Annotation(ref annotation) => {
+                                annotations.insert(annotation.handle());
+                            }
+                            &QueryResultItem::TextSelection(ref ts) => {
+                                annotations.extend(ts.annotations().map(|x| x.handle()));
+                            }
+                            &QueryResultItem::AnnotationData(ref data) => {
+                                annotations.extend(data.annotations().map(|x| x.handle()));
+                            }
+                            _ => {
+                                eprintln!(
+                                    "WARNING: query for highlight {} has invalid resulttype",
+                                    j + 1
+                                )
+                            }
                         }
                     }
                 }
+                highlights_results[j] = FromHandles::new(annotations.iter().copied(), store)
+                    .map(|x| x.handle())
+                    .collect();
+                }
             }
-            highlights_results[j] = FromHandles::new(annotations.iter().copied(), store)
-                .map(|x| x.handle())
-                .collect();
         }
     }
     highlights_results
