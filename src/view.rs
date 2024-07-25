@@ -687,7 +687,7 @@ impl<'a> Display for HtmlWriter<'a> {
         }
 
         // output the legend
-        if self.legend {
+        if self.legend && !self.highlights.is_empty() {
             write!(f, "<div id=\"legend\" title=\"Click the items in this legend to toggle visibility of tags (if any)\"><ul>")?;
             for (i, highlight) in self.highlights.iter().enumerate() {
                 if !highlight.hide {
@@ -944,6 +944,7 @@ impl<'a> Display for HtmlWriter<'a> {
                                         if annotation
                                             .textselections()
                                             .any(|ts| ts.begin() == ts.end())
+                                        //MAYBE TODO: potentially expensive on large MultiSelectors!
                                         {
                                             write!(
                                                 f,
@@ -1006,11 +1007,9 @@ impl<'a> Display for HtmlWriter<'a> {
 /// Holds all information necessary to visualize annotations as text with ANSI escape codes, for terminal output
 pub struct AnsiWriter<'a> {
     store: &'a AnnotationStore,
-    selectionquery: Query<'a>,
+    query: Query<'a>,
     selectionvar: Option<&'a str>,
     highlights: Vec<Highlight<'a>>,
-    /// Prune the data so only the highlights are expressed, nothing else
-    prune: bool,
     /// Output legend?
     legend: bool,
     /// Output titles (identifiers) for the primary selection?
@@ -1020,16 +1019,19 @@ pub struct AnsiWriter<'a> {
 impl<'a> AnsiWriter<'a> {
     /// Instantiates an AnsiWriter, uses a builder pattern via the ``with*()`` methods
     /// to assign data.
-    pub fn new(store: &'a AnnotationStore, selectionquery: Query<'a>) -> Self {
-        Self {
+    pub fn new(
+        store: &'a AnnotationStore,
+        query: Query<'a>,
+        selectionvar: Option<&'a str>,
+    ) -> Result<Self, String> {
+        Ok(Self {
             store,
-            selectionquery,
             selectionvar: None,
-            highlights: Vec::new(),
-            prune: false,
+            highlights: highlights_from_query(&query, store, selectionvar)?,
+            query,
             legend: true,
             titles: true,
-        }
+        })
     }
 
     pub fn with_highlight(mut self, highlight: Highlight<'a>) -> Self {
@@ -1042,11 +1044,6 @@ impl<'a> AnsiWriter<'a> {
     }
     pub fn with_titles(mut self, value: bool) -> Self {
         self.titles = value;
-        self
-    }
-
-    pub fn with_prune(mut self, value: bool) -> Self {
-        self.prune = value;
         self
     }
 
@@ -1105,19 +1102,14 @@ impl<'a> AnsiWriter<'a> {
 
     /// Write ANSI output
     pub fn write<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
-        /* TODO: refactor
-        let mut highlights_results: Vec<BTreeSet<AnnotationHandle>> = Vec::new();
-        for _ in 0..self.highlights.len() {
-            highlights_results.push(BTreeSet::new());
-        }
-        if self.legend && self.highlights.iter().any(|hl| hl.query.is_some()) {
+        if self.legend && !self.highlights.is_empty() {
             writeln!(writer, "Legend:")?;
             for (i, highlight) in self.highlights.iter().enumerate() {
-                if let Some(hlq) = highlight.query.as_ref() {
+                if !highlight.hide {
                     let s = format!(
                         "       {}. {}\n",
                         i + 1,
-                        hlq.name().unwrap_or("(untitled)").replace("_", " ")
+                        highlight.varname.replace("_", " ")
                     );
                     self.writeansicol_bold(writer, i + 1, s.as_str())?;
                 }
@@ -1125,113 +1117,74 @@ impl<'a> AnsiWriter<'a> {
             writeln!(writer)?;
         }
 
-        let results = self
-            .store
-            .query(self.selectionquery.clone())
-            .expect("query failed");
+        let results = self.store.query(self.query.clone()).map_err(|e| {
+            eprintln!("{}", e);
+            std::io::Error::new(std::io::ErrorKind::Other, "STAM query error")
+        })?;
 
-        //buffers
-        let mut span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
-        let mut new_span_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
-        let mut close_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
-        let mut zerowidth_annotations: BTreeSet<AnnotationHandle> = BTreeSet::new();
-        let mut endnewlines = String::new();
+        let mut close_annotations: Vec<Vec<ResultItem<Annotation>>> = Vec::new();
+        for _ in 0..self.highlights.len() {
+            close_annotations.push(Vec::new());
+        }
 
-        let names = results.names();
-        let mut prevresult = None;
-        for (resultnr, selectionresult) in results.enumerate() {
-            match textselection_from_queryresult(&selectionresult, self.selectionvar, &names) {
+        let mut pendingnewlines = String::new();
+
+        let mut active_highlights: BTreeSet<usize> = BTreeSet::new();
+        let mut close_highlights: BTreeSet<usize> = BTreeSet::new();
+
+        for (resultnr, result) in
+            SelectionWithHighlightsIterator::new(results, self.selectionvar, &self.highlights)
+                .enumerate()
+        {
+            // obtain the text selection from the query result
+            match result {
                 Err(msg) => return Ok(self.output_error(msg)),
-                Ok((resulttextselection, _, id)) => {
-                    if prevresult.as_ref() == Some(&resulttextselection) {
-                        //prevent duplicates (especially relevant when --use is set)
-                        continue;
-                    }
-                    prevresult = Some(resulttextselection.clone());
+                Ok(result) => {
+                    active_highlights.clear();
+                    let resource = result.textselection.resource();
+
                     if self.titles {
-                        if let Some(id) = id {
+                        if let Some(id) = result.id {
                             let s = format!("----------------------------------- {}. {} -----------------------------------\n", resultnr + 1, id,);
                             self.writeheader(writer, s.as_str())?;
                         }
                     }
-                    highlights_results = get_highlights_results(
-                        &self.selectionquery,
-                        &selectionresult,
-                        self.selectionvar,
-                        self.store,
-                        &self.highlights,
-                        &names,
-                        highlights_results,
-                    );
-                    let resource = resulttextselection.resource();
-                    span_annotations.clear();
-                    for segment in resulttextselection.segmentation() {
-                        new_span_annotations.clear();
+
+                    for segment in result.textselection.segmentation() {
+                        // Gather position info for the begin point of our segment
                         if let Some(beginpositionitem) = resource.as_ref().position(segment.begin())
                         {
-                            //find and add annotations that begin here
+                            // what highlights start at this segment?
                             for (_, textselectionhandle) in beginpositionitem.iter_begin2end() {
-                                let textselection = resource
+                                let textselection: &TextSelection = resource
                                     .as_ref()
                                     .get(*textselectionhandle)
-                                    .unwrap()
-                                    .as_resultitem(resource.as_ref(), self.store);
-                                new_span_annotations.extend(
-                                    textselection
-                                        .annotations()
-                                        .inspect(|a| {
-                                            // are there any zero-width annotations at the end of the segment?
-                                            // collect them they will get special treatment later
-                                            if let Some(ts) = a.textselections().next() {
-                                                if ts.begin() == ts.end()
-                                                    && ts.end() == textselection.end()
-                                                {
-                                                    zerowidth_annotations.insert(a.handle());
-                                                }
-                                            }
-                                        })
-                                        .map(|a| a.handle()),
-                                );
-                            }
-                        }
-
-                        if self.prune {
-                            //prunes everything that is not highlighted
-                            span_annotations.retain(|a| {
-                                for highlights_annotations in highlights_results.iter() {
-                                    if highlights_annotations.contains(a) {
-                                        return true;
+                                    .expect("text selection must exist");
+                                for (j, highlighted_selections) in
+                                    result.highlights.iter().enumerate()
+                                {
+                                    if highlighted_selections.contains_key(textselection) {
+                                        active_highlights.insert(j);
                                     }
                                 }
-                                false
-                            })
+                            }
                         }
 
-                        if !new_span_annotations.is_empty()
-                            && segment.end() <= resulttextselection.end()
+                        if !active_highlights.is_empty()
+                            && segment.end() <= result.textselection.end()
                         {
                             //output the opening tags
-                            for (j, highlights_annotations) in highlights_results.iter().enumerate()
-                            {
-                                if new_span_annotations
-                                    .intersection(&highlights_annotations)
-                                    .filter(|a| !zerowidth_annotations.contains(a))
-                                    .next()
-                                    .is_some()
-                                {
-                                    self.writeansicol_bold(writer, j + 1, "[")?;
-                                }
+                            for j in active_highlights.iter().rev() {
+                                self.writeansicol_bold(writer, j + 1, "[")?;
                             }
-                            //the text is outputted alongside the closing tag
                         }
-                        span_annotations.extend(new_span_annotations.iter());
 
                         //output text
-                        endnewlines.clear();
+                        pendingnewlines.clear();
                         if segment.text().ends_with("\n") {
                             for c in segment.text().chars().rev() {
                                 if c == '\n' {
-                                    endnewlines.push(c);
+                                    pendingnewlines.push(c);
                                 } else {
                                     break;
                                 }
@@ -1241,76 +1194,88 @@ impl<'a> AnsiWriter<'a> {
                             write!(writer, "{}", segment.text())?;
                         }
 
+                        // Gather position info for the end point of our segment
                         if let Some(endpositionitem) = resource.as_ref().position(segment.end()) {
+                            // what highlights stop at this segment?
+                            close_highlights.clear();
+                            for annotations in close_annotations.iter_mut() {
+                                annotations.clear();
+                            }
                             for (_, textselectionhandle) in endpositionitem.iter_end2begin() {
-                                let textselection = resource
+                                let textselection: &TextSelection = resource
                                     .as_ref()
                                     .get(*textselectionhandle)
-                                    .unwrap()
-                                    .as_resultitem(resource.as_ref(), self.store);
-                                close_annotations.clear();
-                                close_annotations.extend(zerowidth_annotations.iter()); //add zero-width annotations
-                                close_annotations
-                                    .extend(textselection.annotations().map(|a| a.handle()));
-                                span_annotations.retain(|a| {
-                                    if close_annotations.contains(a) {
-                                        //close tags and add labels
-                                        for (j, (highlights, highlights_results)) in self
-                                            .highlights
-                                            .iter()
-                                            .zip(highlights_results.iter())
-                                            .enumerate()
-                                        {
-                                            if highlights_results.contains(a) {
-                                                if let Some(annotation) = self.store.annotation(*a)
-                                                {
-                                                    //closing highlight after adding tag if needed
-                                                    let tag = highlights.get_tag(&annotation);
-                                                    if !tag.is_empty() {
-                                                        if zerowidth_annotations.contains(a) {
-                                                            self.writeansicol_bold(
-                                                                writer,
-                                                                j + 1,
-                                                                "[",
-                                                            )
-                                                            .unwrap();
-                                                            self.writeansicol(
-                                                                writer,
-                                                                j + 1,
-                                                                format!("{}", &tag).as_str(),
-                                                            )
-                                                            .unwrap();
-                                                        } else {
-                                                            self.writeansicol(
-                                                                writer,
-                                                                j + 1,
-                                                                format!("|{}", &tag).as_str(),
-                                                            )
-                                                            .unwrap();
-                                                        }
-                                                    }
-                                                    self.writeansicol_bold(writer, j + 1, "]")
-                                                        .unwrap();
-                                                }
+                                    .expect("text selection must exist");
+                                for (j, highlighted_selections) in
+                                    result.highlights.iter().enumerate()
+                                {
+                                    if let Some(a_handle) =
+                                        highlighted_selections.get(textselection)
+                                    {
+                                        close_highlights.insert(j);
+                                        // Identify which highlighted annotations are being closed
+                                        if let Some(a_handle) = a_handle {
+                                            let annotation = self
+                                                .store
+                                                .annotation(*a_handle)
+                                                .expect("annotation must exist");
+                                            //confirm that the annotation really closes here (or at least one of its text selections does if it's non-contingent):
+                                            //MAYBE TODO: this may not be performant enough for large MultiSelectors!
+                                            if annotation
+                                                .textselections()
+                                                .any(|ts| ts.end() == segment.end())
+                                            {
+                                                close_annotations[j].push(annotation);
                                             }
                                         }
-                                        false
-                                    } else {
-                                        true
                                     }
-                                });
+                                }
+                            }
+
+                            // output tags for annotations that close here (if requested)
+                            for (j, annotations) in close_annotations.iter().enumerate() {
+                                let highlight = &self.highlights[j];
+                                for annotation in annotations {
+                                    //closing highlight after adding tag if needed
+                                    let tag = highlight.get_tag(&annotation);
+                                    if !tag.is_empty() {
+                                        if annotation
+                                            .textselections()
+                                            .any(|ts| ts.begin() == ts.end())
+                                        {
+                                            //MAYBE TODO: potentially expensive on large MultiSelectors!
+                                            self.writeansicol_bold(writer, j + 1, "[").unwrap();
+                                            self.writeansicol(
+                                                writer,
+                                                j + 1,
+                                                format!("{}", &tag).as_str(),
+                                            )
+                                            .unwrap();
+                                        } else {
+                                            self.writeansicol(
+                                                writer,
+                                                j + 1,
+                                                format!("|{}", &tag).as_str(),
+                                            )
+                                            .unwrap();
+                                        }
+                                    }
+                                    self.writeansicol_bold(writer, j + 1, "]").unwrap();
+                                }
                             }
                         }
 
-                        if !endnewlines.is_empty() {
-                            write!(writer, "{}", endnewlines)?;
+                        if !pendingnewlines.is_empty() {
+                            write!(writer, "{}", pendingnewlines)?;
                         }
+
+                        //process the closing highlights
+                        active_highlights.retain(|hl| !close_highlights.contains(hl));
                     }
                 }
             }
             writeln!(writer)?;
         }
-        */
         Ok(())
     }
 }

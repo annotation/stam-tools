@@ -1385,16 +1385,12 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 write!(writer, "{}", htmlwriter).map_err(|e| format!("Failed to write HTML output: {}", e))?;
             }
             Some("ansi") => {
-                let mut ansiwriter = AnsiWriter::new(&store, query);
+                let mut ansiwriter = AnsiWriter::new(&store, query, args.value_of("use"))?;
                 if args.is_present("no-legend") {
                     ansiwriter = ansiwriter.with_legend(false)
                 }
                 if args.is_present("no-titles") {
                     ansiwriter = ansiwriter.with_titles(false)
-                }
-                if let Some(var) = args.value_of("use") {
-                    eprintln!("[info] Selecting variable ?{}...", var);
-                    ansiwriter = ansiwriter.with_selectionvar(var);
                 }
                 ansiwriter.write(writer).map_err(|e| format!("Failed to write ANSI output: {}", e))?;
             }
