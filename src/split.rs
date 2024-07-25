@@ -19,9 +19,8 @@ pub fn split<'a>(
     for (i, query) in queries.into_iter().enumerate() {
         eprintln!("Running query #{}...", i + 1);
         let iter = store.query(query).expect("query failed");
-        let names = iter.names();
         for resultrow in iter {
-            if let Ok(result) = resultrow.get_by_name_or_last(&names, Some("split")) {
+            if let Ok(result) = resultrow.get_by_name_or_last(Some("split")) {
                 match result {
                     QueryResultItem::None => {}
                     QueryResultItem::Annotation(annotation) => {

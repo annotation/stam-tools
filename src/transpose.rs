@@ -22,7 +22,6 @@ pub fn transpose<'store>(
     }
     for (transposition_query, query) in transposition_queries.into_iter().zip(queries.into_iter()) {
         let iter = store.query(transposition_query)?;
-        let names = iter.names();
         let mut transposition: Option<ResultItem<Annotation>> = None;
         let transpositiondata = store
             .find_data(
@@ -38,7 +37,7 @@ pub fn transpose<'store>(
             })?;
         for resultrow in iter {
             if let Ok(QueryResultItem::Annotation(annotation)) =
-                resultrow.get_by_name_or_last(&names, use_transposition_var)
+                resultrow.get_by_name_or_last(use_transposition_var)
             {
                 if !annotation.has_data(&transpositiondata) {
                     return Err(StamError::OtherError(
@@ -51,10 +50,9 @@ pub fn transpose<'store>(
         }
         if let Some(transposition) = transposition {
             let iter = store.query(query)?;
-            let names2 = iter.names();
             for resultrow in iter {
                 if let Ok(QueryResultItem::Annotation(annotation)) =
-                    resultrow.get_by_name_or_last(&names2, use_var)
+                    resultrow.get_by_name_or_last(use_var)
                 {
                     let mut config = config.clone();
                     if let Some(id) = annotation.id() {
