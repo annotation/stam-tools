@@ -818,18 +818,27 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
         )
         .subcommand(
             SubCommand::with_name("view")
-                .about("Output the text and annotations of one or more resource(s) in HTML, suitable for visualisation in a browser. Requires --resource")
+                .about("Output the text and annotations of one or more resource(s) in HTML, suitable for visualisation in a browser. Requires --query or a simpler shortcut like --resource")
                 .args(&common_arguments())
                 .args(&store_arguments(true, false, batchmode))
                 .args(&config_arguments())
-                .args(&query_arguments("One or more queries in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. You can specify multiple queries here by repeating the parameter, the first query is the primary selection query and determines what text is shown. Any subsequent queries are highlight queries and determine what is highlighted. You can prepend the following *attributes* to the query (before the SELECT statement), to determine how things are visualised:
+                .args(&query_arguments("A query in STAMQL that defines what to visualise. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. The query can have subqueries which will be marked as highlights. Alternative, you can specify no subqueries and specify multiple --query parameters on the command line. They will be automatically converted to subqueries of the first query. The first/main query is the primary selection and determines what text is shown. Highlight queries (subqueries) determine what parts inside this text are highlighted.
 
-* @KEYTAG - Outputs a tag with the key, pertaining to the first DATA/KEY constraint in the query
-* @KEYVALUETAG - Outputs a tag with the key and the value, pertaining to the first DATA/KEY constraint in the query
-* @VALUETAG - Outputs a tag with the value only, pertaining to the first DATA/KEY constraint in the query
+You can prepend the following *attributes* to `DATA` constraints in the query (in a `WHERE` clause before `DATA`), to determine how things are visualised:
+
+* @KEYTAG - Outputs a tag with the key
+* @KEYVALUETAG - Outputs a tag with the key and the value
+* @VALUETAG - Outputs a tag with the value only.
+
+You can prepend the following *attributes* to a query/subquery as a whole (before the SELECT statement), to determine how things are visualised:
+
+* @HIDE - Do not show this query in the results (no underline)
+* @STYLE=class - Associated a CSS class (replace class with any CSS class name) with these results. For HTML visualisation only.
 * @IDTAG - Outputs a tag with the public identifier of the ANNOTATION that has been selected
 
-If no attribute is provided, there will be no tags shown for that query, only a highlight underline. In the highlight queries, the variable from the main selection query is available and you *should* use it in a constraint, otherwise performance will be sub-optimal.
+You can also put `@KEYTAG`, `@KEYVALUETAG` and `@VALUETAG` before the whole `SELECT` query, in that case it will automatically apply to the first `DATA` constraint.
+
+If no attributes are provided, there will be no tags shown for that query, only a highlight underline. In the highlight queries, the variable from the main selection query is available and you *should* use it in a constraint, otherwise performance will be sub-optimal.
 " ))
                 .arg(
                     Arg::with_name("format")
@@ -1344,18 +1353,35 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
     } else if rootargs.subcommand_matches("view").is_some() {
         let queries: Vec<&str> = args.values_of("query").unwrap_or_default().collect();
         let mut queries_iter = queries.into_iter();
-        let querystring = queries_iter.next().unwrap_or("SELECT RESOURCE ?res;");
-        let (query, _) = stam::Query::parse(querystring).map_err(|err| {
+        let mut append_querystring = String::new();
+        let mut querystring = queries_iter.next().unwrap_or("SELECT RESOURCE ?res;");
+        if querystring.trim().ends_with("}") {
+            if queries_iter.next().is_some() {
+                return Err(format!("You can't supply multiple --query parameters on the command line if the first query already contains subqueries (use either one or the other)"))
+            }
+        } else {
+            for (i, subquerystring) in queries_iter.enumerate(){
+                if i == 0 {
+                    append_querystring += " { ";
+                } else {
+                    append_querystring += " | ";
+                }
+                append_querystring += subquerystring;
+            }
+            if !append_querystring.is_empty() {
+                append_querystring.insert_str(0, querystring);
+                append_querystring += " }";
+                querystring = append_querystring.as_str();
+            }
+        }
+
+        let (mut query, _) = stam::Query::parse(querystring).map_err(|err| {
             format!("Query syntax error in first query: {}", err)
         })?;
 
         match args.value_of("format") {
             Some("html") => {
-                let mut htmlwriter = HtmlWriter::new(&store, query).with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_annotation_ids(args.is_present("verbose"));
-                if let Some(var) = args.value_of("use") {
-                    eprintln!("[info] Selecting variable ?{}...", var);
-                    htmlwriter = htmlwriter.with_selectionvar(var);
-                }
+                let htmlwriter = HtmlWriter::new(&store, query, args.value_of("use"))?.with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_annotation_ids(args.is_present("verbose"));
                 write!(writer, "{}", htmlwriter).map_err(|e| format!("Failed to write HTML output: {}", e))?;
             }
             Some("ansi") => {

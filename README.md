@@ -312,14 +312,19 @@ annotations you want to visualise are requested via queries in
 [STAMQL](https://github.com/annotation/stam/tree/master/extensions/stam-query),
 using the `--query` parameter.
 
-The `--query` parameter can be specified multiple times. The first query is
-always the *selection query*, it determines what the main selection is and can
+The first query you have may contains *subqueries* which act as *highlight queries*.
+The main query is always the *selection query*, it determines what the main selection is and can
 be anything you can query that has text (i.e. resources, annotations, text
 selections).
 
 Any subsequent queries are *highlight queries*, they determine what parts of
 the selections produced by the selection query you want to highlight.
-Highlighting is done by drawing a line underneath the text and optionally by a *tag* that shows extra information.
+Highlighting is done by drawing a line underneath the text and optionally by a
+*tag* that shows extra information.
+
+Instead of specifying subqueries, you may use the `--query` parameter multiple
+times to define subqueries via the command line. Always make sure these
+reference a variable defines in the main query.
 
 ![STAM view example](https://github.com/annotation/stam-tools/raw/master/stamvis1.png)
 
@@ -327,21 +332,18 @@ Example with tags:
 
 ![STAM view example with tags](https://github.com/annotation/stam-tools/raw/master/stamvis2.png)
 
+Tags can be enabled by prepending the query/subquery (i.e. before `SELECT`) with one of the following *attributes*:
 
-Tags can be enabled by prepending the query with one of the following *attributes*:
-
-* `@KEYTAG` - Outputs a tag with the key, pertaining to the first DATA constraint in the query
-* `@KEYVALUETAG` - Outputs a tag with the key and the value, pertaining to the first DATA constraint in the query
-* `@VALUETAG` - Outputs a tag with the value only, pertaining to the first DATA constraint in the query
+* `@KEYTAG` - Outputs a tag with the key
+* `@KEYVALUETAG` - Outputs a tag with the key and the value
+* `@VALUETAG` - Outputs a tag with the value only
 * `@IDTAG` - Outputs a tag with the public identifier of the ANNOTATION that has been selected
 
-If you don't want to match the first DATA constraint, but the n-th, then specify a number to refer to the DATA constraint (1-indexed) in the order specifies. Note that only DATA constraints are counted:
+The first three tags use to the first `DATA` constraint found, if put before
+`SELECT`. Alternatively, they can also be directly put before (any) `DATA`
+constraint to explicitly select one.
 
-* `@KEYTAG=`*n* - Outputs a tag with the key, pertaining to the *n*-th DATA constraint in the query
-* `@KEYVALUETAG=`*n* - Outputs a tag with the key and the value, pertaining to the *n*-th DATA constraint in the query
-* `@VALUETAG=`*n* - Outputs a tag with the value only, pertaining to the *n*-th DATA constraint in the query
-
-Attributes may also be provided for styling HTML output:
+Attributes may also be provided for styling HTML output, these go before the query/subquery as a whole:
 
 * `@STYLE=`*class* - Will associate the mentioned CSS class (it's up to you to associate a proper stylesheet). The default one predefines only a few simple classes: `italic`, `bold`, `red`,`green`,`blue`, `super`.
 * `@HIDE` - Do not add the highlight underline and do not add an entry to the legend. This may be useful if you only want to apply `@STYLE`.

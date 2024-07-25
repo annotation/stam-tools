@@ -358,9 +358,9 @@ impl<'a> HtmlWriter<'a> {
         query: Query<'a>,
         selectionvar: Option<&'a str>,
     ) -> Result<Self, String> {
-        Self {
+        Ok(Self {
             store,
-            highlights: highlights_from_query(&query, selectionvar)?,
+            highlights: highlights_from_query(&query, store, selectionvar)?,
             query,
             selectionvar,
             output_annotation_ids: false,
@@ -374,7 +374,7 @@ impl<'a> HtmlWriter<'a> {
             titles: true,
             interactive: true,
             autocollapse: true,
-        }
+        })
     }
 
     pub fn with_legend(mut self, value: bool) -> Self {
@@ -457,7 +457,7 @@ fn highlights_from_query<'a>(
     selectionvar: Option<&'a str>,
 ) -> Result<Vec<Highlight<'a>>, String> {
     let mut highlights = Vec::new();
-    helper_highlights_from_query(&mut highlights, query, store, selectionvar);
+    helper_highlights_from_query(&mut highlights, query, store, selectionvar)?;
     Ok(highlights)
 }
 
@@ -480,6 +480,19 @@ fn helper_highlights_from_query<'a>(
                     "@HIDE" => highlight.hide = true,
                     "@IDTAG" | "@ID" => highlight.tag = Tag::Id,
                     "@STYLE" | "@CLASS" => highlight.style = Some(attribvalue.to_string()),
+                    "@KEYTAG" | "@VALUETAG" | "@KEYVALUETAG" => {
+                        //old-style tags ahead of the whole query (backward compatibility)
+                        for constraint in subquery.constraints() {
+                            if let Some(key) = get_key_from_constraint(&constraint, store) {
+                                match attribname {
+                                    "@KEYTAG" => highlight.tag = Tag::Key(key),
+                                    "@VALUETAG" => highlight.tag = Tag::Value(key),
+                                    "@KEYVALUETAG" => highlight.tag = Tag::Value(key),
+                                    _ => unreachable!("invalid tag"),
+                                }
+                            }
+                        }
+                    }
                     other => {
                         return Err(format!("Query syntax error - Unknown attribute: {}", other));
                     }
@@ -521,12 +534,12 @@ fn helper_highlights_from_query<'a>(
             }
             highlights.push(highlight);
         }
-        helper_highlights_from_query(highlights, subquery, store, selectionvar);
+        helper_highlights_from_query(highlights, subquery, store, selectionvar)?;
     }
     Ok(())
 }
 
-pub struct SelectionWithHighlightsIterator<'a> {
+pub(crate) struct SelectionWithHighlightsIterator<'a> {
     iter: QueryIter<'a>,
     selectionvar: Option<&'a str>,
     highlights: &'a Vec<Highlight<'a>>,
@@ -566,7 +579,8 @@ impl<'a> SelectionWithHighlightsIterator<'a> {
 
 type HighlightResults = BTreeMap<TextSelection, Option<AnnotationHandle>>;
 
-struct SelectionWithHighlightResult<'a> {
+#[derive(Debug, Clone)]
+pub(crate) struct SelectionWithHighlightResult<'a> {
     textselection: ResultTextSelection<'a>,
     highlights: Vec<HighlightResults>,
     whole_resource: bool,
@@ -604,6 +618,7 @@ impl<'a> Iterator for SelectionWithHighlightsIterator<'a> {
                             }));
                         } else {
                             //buffer metadata
+                            self.previous = Some(resulttextselection);
                             self.whole_resource = whole_resource;
                             self.id = id;
                             //same text selection result, mark highlights in buffer:
@@ -663,10 +678,12 @@ impl<'a> Display for HtmlWriter<'a> {
         // pre-assign class names and layer opening tags so we can borrow later
         let mut classnames: Vec<String> = Vec::with_capacity(self.highlights.len());
         let mut layertags: Vec<String> = Vec::with_capacity(self.highlights.len());
+        let mut close_annotations: Vec<Vec<ResultItem<Annotation>>> = Vec::new();
 
         for (i, _highlight) in self.highlights.iter().enumerate() {
             layertags.push(format!("<span class=\"l{}\">", i + 1));
             classnames.push(format!("hi{}", i + 1));
+            close_annotations.push(Vec::new());
         }
 
         // output the legend
@@ -706,13 +723,12 @@ impl<'a> Display for HtmlWriter<'a> {
         let mut pendingnewlines: String = String::new();
         let mut classes: Vec<&str> = vec![];
 
-        let mut close_annotations: Vec<Vec<ResultItem<Annotation>>> = Vec::new();
-
         let mut active_highlights: BTreeSet<usize> = BTreeSet::new();
         let mut close_highlights: BTreeSet<usize> = BTreeSet::new();
 
-        for result in
+        for (resultnr, result) in
             SelectionWithHighlightsIterator::new(results, self.selectionvar, &self.highlights)
+                .enumerate()
         {
             // obtain the text selection from the query result
             match result {
@@ -720,6 +736,28 @@ impl<'a> Display for HtmlWriter<'a> {
                 Ok(result) => {
                     active_highlights.clear();
                     let resource = result.textselection.resource();
+
+                    // write title and per-result container span (either for a full resource or any textselection)
+                    if self.titles {
+                        if let Some(id) = result.id {
+                            write!(f, "<h2>{}. <span>{}</span></h2>\n", resultnr + 1, id,)?;
+                        }
+                    }
+                    if result.whole_resource {
+                        write!(
+                            f,
+                            "<div class=\"resource\" data-resource=\"{}\">\n",
+                            resource.id().unwrap_or("undefined"),
+                        )?;
+                    } else {
+                        write!(
+                            f,
+                            "<div class=\"textselection\" data-resource=\"{}\" data-begin=\"{}\" data-end=\"{}\">\n",
+                            resource.id().unwrap_or("undefined"),
+                            result.textselection.begin(),
+                            result.textselection.end(),
+                        )?;
+                    }
 
                     for segment in result.textselection.segmentation() {
                         // Gather position info for the begin point of our segment
@@ -741,7 +779,7 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
                         }
 
-                        if active_highlights.is_empty()
+                        if !active_highlights.is_empty()
                             && segment.end() <= result.textselection.end()
                         {
                             // output the opening <span> layer tags for the current segment
@@ -954,9 +992,6 @@ impl<'a> Display for HtmlWriter<'a> {
                         }
                     }
                     writeln!(f, "\n</div>")?;
-                    if self.output_data {
-                        //MAYBE TODO: implement later?
-                    }
                 }
             }
         }
@@ -1024,15 +1059,6 @@ impl<'a> AnsiWriter<'a> {
         eprintln!("ERROR: {}", msg);
     }
 
-    pub fn add_highlights_from_subquery(&mut self) {
-        helper_highlights_from_query(
-            &mut self.highlights,
-            &self.selectionquery,
-            self.store,
-            self.selectionvar,
-        );
-    }
-
     fn writeansicol<W: std::io::Write>(
         &self,
         writer: &mut W,
@@ -1077,8 +1103,9 @@ impl<'a> AnsiWriter<'a> {
         writer.flush()
     }
 
-    /// Write output
+    /// Write ANSI output
     pub fn write<W: std::io::Write>(&self, writer: &mut W) -> Result<(), std::io::Error> {
+        /* TODO: refactor
         let mut highlights_results: Vec<BTreeSet<AnnotationHandle>> = Vec::new();
         for _ in 0..self.highlights.len() {
             highlights_results.push(BTreeSet::new());
@@ -1283,6 +1310,7 @@ impl<'a> AnsiWriter<'a> {
             }
             writeln!(writer)?;
         }
+        */
         Ok(())
     }
 }
