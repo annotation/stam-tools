@@ -81,9 +81,8 @@ pub fn align<'store>(
     let mut buildtranspositions = Vec::new();
     {
         let iter = store.query(query)?;
-        let names = iter.names();
         for resultrow in iter {
-            if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
+            if let Ok(result) = resultrow.get_by_name_or_last(use_var) {
                 for (i, query2raw) in queries2.iter().enumerate() {
                     //MAYBE TODO: this could be parallellized (but memory may be a problem then)
                     eprintln!("Aligning #{}/{}...", i + 1, queries2.len());
@@ -101,9 +100,8 @@ pub fn align<'store>(
                     };
 
                     let iter2 = store.query(query2)?;
-                    let names2 = iter2.names();
                     for resultrow2 in iter2 {
-                        if let Ok(result) = resultrow2.get_by_name_or_last(&names2, use_var2) {
+                        if let Ok(result) = resultrow2.get_by_name_or_last(use_var2) {
                             let text2 = match result {
                             QueryResultItem::TextResource(resource) => resource.clone().to_textselection(),
                             QueryResultItem::Annotation(annotation) => {
@@ -412,9 +410,8 @@ pub fn alignments_tsv_out<'a>(
     use_var: Option<&str>,
 ) -> Result<(), StamError> {
     let iter = store.query(query)?;
-    let names = iter.names();
     for resultrow in iter {
-        if let Ok(result) = resultrow.get_by_name_or_last(&names, use_var) {
+        if let Ok(result) = resultrow.get_by_name_or_last(use_var) {
             if let QueryResultItem::Annotation(annotation) = result {
                 print_transposition(annotation);
             } else {

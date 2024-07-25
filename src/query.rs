@@ -53,8 +53,6 @@ pub fn to_json<'a, W: std::io::Write>(
     query: Query<'a>,
 ) -> Result<(), StamError> {
     let iter = store.query(query)?;
-    let names = iter.names();
-    let names_ordered = names.enumerate();
     write!(writer, "[")?;
     for (i, resultrow) in iter.enumerate() {
         if i > 0 {
@@ -62,8 +60,7 @@ pub fn to_json<'a, W: std::io::Write>(
         } else {
             writeln!(writer, "{{\n")?;
         }
-        for (j, result) in resultrow.iter().enumerate() {
-            let varname = names_ordered.get(j).map(|x| x.1);
+        for (j, (result, varname)) in resultrow.iter().zip(resultrow.names()).enumerate() {
             let json = match result {
                 QueryResultItem::None => "null".to_string(),
                 QueryResultItem::Annotation(annotation) => {
@@ -108,9 +105,8 @@ pub fn to_w3anno<'a, W: std::io::Write>(
     config: WebAnnoConfig,
 ) {
     let iter = store.query(query).expect("query failed");
-    let names = iter.names();
     for resultrow in iter {
-        if let Ok(result) = resultrow.get_by_name(&names, use_var) {
+        if let Ok(result) = resultrow.get_by_name(use_var) {
             match result {
                 QueryResultItem::None => {}
                 QueryResultItem::Annotation(annotation) => {
