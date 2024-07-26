@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::exit;
 use std::collections::VecDeque;
-use std::io::{self, BufRead,Write};
+use std::io::{self, BufRead, Read, Write};
 use std::borrow::Cow;
 
 use stamtools::*;
@@ -554,6 +554,12 @@ fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
             .short('q')
             .help(help)
             .action(ArgAction::Append)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("query-file")
+            .long("query-file")
+            .help("Read a query from file, use - for stdin.")
             .takes_value(true),
     );
     args.push(
@@ -1353,25 +1359,38 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
     } else if rootargs.subcommand_matches("view").is_some() {
         let queries: Vec<&str> = args.values_of("query").unwrap_or_default().collect();
         let mut queries_iter = queries.into_iter();
-        let mut append_querystring = String::new();
+        let mut querystring_buffer = String::new();
+        if let Some(queryfile) = args.value_of("query-file") {
+            if queryfile == "-" {
+                io::stdin().lock().read_to_string(&mut querystring_buffer).map_err(|err| {
+                    format!("Unable to read query from standard input: {}", err)
+                })?;
+            } else {
+                querystring_buffer = fs::read_to_string(queryfile).map_err(|err| {
+                    format!("Unable to read query from file {}: {}", queryfile, err)
+                })?;
+            }
+        };
         let mut querystring = queries_iter.next().unwrap_or("SELECT RESOURCE ?res;");
-        if querystring.trim().ends_with("}") {
+        if !querystring_buffer.is_empty() {
+            querystring = querystring_buffer.as_str();
+        } else if querystring.trim().ends_with("}") {
             if queries_iter.next().is_some() {
                 return Err(format!("You can't supply multiple --query parameters on the command line if the first query already contains subqueries (use either one or the other)"))
             }
         } else {
             for (i, subquerystring) in queries_iter.enumerate(){
                 if i == 0 {
-                    append_querystring += " { ";
+                    querystring_buffer += " { ";
                 } else {
-                    append_querystring += " | ";
+                    querystring_buffer += " | ";
                 }
-                append_querystring += subquerystring;
+                querystring_buffer += subquerystring;
             }
-            if !append_querystring.is_empty() {
-                append_querystring.insert_str(0, querystring);
-                append_querystring += " }";
-                querystring = append_querystring.as_str();
+            if !querystring_buffer.is_empty() {
+                querystring_buffer.insert_str(0, querystring);
+                querystring_buffer += " }";
+                querystring = querystring_buffer.as_str();
             }
         }
 
