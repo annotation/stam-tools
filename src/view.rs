@@ -602,14 +602,14 @@ impl<'a> Iterator for SelectionWithHighlightsIterator<'a> {
                             && Some(&resulttextselection) != self.previous.as_ref()
                         {
                             //we start a new resultselection, so prepare to return the previous one:
-                            let highlights = std::mem::replace(
+                            let previous_highlights = std::mem::replace(
                                 &mut self.highlight_results,
                                 Self::new_highlight_results(self.highlights.len()),
                             );
 
                             //get the previous results
-                            let whole_resource = self.whole_resource;
-                            let id = self.id;
+                            let previous_whole_resource = self.whole_resource;
+                            let previous_id = self.id;
 
                             //store the new metadata for next iteration
                             self.whole_resource = whole_resource;
@@ -628,9 +628,9 @@ impl<'a> Iterator for SelectionWithHighlightsIterator<'a> {
                                     Some(resulttextselection),
                                 )
                                 .unwrap(),
-                                highlights,
-                                whole_resource,
-                                id,
+                                highlights: previous_highlights,
+                                whole_resource: previous_whole_resource,
+                                id: previous_id,
                             }));
                         } else {
                             //buffer metadata
