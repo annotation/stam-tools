@@ -735,6 +735,8 @@ impl<'a> Display for HtmlWriter<'a> {
                 Err(msg) => return self.output_error(f, msg),
                 Ok(result) => {
                     active_highlights.clear();
+                    openingtags.clear();
+                    classes.clear();
                     let resource = result.textselection.resource();
 
                     // write title and per-result container span (either for a full resource or any textselection)
@@ -779,6 +781,10 @@ impl<'a> Display for HtmlWriter<'a> {
                             }
                         }
 
+                        let text = segment.text();
+                        let text_is_whitespace =
+                            !segment.text().chars().any(|c| !c.is_whitespace());
+
                         if !active_highlights.is_empty()
                             && segment.end() <= result.textselection.end()
                         {
@@ -815,10 +821,21 @@ impl<'a> Display for HtmlWriter<'a> {
                                     write!(f, "{}", &layertags[l])?;
                                 }
                             }
+                        } else if !text_is_whitespace {
+                            //opening if there are no active highlights
+                            openingtags.clear();
+                            openingtags += "<span>";
+                            write!(f, "<span>")?;
+                            // output all the <span> layers
+                            for (l, highlight) in self.highlights.iter().enumerate() {
+                                if !highlight.hide {
+                                    openingtags += &layertags[l]; //<span class="l$i">
+                                    write!(f, "{}", &layertags[l])?;
+                                }
+                            }
                         }
 
-                        let mut needclosure = true; //close </span> layers?
-                        let text = segment.text();
+                        let mut needclosure = !active_highlights.is_empty() || !text_is_whitespace; //close </span> layers?
 
                         // Linebreaks require special handling in rendering, we can't nest
                         // them in the various <span> layers we have but have to pull them out
@@ -829,15 +846,6 @@ impl<'a> Display for HtmlWriter<'a> {
                                     write!(f, "{}", html_escape::encode_text(subtext))?;
                                 }
                                 BufferType::Whitespace => {
-                                    if !active_highlights.is_empty() {
-                                        for highlight in self.highlights.iter() {
-                                            if !highlight.hide {
-                                                write!(f, "</span>")?;
-                                            }
-                                        }
-                                        write!(f, "</span>")?;
-                                        write!(f, "{}", openingtags)?;
-                                    }
                                     write!(
                                         f,
                                         "{}",
@@ -848,29 +856,21 @@ impl<'a> Display for HtmlWriter<'a> {
                                     )?;
                                 }
                                 BufferType::NewLines => {
-                                    if !active_highlights.is_empty() {
-                                        for highlight in self.highlights.iter() {
-                                            if !highlight.hide {
-                                                write!(f, "</span>")?;
-                                            }
+                                    for highlight in self.highlights.iter() {
+                                        if !highlight.hide {
+                                            write!(f, "</span>")?;
                                         }
-                                        write!(f, "</span>")?;
-                                        if !done {
-                                            write!(
-                                                f,
-                                                "{}",
-                                                subtext.replace("\n", "<br/>").as_str()
-                                            )?;
-                                            //open spans again for the next subtext
-                                            write!(f, "{}", openingtags)?;
-                                        } else {
-                                            // we already handled the </span> closure here, prevent doing it again later
-                                            needclosure = false;
-                                            //set pending newlines, we don't output immediately because there might be a tag to output first
-                                            pendingnewlines = subtext.replace("\n", "<br/>");
-                                        }
-                                    } else {
+                                    }
+                                    write!(f, "</span>")?;
+                                    if !done {
                                         write!(f, "{}", subtext.replace("\n", "<br/>").as_str())?;
+                                        //open spans again for the next subtext
+                                        write!(f, "{}", openingtags)?;
+                                    } else {
+                                        // we already handled the </span> closure here, prevent doing it again later
+                                        needclosure = false;
+                                        //set pending newlines, we don't output immediately because there might be a tag to output first
+                                        pendingnewlines = subtext.replace("\n", "<br/>");
                                     }
                                 }
                                 BufferType::None => {}
@@ -878,7 +878,7 @@ impl<'a> Display for HtmlWriter<'a> {
                         }
 
                         // Close </span> layers for this segment (if not already done during newline handling)
-                        if !active_highlights.is_empty() && needclosure {
+                        if needclosure {
                             for highlight in self.highlights.iter() {
                                 if !highlight.hide {
                                     write!(f, "</span>")?;
