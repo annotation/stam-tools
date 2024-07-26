@@ -869,6 +869,8 @@ impl<'a> Display for HtmlWriter<'a> {
                                             //set pending newlines, we don't output immediately because there might be a tag to output first
                                             pendingnewlines = subtext.replace("\n", "<br/>");
                                         }
+                                    } else {
+                                        write!(f, "{}", subtext.replace("\n", "<br/>").as_str())?;
                                     }
                                 }
                                 BufferType::None => {}
