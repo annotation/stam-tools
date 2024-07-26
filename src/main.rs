@@ -1188,7 +1188,20 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
     {
         let verbose = args.is_present("verbose");
 
-        let querystring = args.value_of("query").into_iter().next().unwrap_or(
+        let mut querystring_buffer = String::new();
+        let querystring = if let Some(filename) = args.value_of("query-file") {
+            if filename == "-" {
+                io::stdin().lock().read_to_string(&mut querystring_buffer).map_err(|err| {
+                    format!("Unable to read query from standard input: {}", err)
+                })?;
+            } else {
+                querystring_buffer = fs::read_to_string(filename).map_err(|err| {
+                    format!("Unable to read query from file {}: {}", filename, err)
+                })?;
+            }
+            querystring_buffer.as_str()
+        } else {
+            args.value_of("query").into_iter().next().unwrap_or(
             if args.is_present("alignments") {
                 "SELECT ANNOTATION ?annotation WHERE DATA \"https://w3id.org/stam/extensions/stam-transpose/\" \"Transposition\";"
             } else {
@@ -1210,7 +1223,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                     }
                 }
             },
-        );
+        )};
         let (query, _) = stam::Query::parse(querystring).map_err(|err| {
             format!("{}", err)
         })?;
