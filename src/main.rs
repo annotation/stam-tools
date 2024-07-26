@@ -1375,7 +1375,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             }
         }
 
-        let (mut query, _) = stam::Query::parse(querystring).map_err(|err| {
+        let (query, _) = stam::Query::parse(querystring).map_err(|err| {
             format!("Query syntax error in first query: {}", err)
         })?;
 
