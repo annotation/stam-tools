@@ -601,20 +601,36 @@ impl<'a> Iterator for SelectionWithHighlightsIterator<'a> {
                         if self.previous.is_some()
                             && Some(&resulttextselection) != self.previous.as_ref()
                         {
-                            //we start a new resultselection, so return the previous one:
-                            let return_highlight_results = std::mem::replace(
+                            //we start a new resultselection, so prepare to return the previous one:
+                            let highlights = std::mem::replace(
                                 &mut self.highlight_results,
                                 Self::new_highlight_results(self.highlights.len()),
                             );
+
+                            //get the previous results
+                            let whole_resource = self.whole_resource;
+                            let id = self.id;
+
+                            //store the new metadata for next iteration
+                            self.whole_resource = whole_resource;
+                            self.id = id;
+                            //mark highlights in buffer for new results:
+                            get_highlights_results(
+                                &queryresultitems,
+                                &self.highlights,
+                                &mut self.highlight_results, //will be appended to
+                            );
+
+                            //return the previous one:
                             return Some(Ok(SelectionWithHighlightResult {
                                 textselection: std::mem::replace(
                                     &mut self.previous,
                                     Some(resulttextselection),
                                 )
                                 .unwrap(),
-                                highlights: return_highlight_results,
-                                whole_resource: self.whole_resource,
-                                id: self.id,
+                                highlights,
+                                whole_resource,
+                                id,
                             }));
                         } else {
                             //buffer metadata
@@ -627,7 +643,6 @@ impl<'a> Iterator for SelectionWithHighlightsIterator<'a> {
                                 &self.highlights,
                                 &mut self.highlight_results, //will be appended to
                             );
-                            continue;
                         }
                     }
                 }
@@ -735,7 +750,7 @@ impl<'a> Display for HtmlWriter<'a> {
                 Err(msg) => return self.output_error(f, msg),
                 Ok(result) => {
                     active_highlights.clear();
-                    openingtags.clear();
+                    close_highlights.clear();
                     classes.clear();
                     let resource = result.textselection.resource();
 
