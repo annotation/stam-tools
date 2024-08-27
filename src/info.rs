@@ -89,6 +89,54 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         "    - annotation_idmap:        {} (> {:.2} {})",
         len.7, mem.0, mem.1
     );
+    totalbytes += bytes.7;
+    let mem = humanmem(bytes.8);
+    println!(
+        "    - key_annotation_map:        {} (> {:.2} {})",
+        len.8, mem.0, mem.1
+    );
+    let mem = humanmem(bytes.9);
+    println!(
+        "    - key_annotation_metamap:        {} (> {:.2} {})",
+        len.9, mem.0, mem.1
+    );
+    let mem = humanmem(bytes.10);
+    println!(
+        "    - data_annotation_metamap:        {} (> {:.2} {})",
+        len.10, mem.0, mem.1
+    );
+    let mem = humanmem(bytes.11);
+    println!(
+        "    - annotation_substore_map:        {} (> {:.2} {})",
+        len.11, mem.0, mem.1
+    );
+    let mem = humanmem(bytes.12);
+    println!(
+        "    - resource_substore_map:        {} (> {:.2} {})",
+        len.12, mem.0, mem.1
+    );
+    let mem = humanmem(bytes.13);
+    println!(
+        "    - dataset_substore_map:        {} (> {:.2} {})",
+        len.13, mem.0, mem.1
+    );
+    println!("Substores:              {}", store.substores_len());
+    for substore in store.substores() {
+        let bytes = substore.as_ref().meminfo();
+        totalbytes += bytes;
+        println!(
+            "    - [{}] Substore ID: {:?}; filename: {:?}, parent: {:?}, #resources: {}, #datasets: {}, #annotations: {}, memory estimate: {:.2} {}",
+            substore.handle().as_usize(),
+            substore.id().unwrap_or("(none)"),
+            substore.as_ref().filename(),
+            substore.as_ref().parent(),
+            substore.as_ref().resources_len(),
+            substore.as_ref().datasets_len(),
+            substore.as_ref().annotations_len(),
+            mem.0,
+            mem.1,
+        );
+    }
     println!("Resources:              {}", store.resources_len());
     for resource in store.resources() {
         let textsize = humanmem(resource.text().len());
