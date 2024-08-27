@@ -144,9 +144,10 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         totalbytes += bytes;
         let mem = humanmem(bytes);
         println!(
-            "    - [{}] Resource ID: {:?}; textlength: {}, textsize: {:.2} {}, #positions: {}, #textselections: {}, memory estimate: {:.2} {}",
+            "    - [{}] Resource ID: {:?}; filename: {:?}, textlength: {}, textsize: {:.2} {}, #positions: {}, #textselections: {}, memory estimate: {:.2} {}",
             resource.handle().as_usize(),
             resource.id().unwrap_or("(none)"),
+            resource.as_ref().filename().unwrap_or("(none)"),
             resource.textlen(),
             textsize.0,
             textsize.1,
@@ -183,9 +184,10 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         totalbytes += bytes;
         let mem = humanmem(bytes);
         println!(
-            "    - [{}] Set ID: {:?}; #keys: {}; #data: {}, memory estimate: {:.2} {}",
+            "    - [{}] Set ID: {:?}; filename: {:?}, #keys: {}; #data: {}, memory estimate: {:.2} {}",
             dataset.handle().as_usize(),
             dataset.id().unwrap_or("(none)"),
+            dataset.as_ref().filename().unwrap_or("(none)"),
             dataset.as_ref().keys_len(),
             dataset.as_ref().data_len(),
             mem.0,
