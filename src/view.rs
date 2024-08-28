@@ -141,7 +141,7 @@ div.resource, div.textselection {
     padding: 10px;
     margin: 10px;
     margin-right: 10%;
-    line-height: 1.5em;
+    line-height: 2em;
     max-width: 1200px;
     margin-left: auto;
     margin-right: auto;
@@ -160,16 +160,13 @@ body {
 }
 .a { /* annotation */
     /* background: #dedede;  light gray */
-    vertical-align: bottom;
+    vertical-align: top;
 }
 label {
     font-weight: bold;
-    display: inline-block;
-    margin-top: 5px;
 }
 label em {
     color: white;
-    display: inline-block;
     font-size: 70%;
     padding-left: 5px;
     padding-right: 5px;
@@ -197,30 +194,51 @@ label.tag6 {
 label.tag7, label.tag8, label.tag9, label.tag10, label.tag11, label.tag12, label.tag13, label.tag14, label.tag15, label.tag16 {
     background: var(--hiX);
 }
-span.l1, span.l2, span.l3, span.l4, span.l5, span.l6, span.l7, span.l8, span.l9, span.l10, span.l11, span.l12, span.l13, span.l14 {
-    display: inline-block;
-    border-bottom: 3px solid white;
+span.hi1, span.hi2, span.hi3, span.hi4, span.hi5, span.hi6, span.hi7, span.hi8, span.hi9, span.hi10, span.hi11, span.hi12, span.hi13, span.hi14 {
+    position: relative;
+    line-height: 2em;
 }
-.hi1 span.l1 {
-    border-bottom: 3px solid var(--hi1);
+span.hi1::before, span.hi2::before, span.hi3::before, span.hi4::before, span.hi5::before, span.hi6::before, span.hi7::before, span.hi8::before, span.hi9::before, span.hi10::before, span.hi11::before, span.hi12::before, span.hi13::before, span.hi14::before {
+    content: \"\";
+    position: absolute;
+    width: calc(100%);
+    height: 2px;
+    left: 0px;
 }
-.hi2 span.l2 {
-    border-bottom: 3px solid var(--hi2);
+span.hi1::before {
+    background-color: var(--hi1);
+    position: absolute;
+    bottom: 0px;
 }
-.hi3 span.l3 {
-    border-bottom: 3px solid var(--hi3);
+span.hi2::before {
+    background-color: var(--hi2);
+    position: absolute;
+    bottom: -2px;
 }
-.hi4 span.l4 {
-    border-bottom: 3px solid var(--hi4);
+span.hi3::before {
+    background-color: var(--hi3);
+    position: absolute;
+    bottom: -4px;
 }
-.hi5 span.l5 {
-    border-bottom: 3px solid var(--hi5);
+span.hi4::before {
+    background-color: var(--hi4);
+    position: absolute;
+    bottom: -6px;
 }
-.hi6 span.l6 {
-    border-bottom: 3px solid var(--hi6);
-    }
-.hi7 span.l7 {
-    border-bottom: 3px solid var(--hiX);
+span.hi5::before {
+    background-color: var(--hi5);
+    position: absolute;
+    bottom: -8px;
+}
+span.hi6::before {
+    background-color: var(--hi6);
+    position: absolute;
+    bottom: -10px;
+}
+span.hi7::before {
+    background-color: var(--hi7);
+    position: absolute;
+    bottom: -12px;
 }
 
 div#legend {
@@ -253,25 +271,25 @@ div#legend li.hidetags {
     font-style: normal;
     color: #333;
 }
-div#legend span.hi1 {
+div#legend span.legendhi1 {
     background: var(--hi1);
 }
-div#legend span.hi2 {
+div#legend span.legendhi2 {
     background: var(--hi2);
 }
-div#legend span.hi3 {
+div#legend span.legendhi3 {
     background: var(--hi3);
 }
-div#legend span.hi4 {
+div#legend span.legendhi4 {
     background: var(--hi4);
 }
-div#legend span.hi5 {
+div#legend span.legendhi5 {
     background: var(--hi5);
 }
-div#legend span.hi6 {
+div#legend span.legendhi6 {
     background: var(--hi6);
 }
-div#legend span.hi7 {
+div#legend span.legendhi7 {
     background: var(--hi7);
 }
 div#legend li {
@@ -692,11 +710,11 @@ impl<'a> Display for HtmlWriter<'a> {
 
         // pre-assign class names and layer opening tags so we can borrow later
         let mut classnames: Vec<String> = Vec::with_capacity(self.highlights.len());
-        let mut layertags: Vec<String> = Vec::with_capacity(self.highlights.len());
+        let mut hitags: Vec<String> = Vec::with_capacity(self.highlights.len());
         let mut close_annotations: Vec<Vec<ResultItem<Annotation>>> = Vec::new();
 
         for (i, _highlight) in self.highlights.iter().enumerate() {
-            layertags.push(format!("<span class=\"l{}\">", i + 1));
+            hitags.push(format!("<span class=\"hi{}\"", i + 1)); //note, no closing >!
             classnames.push(format!("hi{}", i + 1));
             close_annotations.push(Vec::new());
         }
@@ -708,7 +726,7 @@ impl<'a> Display for HtmlWriter<'a> {
                 if !highlight.hide {
                     write!(
                         f,
-                        "<li id=\"legend{}\"{}><span class=\"hi{}\"></span> {}</li>",
+                        "<li id=\"legend{}\"{}><span class=\"legendhi{}\"></span> {}</li>",
                         i + 1,
                         if self.interactive {
                             " title=\"Click to toggle visibility of tags (if any)\""
@@ -735,6 +753,7 @@ impl<'a> Display for HtmlWriter<'a> {
 
         // pre-allocate buffers that we will reuse
         let mut openingtags = String::new();
+        let mut closetags = String::new();
         let mut pendingnewlines: String = String::new();
         let mut classes: Vec<&str> = vec![];
 
@@ -777,6 +796,9 @@ impl<'a> Display for HtmlWriter<'a> {
                     }
 
                     for segment in result.textselection.segmentation() {
+                        if self.output_offset {
+                            write!(f, "<span data-offset=\"{}\">", segment.begin())?;
+                        }
                         // Gather position info for the begin point of our segment
                         if let Some(beginpositionitem) = resource.as_ref().position(segment.begin())
                         {
@@ -789,7 +811,9 @@ impl<'a> Display for HtmlWriter<'a> {
                                 for (j, highlighted_selections) in
                                     result.highlights.iter().enumerate()
                                 {
-                                    if highlighted_selections.contains_key(textselection) {
+                                    if highlighted_selections.contains_key(textselection)
+                                        && textselection.end() != textselection.begin()
+                                    {
                                         active_highlights.insert(j);
                                     }
                                 }
@@ -806,51 +830,36 @@ impl<'a> Display for HtmlWriter<'a> {
                             // output the opening <span> layer tags for the current segment
                             // this covers all the highlighted text selections we are spanning
                             // not just those pertaining to annotations that start here
-                            classes.clear();
-                            classes.push("a");
-                            for j in active_highlights.iter() {
-                                if !self.highlights[*j].hide {
-                                    classes.push(&classnames[*j]);
-                                }
-                                if let Some(style) = self.highlights[*j].style.as_ref() {
-                                    classes.push(style);
-                                }
-                            }
                             openingtags.clear(); //this is a buffer that may be referenced later (for newline processing), start it anew
-                            openingtags += "<span";
-                            if !classes.is_empty() {
-                                openingtags += format!(" class=\"{}\"", classes.join(" ")).as_str();
-                            }
-                            // buffer is incomplete but we output already
-                            write!(f, "{}", openingtags.as_str())?;
-                            if self.output_offset {
-                                //we don't want this in the openingtags buffer because it'd be behind if we reuse the opening tags later
-                                write!(f, " data-offset=\"{}\"", segment.end())?;
-                            }
-                            openingtags += ">";
-                            write!(f, ">")?;
-                            // output all the <span> layers
-                            for (l, highlight) in self.highlights.iter().enumerate() {
-                                if !highlight.hide {
-                                    openingtags += &layertags[l]; //<span class="l$i">
-                                    write!(f, "{}", &layertags[l])?;
+                            closetags.clear();
+                            for j in active_highlights.iter() {
+                                if let Some(style) = self.highlights[*j].style.as_ref() {
+                                    if self.highlights[*j].hide {
+                                        openingtags +=
+                                            format!("<span class=\"{}\"", style).as_str();
+                                    } else {
+                                        openingtags += format!(
+                                            "<span class=\"{} {}\"",
+                                            &classnames[*j], style
+                                        )
+                                        .as_str();
+                                    }
+                                } else if !self.highlights[*j].hide {
+                                    openingtags += &hitags[*j];
+                                } else {
+                                    continue; //skip the remainder
                                 }
+                                openingtags.push('>');
+                                closetags += "</span>";
                             }
+                            // output buffer
                         } else if !text_is_whitespace {
                             //opening if there are no active highlights
                             openingtags.clear();
                             openingtags += "<span>";
-                            write!(f, "<span>")?;
-                            // output all the <span> layers
-                            for (l, highlight) in self.highlights.iter().enumerate() {
-                                if !highlight.hide {
-                                    openingtags += &layertags[l]; //<span class="l$i">
-                                    write!(f, "{}", &layertags[l])?;
-                                }
-                            }
+                            closetags.clear();
+                            closetags += "</span>";
                         }
-
-                        let mut needclosure = !active_highlights.is_empty() || !text_is_whitespace; //close </span> layers?
 
                         // Linebreaks require special handling in rendering, we can't nest
                         // them in the various <span> layers we have but have to pull them out
@@ -858,48 +867,38 @@ impl<'a> Display for HtmlWriter<'a> {
                         for (subtext, texttype, done) in LinebreakIter::new(text) {
                             match texttype {
                                 BufferType::Text => {
-                                    write!(f, "{}", html_escape::encode_text(subtext))?;
+                                    write!(
+                                        f,
+                                        "{}{}{}<wbr/>",
+                                        openingtags.as_str(),
+                                        html_escape::encode_text(subtext),
+                                        closetags.as_str()
+                                    )?;
                                 }
                                 BufferType::Whitespace => {
                                     write!(
                                         f,
-                                        "{}",
+                                        "{}{}{}",
+                                        openingtags.as_str(),
                                         html_escape::encode_text(subtext)
                                             .replace(" ", "&ensp;")
                                             .replace('\t', "&nbsp;&nbsp;&nbsp;&nbsp;")
-                                            .as_str()
+                                            .as_str(),
+                                        closetags.as_str()
                                     )?;
                                 }
                                 BufferType::NewLines => {
-                                    for highlight in self.highlights.iter() {
-                                        if !highlight.hide {
-                                            write!(f, "</span>")?;
-                                        }
-                                    }
-                                    write!(f, "</span>")?;
                                     if !done {
                                         write!(f, "{}", subtext.replace("\n", "<br/>").as_str())?;
-                                        //open spans again for the next subtext
-                                        write!(f, "{}", openingtags)?;
                                     } else {
                                         // we already handled the </span> closure here, prevent doing it again later
-                                        needclosure = false;
+                                        //needclosure = true;
                                         //set pending newlines, we don't output immediately because there might be a tag to output first
                                         pendingnewlines = subtext.replace("\n", "<br/>");
                                     }
                                 }
                                 BufferType::None => {}
                             }
-                        }
-
-                        // Close </span> layers for this segment (if not already done during newline handling)
-                        if needclosure {
-                            for highlight in self.highlights.iter() {
-                                if !highlight.hide {
-                                    write!(f, "</span>")?;
-                                }
-                            }
-                            write!(f, "</span>")?;
                         }
 
                         // Gather position info for the end point of our segment
@@ -939,15 +938,6 @@ impl<'a> Display for HtmlWriter<'a> {
                                     }
                                 }
                             }
-                            classes.clear();
-                            for j in active_highlights.iter() {
-                                if !self.highlights[*j].hide {
-                                    classes.push(&classnames[*j]);
-                                }
-                                if let Some(style) = self.highlights[*j].style.as_ref() {
-                                    classes.push(style);
-                                }
-                            }
 
                             // output tags for annotations that close here (if requested)
                             for (j, annotations) in close_annotations.iter().enumerate() {
@@ -965,37 +955,23 @@ impl<'a> Display for HtmlWriter<'a> {
                                         {
                                             write!(
                                                 f,
-                                                "<label class=\"zw tag{} {}\">",
+                                                "{}<label class=\"zw tag{}\">",
+                                                openingtags,
                                                 j + 1,
-                                                classes.join(" ")
                                             )
                                             .ok();
+                                            close_highlights.insert(j);
                                         } else {
                                             write!(
                                                 f,
-                                                "<label class=\"tag{} {}\">",
+                                                "{}<label class=\"tag{}\">",
+                                                openingtags,
                                                 j + 1,
-                                                classes.join(" ")
                                             )
                                             .ok();
                                         }
-                                        for (l, highlight) in self.highlights.iter().enumerate() {
-                                            if !highlight.hide {
-                                                write!(
-                                                    f,
-                                                    "{}",
-                                                    &layertags[l], //<span class="l$i">
-                                                )
-                                                .ok();
-                                            }
-                                        }
                                         write!(f, "<em>{}</em>", tag,).ok();
-                                        for highlight in self.highlights.iter() {
-                                            if !highlight.hide {
-                                                write!(f, "</span>").ok();
-                                            }
-                                        }
-                                        write!(f, "</label>",).ok();
+                                        write!(f, "</label>{}", closetags).ok();
                                     }
                                 }
                             }
@@ -1007,6 +983,10 @@ impl<'a> Display for HtmlWriter<'a> {
 
                             //process the closing highlights
                             active_highlights.retain(|hl| !close_highlights.contains(hl));
+                        }
+
+                        if self.output_offset {
+                            write!(f, "</span>")?;
                         }
                     }
                     writeln!(f, "\n</div>")?;
