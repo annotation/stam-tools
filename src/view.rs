@@ -198,44 +198,44 @@ span.hi1, span.hi2, span.hi3, span.hi4, span.hi5, span.hi6, span.hi7, span.hi8, 
     position: relative;
     line-height: 2em;
 }
-span.hi1::before, span.hi2::before, span.hi3::before, span.hi4::before, span.hi5::before, span.hi6::before, span.hi7::before, span.hi8::before, span.hi9::before, span.hi10::before, span.hi11::before, span.hi12::before, span.hi13::before, span.hi14::before {
+span.hi1::after, span.hi2::after, span.hi3::after, span.hi4::after, span.hi5::after, span.hi6::after, span.hi7::after, span.hi8::after, span.hi9::after, span.hi10::after, span.hi11::after, span.hi12::after, span.hi13::after, span.hi14::after {
     content: \"\";
     position: absolute;
     width: calc(100%);
     height: 2px;
     left: 0px;
 }
-span.hi1::before {
+span.hi1::after {
     background-color: var(--hi1);
     position: absolute;
     bottom: 0px;
 }
-span.hi2::before {
+span.hi2::after {
     background-color: var(--hi2);
     position: absolute;
     bottom: -2px;
 }
-span.hi3::before {
+span.hi3::after {
     background-color: var(--hi3);
     position: absolute;
     bottom: -4px;
 }
-span.hi4::before {
+span.hi4::after {
     background-color: var(--hi4);
     position: absolute;
     bottom: -6px;
 }
-span.hi5::before {
+span.hi5::after {
     background-color: var(--hi5);
     position: absolute;
     bottom: -8px;
 }
-span.hi6::before {
+span.hi6::after {
     background-color: var(--hi6);
     position: absolute;
     bottom: -10px;
 }
-span.hi7::before {
+span.hi7::after {
     background-color: var(--hi7);
     position: absolute;
     bottom: -12px;
