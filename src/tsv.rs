@@ -597,7 +597,7 @@ pub fn to_tsv<'a, W: std::io::Write>(
         let seqnr = seqnr + 1; //1-indexed
         for (result, varname) in resultrow.iter().zip(resultrow.names()) {
             match result {
-                QueryResultItem::None => {}
+                QueryResultItem::None | QueryResultItem::AnnotationSubStore(..) => {}
                 QueryResultItem::Annotation(annotation) => {
                     let textselections: Option<Vec<_>> = if want_textselections {
                         Some(annotation.textselections().collect())

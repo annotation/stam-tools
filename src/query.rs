@@ -39,6 +39,11 @@ pub(crate) fn textselection_from_queryresult<'a>(
         Some(QueryResultItem::AnnotationDataSet(_)) => {
             return Err("Query produced result of type SET, but this does not reference any text");
         }
+        Some(QueryResultItem::AnnotationSubStore(_)) => {
+            return Err(
+                "Query produced result of type SUBSTORE, but this does not reference any text",
+            );
+        }
         None | Some(QueryResultItem::None) => {
             return Err("Query produced no results");
         }
@@ -75,6 +80,10 @@ pub fn to_json<'a, W: std::io::Write>(
                     &Config::default().with_dataformat(DataFormat::Json { compact: false }),
                 )?,
                 QueryResultItem::TextSelection(tsel) => tsel.to_json()?,
+                QueryResultItem::AnnotationSubStore(substore) => {
+                    //MAYBE TODO: this may need to be thought out deeper but doesn't occur yet anyway
+                    substore.id().expect("must have ID").to_string()
+                }
             };
             let varnum = format!("{}", j + 1);
             writeln!(
