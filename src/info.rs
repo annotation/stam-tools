@@ -125,11 +125,11 @@ pub fn info(store: &AnnotationStore, verbose: bool) {
         let bytes = substore.as_ref().meminfo();
         totalbytes += bytes;
         println!(
-            "    - [{}] Substore ID: {:?}; filename: {:?}, parent: {:?}, #resources: {}, #datasets: {}, #annotations: {}, memory estimate: {:.2} {}",
+            "    - [{}] Substore ID: {:?}; filename: {:?}, parents: {:?}, #resources: {}, #datasets: {}, #annotations: {}, memory estimate: {:.2} {}",
             substore.handle().as_usize(),
             substore.id().unwrap_or("(none)"),
             substore.as_ref().filename(),
-            substore.as_ref().parent(),
+            substore.as_ref().parents(),
             substore.as_ref().resources_len(),
             substore.as_ref().datasets_len(),
             substore.as_ref().annotations_len(),
