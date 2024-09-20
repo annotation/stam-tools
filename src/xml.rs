@@ -470,7 +470,7 @@ pub fn from_xml<'a>(
     }
     let resource: TextResource = TextResourceBuilder::new()
         .with_id(textoutfilename.clone())
-        .with_config(Config::default().with_use_include(standoff_textfiles))
+        .with_config(store.new_config().with_use_include(standoff_textfiles))
         .with_text(std::mem::replace(&mut converter.text, String::new()))
         .with_filename(&textoutfilename)
         .try_into()

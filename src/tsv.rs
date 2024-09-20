@@ -963,6 +963,7 @@ pub fn from_tsv(
             match TextResourceBuilder::new()
                 .with_text(text)
                 .with_filename(&filename)
+                .with_config(store.new_config())
                 .build()
             {
                 Ok(resource) => {
