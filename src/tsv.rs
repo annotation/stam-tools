@@ -960,20 +960,12 @@ pub fn from_tsv(
             if verbose {
                 eprintln!("Creating resource {} (length={})", filename, text.len());
             }
-            match TextResourceBuilder::new()
-                .with_text(text)
-                .with_filename(&filename)
-                .with_config(store.new_config())
-                .build()
-            {
-                Ok(resource) => {
-                    if let Err(e) = store.insert(resource) {
-                        return Err(format!("Error adding reconstructed text to store: {}", e));
-                    }
-                }
-                Err(e) => {
-                    return Err(format!("Error loading resource: {}", e));
-                }
+            if let Err(e) = store.add_resource(
+                TextResourceBuilder::new()
+                    .with_text(text)
+                    .with_filename(&filename),
+            ) {
+                return Err(format!("Error loading/adding resource: {}", e));
             }
         }
         if verbose {
@@ -1362,7 +1354,7 @@ fn get_resource_handle(
         return Ok(resource.handle());
     }
     store
-        .add_resource_from_file(filename)
+        .add_resource(TextResourceBuilder::new().with_filename(filename))
         .map_err(|e| format!("Specified resource not found: {}: {}", filename, e))
 }
 

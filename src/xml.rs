@@ -410,7 +410,6 @@ pub fn from_xml<'a>(
     filename: &Path,
     config: &XmlConversionConfig,
     store: &'a mut AnnotationStore,
-    standoff_textfiles: bool,
 ) -> Result<(), String> {
     if config.debug {
         eprintln!("[STAM fromxml] parsing {}", filename.display());
@@ -468,17 +467,14 @@ pub fn from_xml<'a>(
     if config.debug {
         eprintln!("[STAM fromxml] extracted full text: {}", &converter.text);
     }
-    let resource: TextResource = TextResourceBuilder::new()
+    let resource = TextResourceBuilder::new()
         .with_id(textoutfilename.clone())
-        .with_config(store.new_config().with_use_include(standoff_textfiles))
         .with_text(std::mem::replace(&mut converter.text, String::new()))
-        .with_filename(&textoutfilename)
-        .try_into()
-        .map_err(|e| format!("Failed to build resource {}: {}", &textoutfilename, e))?;
+        .with_filename(&textoutfilename);
 
     converter.resource_handle = Some(
         store
-            .insert(resource)
+            .add_resource(resource)
             .map_err(|e| format!("Failed to add resource {}: {}", &textoutfilename, e))?,
     );
 

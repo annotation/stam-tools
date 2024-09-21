@@ -183,7 +183,7 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
 /// Translate command line arguments to stam library's configuration structure
 fn config_from_args(args: &ArgMatches) -> Config {
     Config::default()
-        .with_use_include(!args.is_present("no-include"))
+        .with_use_include(!args.is_present("no-include") && !args.is_present("single-output"))
         .with_debug(args.is_present("debug"))
 }
 
@@ -1615,7 +1615,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         let mut has_input = false;
         if args.is_present("inputfile") {
             for filename in args.values_of("inputfile").unwrap().into_iter() {
-                if let Err(e) = from_xml(Path::new(filename), &config, store, !args.is_present("single-output")) {
+                if let Err(e) = from_xml(Path::new(filename), &config, store) {
                     if args.is_present("ignore-errors") {
                         eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
                     } else {
@@ -1631,7 +1631,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             let filenames: Vec<&str> = listdata.split("\n").collect();
             for filename in filenames {
                 if !filename.is_empty() {
-                    if let Err(e) = from_xml(Path::new(filename), &config, store, !args.is_present("single-output")) {
+                    if let Err(e) = from_xml(Path::new(filename), &config, store) {
                         if args.is_present("ignore-errors") {
                             eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
                         } else {
