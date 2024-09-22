@@ -1,6 +1,6 @@
 [package]
 name = "stam-tools"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 authors = ["Maarten van Gompel <proycon@anaproy.nl>"]
 description = "Command-line tools for working with stand-off annotations on text (STAM)"
@@ -13,7 +13,7 @@ repository = "https://github.com/annotation/stam-tools"
 keywords = [ "text-processing", "annotation", "linguistics", "standoff", "nlp"]
 
 [dependencies]
-stam = { version = "0.16.0" }
+stam = { version = "0.16.1" }
 clap = "3.2.23"
 html-escape = "0.2.13"
 seal = "0.1.5"
