@@ -3,7 +3,7 @@
 
 test: all
 
-all: test_import
+all: import
 
 import: importtest1 importtest2 importtest3 importtest4
 

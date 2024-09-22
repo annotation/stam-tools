@@ -183,7 +183,7 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
 /// Translate command line arguments to stam library's configuration structure
 fn config_from_args(args: &ArgMatches) -> Config {
     Config::default()
-        .with_use_include(!args.is_present("no-include") && !args.is_present("single-output"))
+        .with_use_include(!args.is_present("no-include"))
         .with_debug(args.is_present("debug"))
 }
 
@@ -632,11 +632,6 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Configuration file that defines how to map a specific XML format to STAM")
             .required(true)
             .takes_value(true),
-    );
-    args.push(
-        Arg::with_name("single-output")
-            .long("s")
-            .help("Single output file: do not write separate stand-off textfiles (using the @include mechanism), but put the text in the STAM JSON instead"),
     );
     args.push(
         Arg::with_name("id-prefix")
