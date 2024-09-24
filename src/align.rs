@@ -169,9 +169,11 @@ impl AlignedFragment {
         text2: &ResultTextSelection<'store>,
         config: &AlignmentConfig,
     ) -> Result<bool, StamError> {
-        let (offset1, offset2) = self.to_offsets(); //will get shadowed immediately after
-        let textstring1 = text.textselection(&offset1)?.text();
-        let textstring2 = text2.textselection(&offset2)?.text();
+        let (offset1, offset2) = self.to_offsets(); //will get shadowed eventually
+        let mut textsel1 = text.textselection(&offset1)?;
+        let mut textsel2 = text2.textselection(&offset2)?;
+        let mut textstring1 = textsel1.text();
+        let mut textstring2 = textsel2.text();
         //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
         if textstring1 != textstring2 {
             if self.length > 1 {
@@ -194,41 +196,31 @@ impl AlignedFragment {
             }
             return Ok(false);
         }
-        let (textstring1, offset1) = if config.trim {
+        if config.trim {
             if let Ok(trimmed) = text.textselection(&offset1)?.trim_text(&TRIM_CHARS) {
-                let newoffset = trimmed
-                    .relative_offset(text, OffsetMode::BeginBegin)
-                    .expect("relative offset must succeed");
-                (trimmed.text(), newoffset)
+                textsel1 = trimmed;
+                textstring1 = textsel1.text();
             } else {
                 //nothing left to align
                 return Ok(false);
             }
-        } else {
-            (textstring1, offset1)
-        };
-        let (textstring2, offset2) = if config.trim {
             if let Ok(trimmed) = text2.textselection(&offset2)?.trim_text(&TRIM_CHARS) {
-                let newoffset = trimmed
-                    .relative_offset(text2, OffsetMode::BeginBegin)
-                    .expect("relative offset must succeed");
-                (trimmed.text(), newoffset)
+                textsel2 = trimmed;
+                textstring2 = textsel2.text();
             } else {
                 //nothing left to align
                 return Ok(false);
             }
-        } else {
-            (textstring2, offset2)
         };
         if config.verbose {
             println!(
                 "{}\t{}-{}\t{}\t{}-{}\t\"{}\"\t\"{}\"",
                 text.resource().id().unwrap_or("-"),
-                &offset1.begin,
-                &offset1.end,
+                &textsel1.begin(),
+                &textsel1.end(),
                 text2.resource().id().unwrap_or("-"),
-                &offset2.begin,
-                &offset2.end,
+                &textsel2.begin(),
+                &textsel2.end(),
                 textstring1
                     .replace("\"", "\\\"")
                     .replace("\t", "\\t")
@@ -239,6 +231,8 @@ impl AlignedFragment {
                     .replace("\n", "\\n")
             );
         }
+        let offset1: Offset = textsel1.inner().into();
+        let offset2: Offset = textsel2.inner().into();
         select1.push(SelectorBuilder::TextSelector(
             text.resource().handle().into(),
             offset1,
