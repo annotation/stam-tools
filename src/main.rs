@@ -465,6 +465,25 @@ fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Prefix to use when assigning annotation IDs. The actual ID will have a random component."),
     );
     args.push(
+        Arg::with_name("minimal-align-length")
+            .long("minimal-align-length")
+            .long("min-length")
+            .takes_value(true)
+            .help("The minimal number of characters that must be aligned (absolute number) for a transposition to be valid"),
+    );
+    args.push(
+        Arg::with_name("max-errors")
+            .long("max-errors")
+            .takes_value(true)
+            .help("The maximum number of errors that may occur (absolute number) for a transposition to be valid, each insertion/deletion counts as 1. This is more efficient than `minimal_align_length` In other words; this represents the number of characters in the search string that may be missed when matching in the larger text. The transposition itself will only consist of fully matching parts, use `grow` if you want to include non-matching parts."),
+    );
+    args.push(
+        Arg::with_name("grow")
+            .long("grow")
+            .short('g')
+            .help("Grow aligned parts into larger alignments by incorporating non-matching parts. This will return translations rather than transpositions. You'll want to set `max_errors` in combination with this one to prevent very low-quality alignments.")
+    );
+    args.push(
         Arg::with_name("match-score")
             .long("match-score")
             .takes_value(true)
@@ -1539,6 +1558,17 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 annotation_id_prefix: args.value_of("id-prefix").map(|x| x.to_string()),
                 simple_only: args.is_present("simple-only"),
                 trim: args.is_present("trim"),
+                max_errors: if args.is_present("max-errors") {
+                    Some(args.value_of("max-errors").unwrap().parse().expect("value for --max-errors must be integer"))
+                } else {
+                   None
+                },
+                minimal_align_length: if args.is_present("minimal-align-length") {
+                   args.value_of("minimal-align-length").unwrap().parse().expect("value for --minimal-align-length must be integer")
+                } else {
+                   0
+                },
+                grow: args.is_present("grow"),
                 verbose: args.is_present("verbose")
             }
         ) {
