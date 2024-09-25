@@ -25,8 +25,14 @@ pub struct AlignmentConfig {
     /// The minimal number of characters that must be aligned (absolute number) for a transposition to be valid
     pub minimal_align_length: usize,
 
-    /// The maximum number of errors that may occur (absolute number) for a transposition to be valid. This is more efficient than `minimal_align_length`
+    /// The maximum number of errors that may occur (absolute number) for a transposition to be valid, each insertion/deletion counts as 1. This is more efficient than `minimal_align_length`
+    /// In other words; this represents the number of characters in the search string that may be missed when matching in the larger text.
+    /// The transposition itself will only consist of fully matching parts, use `grow` if you want to include non-matching parts.
     pub max_errors: Option<usize>,
+
+    /// Grow aligned parts into larger alignments by incorporating non-matching parts. This will return translations rather than transpositions.
+    /// You'll want to set `max_errors` in combination with this one to prevent very low-quality alignments.
+    pub grow: bool,
 
     /// Output alignments to standard output in a TSV format
     pub verbose: bool,
@@ -43,6 +49,7 @@ impl Default for AlignmentConfig {
             trim: false,
             simple_only: false,
             verbose: false,
+            grow: false,
         }
     }
 }
@@ -366,65 +373,106 @@ pub fn align_texts<'store>(
                 return Ok(builders);
             }
 
-            let id = if let Some(prefix) = config.annotation_id_prefix.as_ref() {
-                generate_id(&format!("{}transposition-", prefix), "")
-            } else {
-                generate_id("transposition-", "")
-            };
-            if select1.len() == 1 {
-                //simple transposition
+            if config.grow && select1.len() > 1 {
+                let id = if let Some(prefix) = config.annotation_id_prefix.as_ref() {
+                    generate_id(&format!("{}translation", prefix), "")
+                } else {
+                    generate_id("translation", "")
+                };
+
+                let mut newselect1 = select1.pop().expect("must have an item");
+                if let Some(s) = select1.get(0) {
+                    let mut offset = newselect1.offset().expect("must have offset").clone();
+                    offset.begin = s.offset().expect("must have offset").begin;
+                    newselect1 = SelectorBuilder::textselector(
+                        newselect1.resource().unwrap().clone(),
+                        offset,
+                    );
+                }
+                let mut newselect2 = select2.pop().expect("must have an item");
+                if let Some(s) = select2.get(0) {
+                    let mut offset = newselect2.offset().expect("must have offset").clone();
+                    offset.begin = s.offset().expect("must have offset").begin;
+                    newselect2 = SelectorBuilder::textselector(
+                        newselect2.resource().unwrap().clone(),
+                        offset,
+                    );
+                }
+
                 builders.push(
                     AnnotationBuilder::new()
                         .with_id(id.clone())
                         .with_data(
-                            "https://w3id.org/stam/extensions/stam-transpose/",
-                            "Transposition",
+                            "https://w3id.org/stam/extensions/stam-translate/",
+                            "Translation",
                             DataValue::Null,
                         )
                         .with_target(SelectorBuilder::DirectionalSelector(vec![
-                            select1.into_iter().next().unwrap(),
-                            select2.into_iter().next().unwrap(),
+                            newselect1, newselect2,
                         ])),
                 );
+                Ok(builders)
             } else {
-                //complex transposition
-                let annotation1id = format!("{}-side1", id);
-                builders.push(
-                    AnnotationBuilder::new()
-                        .with_id(annotation1id.clone())
-                        .with_data(
-                            "https://w3id.org/stam/extensions/stam-transpose/",
-                            "TranspositionSide",
-                            DataValue::Null,
-                        )
-                        .with_target(SelectorBuilder::DirectionalSelector(select1)),
-                );
-                let annotation2id = format!("{}-side2", id);
-                builders.push(
-                    AnnotationBuilder::new()
-                        .with_id(annotation2id.clone())
-                        .with_data(
-                            "https://w3id.org/stam/extensions/stam-transpose/",
-                            "TranspositionSide",
-                            DataValue::Null,
-                        )
-                        .with_target(SelectorBuilder::DirectionalSelector(select2)),
-                );
-                builders.push(
-                    AnnotationBuilder::new()
-                        .with_id(id.clone())
-                        .with_data(
-                            "https://w3id.org/stam/extensions/stam-transpose/",
-                            "Transposition",
-                            DataValue::Null,
-                        )
-                        .with_target(SelectorBuilder::DirectionalSelector(vec![
-                            SelectorBuilder::AnnotationSelector(annotation1id.into(), None),
-                            SelectorBuilder::AnnotationSelector(annotation2id.into(), None),
-                        ])),
-                );
+                let id = if let Some(prefix) = config.annotation_id_prefix.as_ref() {
+                    generate_id(&format!("{}transposition-", prefix), "")
+                } else {
+                    generate_id("transposition-", "")
+                };
+                if select1.len() == 1 {
+                    //simple transposition
+                    builders.push(
+                        AnnotationBuilder::new()
+                            .with_id(id.clone())
+                            .with_data(
+                                "https://w3id.org/stam/extensions/stam-transpose/",
+                                "Transposition",
+                                DataValue::Null,
+                            )
+                            .with_target(SelectorBuilder::DirectionalSelector(vec![
+                                select1.into_iter().next().unwrap(),
+                                select2.into_iter().next().unwrap(),
+                            ])),
+                    );
+                } else {
+                    //complex transposition
+                    let annotation1id = format!("{}-side1", id);
+                    builders.push(
+                        AnnotationBuilder::new()
+                            .with_id(annotation1id.clone())
+                            .with_data(
+                                "https://w3id.org/stam/extensions/stam-transpose/",
+                                "TranspositionSide",
+                                DataValue::Null,
+                            )
+                            .with_target(SelectorBuilder::DirectionalSelector(select1)),
+                    );
+                    let annotation2id = format!("{}-side2", id);
+                    builders.push(
+                        AnnotationBuilder::new()
+                            .with_id(annotation2id.clone())
+                            .with_data(
+                                "https://w3id.org/stam/extensions/stam-transpose/",
+                                "TranspositionSide",
+                                DataValue::Null,
+                            )
+                            .with_target(SelectorBuilder::DirectionalSelector(select2)),
+                    );
+                    builders.push(
+                        AnnotationBuilder::new()
+                            .with_id(id.clone())
+                            .with_data(
+                                "https://w3id.org/stam/extensions/stam-transpose/",
+                                "Transposition",
+                                DataValue::Null,
+                            )
+                            .with_target(SelectorBuilder::DirectionalSelector(vec![
+                                SelectorBuilder::AnnotationSelector(annotation1id.into(), None),
+                                SelectorBuilder::AnnotationSelector(annotation2id.into(), None),
+                            ])),
+                    );
+                }
+                Ok(builders)
             }
-            Ok(builders)
         }
         Err(error) => {
             eprintln!("ALIGNMENT ERROR: {:?}", error);
