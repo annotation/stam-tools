@@ -4,6 +4,7 @@ use seal::pair::{AlignmentSet, InMemoryAlignmentMatrix, NeedlemanWunsch, SmithWa
 
 const TRIM_CHARS: [char; 4] = [' ', '\n', '\t', '\r'];
 
+#[derive(Clone, Debug)]
 pub struct AlignmentConfig {
     /// Case-insensitive matching has more performance overhead
     pub case_sensitive: bool,
@@ -21,6 +22,12 @@ pub struct AlignmentConfig {
     /// Only allow for alignments that consist of one contiguous text selection on either side. This is a so-called simple transposition.
     pub simple_only: bool,
 
+    /// The minimal number of characters that must be aligned (absolute number) for a transposition to be valid
+    pub minimal_align_length: usize,
+
+    /// The maximum number of errors that may occur (absolute number) for a transposition to be valid. This is more efficient than `minimal_align_length`
+    pub max_errors: Option<usize>,
+
     /// Output alignments to standard output in a TSV format
     pub verbose: bool,
 }
@@ -31,6 +38,8 @@ impl Default for AlignmentConfig {
             case_sensitive: true,
             algorithm: AlignmentAlgorithm::default(),
             annotation_id_prefix: None,
+            minimal_align_length: 0,
+            max_errors: None,
             trim: false,
             simple_only: false,
             verbose: false,
@@ -299,26 +308,54 @@ pub fn align_texts<'store>(
             let mut select2: Vec<SelectorBuilder<'static>> = Vec::new();
 
             let mut fragment: Option<AlignedFragment> = None;
+            let mut totalalignlength = 0;
+            let mut errors = 0;
+            let mut last = None;
+            let mut foundfragment = false;
             for step in alignment.steps() {
                 match step {
                     Step::Align { x, y } => {
                         if let Some(fragment) = fragment.as_mut() {
                             fragment.length += 1;
+                            last = last.map(|x| x + 1);
+                            totalalignlength += 1;
                         } else {
+                            foundfragment = true;
                             fragment = Some(AlignedFragment {
                                 begin1: x,
                                 begin2: y,
                                 length: 1,
                             });
+                            last = Some(x + 1);
+                            errors += x;
+                            totalalignlength += 1;
                         }
                     }
                     _ => {
+                        if foundfragment {
+                            errors += 1;
+                        }
                         if let Some(fragment) = fragment.take() {
                             fragment.publish(&mut select1, &mut select2, text, text2, config)?;
                         }
                     }
                 }
             }
+            if let Some(max_errors) = config.max_errors {
+                if let Some(last) = last {
+                    //everything after the last match (that was not matched, counts as an error)
+                    errors += seq1.len() - last;
+                }
+                if errors > max_errors {
+                    //alignment not good enough to return
+                    return Ok(builders);
+                }
+            }
+            if totalalignlength < config.minimal_align_length {
+                //alignment not good enough to return
+                return Ok(builders);
+            }
+
             if let Some(fragment) = fragment.take() {
                 fragment.publish(&mut select1, &mut select2, text, text2, config)?;
             }
