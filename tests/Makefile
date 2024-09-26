@@ -7,7 +7,7 @@ all: import
 
 import: importtest1 importtest2 importtest3 importtest4
 
-align: aligntest1 aligntest2 aligntest3
+align: aligntest1 aligntest2 aligntest3 aligntest4
 
 clean:
 	-rm *test*.annotationstore.stam.json
@@ -49,6 +49,15 @@ aligntest2.annotationstore.stam.json:
 	@echo "------------- Align - Test 2 - Local Alignment (Smith Waterman) --------------"
 	cargo run init --force-new  --resource align1.txt --resource localalign2.txt $@
 	cargo run -r align --algorithm local -r localalign2.txt -r align1.txt $@
+	cargo run export --alignments $@
+	echo "(not a good alignment, this too eagerly matches the first t)"
+
+aligntest4: aligntest4.annotationstore.stam.json
+
+aligntest4.annotationstore.stam.json:
+	@echo "------------- Align - Test 2 - Local Alignment (Smith Waterman) --------------"
+	cargo run init --force-new  --resource align1.txt --resource localalign2.txt $@
+	cargo run -r align --grow --algorithm local -r localalign2.txt -r align1.txt $@
 	cargo run export --alignments $@
 	echo "(not a good alignment, this too eagerly matches the first t)"
 

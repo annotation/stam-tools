@@ -1217,7 +1217,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         } else {
             args.value_of("query").into_iter().next().unwrap_or(
             if args.is_present("alignments") {
-                "SELECT ANNOTATION ?annotation WHERE DATA \"https://w3id.org/stam/extensions/stam-transpose/\" \"Transposition\";"
+                    "SELECT ANNOTATION ?annotation WHERE [ DATA \"https://w3id.org/stam/extensions/stam-transpose/\" \"Transposition\" OR DATA \"https://w3id.org/stam/extensions/stam-translate/\" \"Translation\" ];"
             } else {
                 //default in case no query was provided
                 match args
