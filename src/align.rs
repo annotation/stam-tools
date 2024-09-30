@@ -318,7 +318,6 @@ pub fn align_texts<'store>(
             let mut totalalignlength = 0;
             let mut errors = 0;
             let mut last = None;
-            let mut foundfragment = false;
             for step in alignment.steps() {
                 match step {
                     Step::Align { x, y } => {
@@ -327,27 +326,30 @@ pub fn align_texts<'store>(
                             last = last.map(|x| x + 1);
                             totalalignlength += 1;
                         } else {
-                            foundfragment = true;
                             fragment = Some(AlignedFragment {
                                 begin1: x,
                                 begin2: y,
                                 length: 1,
                             });
+                            if let Some(last) = last {
+                                //everything not spanned since the last alignment is an error
+                                errors += x - last;
+                            } else {
+                                //everything up until here is an error
+                                errors += x;
+                            }
                             last = Some(x + 1);
-                            errors += x;
                             totalalignlength += 1;
                         }
                     }
                     _ => {
-                        if foundfragment {
-                            errors += 1;
-                        }
                         if let Some(fragment) = fragment.take() {
                             fragment.publish(&mut select1, &mut select2, text, text2, config)?;
                         }
                     }
                 }
             }
+
             if let Some(max_errors) = config.max_errors {
                 if let Some(last) = last {
                     //everything after the last match (that was not matched, counts as an error)
