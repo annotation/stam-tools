@@ -177,6 +177,27 @@ impl AlignedFragment {
         )
     }
 
+    /// Returns None when equal, an index number where the strings differ
+    fn strdiff(
+        &self,
+        textstring1: &str,
+        textstring2: &str,
+        config: &AlignmentConfig,
+    ) -> Option<usize> {
+        for (i, (c1, c2)) in textstring1.chars().zip(textstring2.chars()).enumerate() {
+            if c1 != c2 {
+                if config.case_sensitive {
+                    return Some(i);
+                } else {
+                    if c1.to_lowercase().to_string() != c2.to_lowercase().to_string() {
+                        return Some(i);
+                    }
+                }
+            }
+        }
+        return None;
+    }
+
     fn publish<'store>(
         &self,
         select1: &mut Vec<SelectorBuilder<'static>>,
@@ -190,27 +211,18 @@ impl AlignedFragment {
         let mut textsel2 = text2.textselection(&offset2)?;
         let mut textstring1 = textsel1.text();
         let mut textstring2 = textsel2.text();
-        //TODO: This check shouldn't really be necessary but sometimes something goes wrong and this patches it
-        if textstring1 != textstring2 {
-            if self.length > 1 {
-                //ugly patch: try shortening the fragment and rematch (this often works)
+        if !config.grow {
+            // Due to the way the algorithm works, we can end up with non-exact alignments in the tail of the textstrings
+            // For transpositions this is unwanted, this will strip the tail:
+            if let Some(newlength) = self.strdiff(textstring1, textstring2, config) {
                 let mut shorterfragment = self.clone();
-                shorterfragment.length = self.length - 1;
-                return shorterfragment.publish(select1, select2, text, text2, config);
-            } else if config.verbose {
-                eprintln!(
-                    "Notice: Skipping failed alignment fragment: \"{}\" vs \"{}\"",
-                    textstring1
-                        .replace("\"", "\\\"")
-                        .replace("\t", "\\t")
-                        .replace("\n", "\\n"),
-                    textstring2
-                        .replace("\"", "\\\"")
-                        .replace("\t", "\\t")
-                        .replace("\n", "\\n")
-                );
+                if newlength > 1 {
+                    shorterfragment.length = newlength;
+                    return shorterfragment.publish(select1, select2, text, text2, config);
+                } else {
+                    return Ok(false);
+                }
             }
-            return Ok(false);
         }
         if config.trim {
             if let Ok(trimmed) = text.textselection(&offset1)?.trim_text(&TRIM_CHARS) {
@@ -281,11 +293,15 @@ pub fn align_texts<'store>(
         } => {
             let algorithm = SmithWaterman::new(equal, align, insert, delete);
             AlignmentSet::new(seq1.len(), seq2.len(), algorithm, |x, y| {
-                if config.case_sensitive {
-                    seq1[x] == seq2[y]
-                } else {
-                    seq1[x].to_lowercase().to_string() == seq2[y].to_lowercase().to_string()
+                if seq1[x] != seq2[y] {
+                    if config.case_sensitive {
+                        return seq1[x].to_lowercase().to_string()
+                            == seq2[y].to_lowercase().to_string();
+                    } else {
+                        return false;
+                    }
                 }
+                true
             })
         }
         AlignmentAlgorithm::NeedlemanWunsch {
@@ -296,11 +312,15 @@ pub fn align_texts<'store>(
         } => {
             let algorithm = NeedlemanWunsch::new(equal, align, insert, delete);
             AlignmentSet::new(seq1.len(), seq2.len(), algorithm, |x, y| {
-                if config.case_sensitive {
-                    seq1[x] == seq2[y]
-                } else {
-                    seq1[x].to_lowercase().to_string() == seq2[y].to_lowercase().to_string()
+                if seq1[x] != seq2[y] {
+                    if config.case_sensitive {
+                        return seq1[x].to_lowercase().to_string()
+                            == seq2[y].to_lowercase().to_string();
+                    } else {
+                        return false;
+                    }
                 }
+                true
             })
         }
     };
@@ -350,6 +370,10 @@ pub fn align_texts<'store>(
                 }
             }
 
+            if let Some(fragment) = fragment.take() {
+                fragment.publish(&mut select1, &mut select2, text, text2, config)?;
+            }
+
             if let Some(max_errors) = config.max_errors {
                 if let Some(last) = last {
                     //everything after the last match (that was not matched, counts as an error)
@@ -363,10 +387,6 @@ pub fn align_texts<'store>(
             if totalalignlength < config.minimal_align_length {
                 //alignment not good enough to return
                 return Ok(builders);
-            }
-
-            if let Some(fragment) = fragment.take() {
-                fragment.publish(&mut select1, &mut select2, text, text2, config)?;
             }
 
             if select1.is_empty() || (config.simple_only && select1.len() > 1) {
