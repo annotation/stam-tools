@@ -1,6 +1,7 @@
 use stam::*;
 
 use seal::pair::{AlignmentSet, InMemoryAlignmentMatrix, NeedlemanWunsch, SmithWaterman, Step};
+use std::str::FromStr;
 
 const TRIM_CHARS: [char; 4] = [' ', '\n', '\t', '\r'];
 
@@ -22,13 +23,14 @@ pub struct AlignmentConfig {
     /// Only allow for alignments that consist of one contiguous text selection on either side. This is a so-called simple transposition.
     pub simple_only: bool,
 
-    /// The minimal number of characters that must be aligned (absolute number) for a transposition to be valid
+    /// The minimal number of characters that must be aligned (absolute number) for a transposition/translation to be valid
     pub minimal_align_length: usize,
 
-    /// The maximum number of errors that may occur (absolute number) for a transposition to be valid, each insertion/deletion counts as 1. This is more efficient than `minimal_align_length`
+    /// The maximum number of errors (max edit distance) that may occur for a transposition to be valid.
+    /// This is either an absolute integer or a relative ratio between 0.0 and 1.0, interpreted in relation to the length of the first text in the alignment.
     /// In other words; this represents the number of characters in the search string that may be missed when matching in the larger text.
     /// The transposition itself will only consist of fully matching parts, use `grow` if you want to include non-matching parts.
-    pub max_errors: Option<usize>,
+    pub max_errors: Option<AbsoluteOrRelative>,
 
     /// Grow aligned parts into larger alignments by incorporating non-matching parts. This will return translations rather than transpositions.
     /// You'll want to set `max_errors` in combination with this one to prevent very low-quality alignments.
@@ -375,6 +377,7 @@ pub fn align_texts<'store>(
             }
 
             if let Some(max_errors) = config.max_errors {
+                let max_errors = max_errors.as_absolute(seq1.len());
                 if let Some(last) = last {
                     //everything after the last match (that was not matched, counts as an error)
                     errors += seq1.len() - last;
@@ -573,4 +576,33 @@ fn print_alignment<'a>(
             ids.join("|")
         }
     );
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+pub enum AbsoluteOrRelative {
+    Absolute(usize),
+    Relative(f64),
+}
+
+impl AbsoluteOrRelative {
+    pub fn as_absolute(self, total: usize) -> usize {
+        match self {
+            Self::Absolute(i) => i,
+            Self::Relative(f) => (f * total as f64).round() as usize,
+        }
+    }
+}
+
+impl FromStr for AbsoluteOrRelative {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(i) = s.parse::<usize>() {
+            Ok(Self::Absolute(i))
+        } else if let Ok(f) = s.parse::<f64>() {
+            Ok(Self::Relative(f))
+        } else {
+            Err("Value must be either an integer (absolute) or a floating point value (relative)")
+        }
+    }
 }

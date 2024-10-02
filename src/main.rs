@@ -1559,7 +1559,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 simple_only: args.is_present("simple-only"),
                 trim: args.is_present("trim"),
                 max_errors: if args.is_present("max-errors") {
-                    Some(args.value_of("max-errors").unwrap().parse().expect("value for --max-errors must be integer"))
+                    Some(args.value_of("max-errors").unwrap().parse().expect("value for --max-errors must be integer (absolute) or float (relative)"))
                 } else {
                    None
                 },
