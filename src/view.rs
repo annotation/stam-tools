@@ -1126,7 +1126,6 @@ impl<'a> AnsiWriter<'a> {
 
         let mut pendingnewlines = String::new();
 
-        let mut active_highlights: BTreeSet<usize> = BTreeSet::new();
         let mut close_highlights: BTreeSet<usize> = BTreeSet::new();
 
         for (resultnr, result) in
@@ -1137,7 +1136,6 @@ impl<'a> AnsiWriter<'a> {
             match result {
                 Err(msg) => return Ok(self.output_error(msg)),
                 Ok(result) => {
-                    active_highlights.clear();
                     let resource = result.textselection.resource();
 
                     if self.titles {
@@ -1158,21 +1156,14 @@ impl<'a> AnsiWriter<'a> {
                                     .get(*textselectionhandle)
                                     .expect("text selection must exist");
                                 for (j, highlighted_selections) in
-                                    result.highlights.iter().enumerate()
+                                    result.highlights.iter().enumerate().rev()
                                 {
                                     if highlighted_selections.contains_key(textselection) {
-                                        active_highlights.insert(j);
+                                        if segment.end() <= result.textselection.end() {
+                                            self.writeansicol_bold(writer, j + 1, "[")?;
+                                        }
                                     }
                                 }
-                            }
-                        }
-
-                        if !active_highlights.is_empty()
-                            && segment.end() <= result.textselection.end()
-                        {
-                            //output the opening tags
-                            for j in active_highlights.iter().rev() {
-                                self.writeansicol_bold(writer, j + 1, "[")?;
                             }
                         }
 
@@ -1265,9 +1256,6 @@ impl<'a> AnsiWriter<'a> {
                         if !pendingnewlines.is_empty() {
                             write!(writer, "{}", pendingnewlines)?;
                         }
-
-                        //process the closing highlights
-                        active_highlights.retain(|hl| !close_highlights.contains(hl));
                     }
                 }
             }
