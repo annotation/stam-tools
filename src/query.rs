@@ -76,9 +76,7 @@ pub fn to_json<'a, W: std::io::Write>(
                 }
                 QueryResultItem::DataKey(key) => key.as_ref().to_json()?,
                 QueryResultItem::TextResource(resource) => resource.as_ref().to_json_string()?,
-                QueryResultItem::AnnotationDataSet(dataset) => dataset.as_ref().to_json_string(
-                    &Config::default().with_dataformat(DataFormat::Json { compact: false }),
-                )?,
+                QueryResultItem::AnnotationDataSet(dataset) => dataset.as_ref().to_json_string()?,
                 QueryResultItem::TextSelection(tsel) => tsel.to_json()?,
                 QueryResultItem::AnnotationSubStore(substore) => {
                     //MAYBE TODO: this may need to be thought out deeper but doesn't occur yet anyway
