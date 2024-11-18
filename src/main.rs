@@ -171,6 +171,12 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .action(ArgAction::Append),
     );
     args.push(
+        Arg::with_name("extra-target-template")
+            .long("extra-target-template")
+            .help("Adds an extra target alongside the usual target with TextPositionSelector. This extra target can be used for provide a direct IRI/URI to fetch the exact textselection (if the backend system supports it). In the template, you should specify an IRI with the variables {resource} (which is the resource IRI), {begin}, and {end}, they will be substituted accordingly. A common value is: {resource}/{begin}/{end}")
+            .takes_value(true)
+    );
+    args.push(
         Arg::with_name("namespaces")
             .long("ns")
             .help("(for Web Annotation output only) Add a namespace to the JSON-LD context, syntax is: namespace: uri")
@@ -1312,6 +1318,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                     auto_generated: !args.is_present("no-generated"),
                     auto_generator: !args.is_present("no-generator"),
                     extra_context: args.values_of("add-context").unwrap_or(clap::Values::default()).map(|x| x.to_string()).collect(),
+                    extra_target_template: args.get_one("extra-target-template").map(|s: &String| s.to_string()),
                     context_namespaces: { 
                         let mut namespaces = Vec::new(); 
                         for assignment in args.values_of("namespaces").unwrap_or(clap::Values::default()) {
