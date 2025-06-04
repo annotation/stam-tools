@@ -1,5 +1,5 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand}; 
-use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig, TransposeConfig};
+use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig, TransposeConfig, TextResourceBuilder};
 use std::fs;
 use std::path::Path;
 use std::process::exit;
@@ -21,6 +21,9 @@ use stamtools::annotate::*;
 use stamtools::transpose::*;
 use stamtools::xml::*;
 use stamtools::split::*;
+use stamtools::print::*;
+
+use stam::Offset;
 
 fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -42,8 +45,8 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
 }
 
 
-const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one.";
-const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set.";
+const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. You may also provide *.txt files to be added to the store automatically.";
+const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set. You may also provide *.txt files to be added to the store automatically.";
 const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an annotation store in STAM JSON or STAM CSV. If the file exists, it will be loaded and augmented. Multiple store files are allowed but will only act as input and will be merged into one. (the *first* file mentioned).  If  --dry-run or --output is set, this will not be used for output.";
 const SUBCOMMANDS: [&'static str; 16] = ["batch","info","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose","fromxml","split"];
 
@@ -739,7 +742,14 @@ fn load_store(args: &ArgMatches) -> AnnotationStore {
     for (i,filename) in args
         .values_of("annotationstore")
         .expect("an annotation store must be provided").into_iter().enumerate() {
-        if i == 0 {
+        if filename.to_lowercase().ends_with(".txt") || filename.to_lowercase().ends_with(".md") {
+            //we got a plain text file, add it to the store
+            store.add_resource(TextResourceBuilder::new().with_filename(filename)).unwrap_or_else(|err| {
+                eprintln!("error loading text: {}", err);
+                exit(1);
+            });
+        } else if i == 0 {
+            //first file
             store =
                 AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
                     eprintln!("error loading annotation store: {}", err);
@@ -834,13 +844,49 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
         )
         .subcommand(
             SubCommand::with_name("print")
-                .about("Output the plain text of given a query, or of all resources if no query was provided")
                 .args(&common_arguments())
                 .args(&store_arguments(true, false, batchmode))
-                .args(&config_arguments())
-                .args(&query_arguments("
-A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
-"))
+                .about("Extract an offset from a plain text file (no STAM model needed).")
+                .arg(
+                    Arg::with_name("resource")
+                        .long("resource")
+                        .short('r')
+                        .help(
+                            "The resource ID (may be equal to base filename). If omitted, the first resource in the model will be grabbed if an offset was specified, otherwise ALL resources will be printed."
+                        )
+                        .takes_value(true)
+                        .required(false)
+                )
+                .arg(
+                    Arg::with_name("begin")
+                        .long("begin")
+                        .alias("start")
+                        .short('b')
+                        .help(
+                            "Begin offset (0-indexed)"
+                        )
+                        .takes_value(true)
+                        .default_value("0")
+                )
+                .arg(
+                    Arg::with_name("end")
+                        .long("end")
+                        .short('e')
+                        .help(
+                            "End offset (0-indexed, non-inclusive)"
+                        )
+                        .takes_value(true)
+                        .default_value("0")
+                )
+                .arg(
+                    Arg::with_name("offset")
+                        .long("offset")
+                        .alias("O")
+                        .help(
+                            "Offset specification in begin:end or begin,end format. Where either is a (possibly signed) integer. Can be used instead of begin and end."
+                        )
+                        .takes_value(true)
+                )
         )
         .subcommand(
             SubCommand::with_name("view")
@@ -1020,6 +1066,7 @@ fn main() {
         exit(2);
     }
     let args = args.unwrap();
+
 
     let mut store = if rootargs.subcommand_matches("import").is_some() || rootargs.subcommand_matches("init").is_some() || rootargs.subcommand_matches("fromxml").is_some() {
         let force_new = !args.is_present("outputstore") && (args.is_present("force-new") || rootargs.subcommand_matches("init").is_some());
@@ -1299,6 +1346,8 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             ).map_err(|err| format!("{}",err))?;
         } else if let Some("json") = args.value_of("format") {
             to_json(&store, writer, query).map_err(|err| format!("{}",err))?;
+        } else if let Some("txt") = args.value_of("format") {
+            to_text(&store, writer, query, args.value_of("use")).map_err(|err| format!("{}",err))?;
         } else if let Some("webanno") | Some("w3anno") | Some("jsonl") = args.value_of("format") {
             to_w3anno(
                 &store,
@@ -1334,7 +1383,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 },
             );
         } else {
-            return Err(format!("Invalid output format, specify 'tsv', 'json' or 'w3anno'"));
+            return Err(format!("Invalid output format, specify 'tsv', 'json', 'txt' or 'w3anno'"));
         }
     } else if rootargs.subcommand_matches("import").is_some() {
         let inputfiles = args.values_of("inputfile").unwrap().collect::<Vec<&str>>();
@@ -1380,16 +1429,6 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             )?;
         }
         changed = true;
-    } else if rootargs.subcommand_matches("print").is_some() {
-        let querystring = args
-            .value_of("query")
-            .into_iter()
-            .next()
-            .unwrap_or("SELECT RESOURCE ?res");
-        let (query, _) = stam::Query::parse(querystring).map_err(|err| {
-            format!("Query syntax error: {}", err)
-        })?;
-        to_text(&store, query, args.value_of("use"))?;
     } else if rootargs.subcommand_matches("view").is_some() {
         let queries: Vec<&str> = args.values_of("query").unwrap_or_default().collect();
         let mut queries_iter = queries.into_iter();
@@ -1718,6 +1757,23 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
 
         split(store, queries, mode, args.is_present("verbose"));
         changed = true;
+    } else if rootargs.subcommand_matches("print").is_some() {
+        let offset: Offset = if let Some(offset) = args.value_of("offset") {
+            offset.trim().try_into().map_err(|err| {
+                format!("{}", err)
+            })?
+        } else {
+            let begin: isize = args.value_of("begin").unwrap().parse().expect("begin offset must be an integer");
+            let end: isize = args.value_of("end").unwrap().parse().expect("end offset must be an integer");
+            (begin,end).into()
+        };
+        let resource: Option<&str> = args.value_of("resource");
+        if let Err(e) = print(store, writer, resource, offset) {
+            eprintln!("{}", e);
+            exit(1);
+        } else {
+            exit(0);
+        }
     }
     Ok(changed)
 }

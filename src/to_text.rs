@@ -2,8 +2,9 @@ use crate::query::textselection_from_queryresult;
 use stam::{AnnotationStore, Query, Text};
 
 /// Run a query and outputs the text of the results to standard output. Some extra information (identifiers as headers) will be outputted to standard error output
-pub fn to_text<'a>(
+pub fn to_text<'a, W: std::io::Write>(
     store: &'a AnnotationStore,
+    writer: &mut W,
     query: Query<'a>,
     varname: Option<&'a str>,
 ) -> Result<(), String> {
@@ -33,7 +34,7 @@ pub fn to_text<'a>(
                         textselection.end(),
                     );
                 }
-                println!("{}", textselection.text());
+                write!(writer, "{}\n", textselection.text()).map_err(|e| format!("{}", e))?;
             }
         }
     }

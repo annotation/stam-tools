@@ -21,7 +21,7 @@ Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 * ``stam init``      - Initialize a new STAM annotationstore (either from scratch or as a copy/merge of others)
 * ``stam import``    - Import STAM data in tabular from a simple TSV (Tab Separated Values) format, allows custom columns.
 * ``stam fromxml``   - Import data from XML-based formats (like xHTML, TEI) to STAM. Effectively 'untangling' text and annotations.
-* ``stam print``     - Output the text of any resources in the model.
+* ``stam print``     - Print a text or text selection specified by an offset.
 * ``stam query`` or ``stam export``  -  Query the annotation store and export the output in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
 * ``stam validate``  - Validate a STAM model.  
 * ``stam tag``       - Regular-expression based tagger on plain text. 
@@ -123,11 +123,31 @@ Example:
 $ stam info my.store.stam.json
 ```
 
+### stam print
+
+Extracts the specified text selection from the specified resource. If begin and end are omitted, the whole resouce is printed.
+
+```
+$ stam print --resource document.txt --begin 23 --end 34 my.store.stam.json 
+```
+
+You can also run this directly on any plain text file (`*.txt` extension):
+
+```
+$ stam print document.txt --begin 23 --end 34
+```
+
 ### stam query
 
 The `stam query` tool is used to consult the annotation store and export
-selected STAM data into a simple tabular data format (TSV, tab separated
-values). You can configure precisely what columns you want to export using the
+selected STAM data into one of three formats (via the `--format` parameter):
+
+* `tsv` - simple tabular data format (TSV, tab separated values). This is the default.
+* `json` - STAM JSON
+* `w3anno` - W3C Web Annotations 
+* `txt` - plain text
+
+You can configure precisely what columns you want to export using the
 ``--columns`` parameter, or simply rely on the defaults that are autodetected.
 See ``stam query --help`` for a list of supported columns. 
 
@@ -138,7 +158,7 @@ statement in [the STAM Query Language
 *Example 1) a query in STAMQL:*
 
 ```
-$ stam query --query 'SELECT ANNOTATION ?a WHERE DATA "myset" "pos" = "noun";'
+$ stam query --query 'SELECT ANNOTATION ?a WHERE DATA "myset" "pos" = "noun";' my.store.stam.json
 ```
 
 However, if you simply want all annotations, resource, data, and don't want to formulate a query a shortcut is
@@ -191,6 +211,7 @@ This will result in a TSV file where the sentence will be repeated for each word
 The TSV output produced by this tool is not lossless, that is, it can not encode everything
 that STAM supports, unlike STAM JSON and STAM CSV. It does, however, give you a great
 deal of flexibility to quickly output only the data relevant for whatever your specific purpose is.
+Alternatively, you can output to W3C Web Annotations or plain texts (depending also on the nature of the query).
 
 For queries that modify the annotation store, use `stam annotate` rather than `stam query`.
 
@@ -257,7 +278,9 @@ example.deep 690:693 Hij     1/1
 example.deep    799:802 hij     1/1
 ```
 
-The tab-separated columns are as follows:
+You can run this on an existing store, or simply directly on a text file (`*.txt`).
+
+The tab-separated columns in the output are as follows:
 
 1. Resource ID
 2. Begin offset and end offset (non-inclusive) in unicode points

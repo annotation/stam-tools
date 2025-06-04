@@ -14,6 +14,7 @@ pub mod align;
 pub mod annotate;
 pub mod grep;
 pub mod info;
+pub mod print;
 pub mod query;
 pub mod split;
 pub mod tag;
