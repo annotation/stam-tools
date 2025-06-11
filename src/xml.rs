@@ -1,14 +1,21 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
 
-use roxmltree::{Attribute, Document, Node, NodeId, ParsingOptions};
-use serde::Deserialize;
+use roxmltree::{Attribute, Document, Node, NodeId, NodeType, ParsingOptions};
+use serde::ser::{SerializeMap, Serializer};
+use serde::{Deserialize, Serialize};
 use stam::*;
 use toml;
+use upon::{Engine, Template};
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
+
+fn default_set() -> String {
+    "urn:stam-fromxml".into()
+}
 
 #[derive(Deserialize)]
 /// Holds the configuration for mapping a specific XML format to STAM
@@ -18,20 +25,23 @@ pub struct XmlConversionConfig {
     elements: Vec<XmlElementConfig>,
 
     #[serde(default)]
-    /// Holds configurations for mapping specific XML attributes to STAM, evaluated in reverse-order, so put more generic rules before specific ones
-    attributes: Vec<XmlAttributeConfig>,
-
-    #[serde(default)]
     /// Maps XML prefixes to namespace
     namespaces: HashMap<String, String>,
 
-    #[serde(default = "Whitespace::collapse")]
+    #[serde(default = "XmlWhitespaceHandling::collapse")]
     /// Default whitespace handling
-    whitespace: Whitespace,
+    whitespace: XmlWhitespaceHandling,
+
+    #[serde(default)]
+    /// Sets additional context variables that can be used in templates
+    context: HashMap<String, String>,
 
     #[serde(default)]
     /// Inject a DTD (for XML entity resolution)
     inject_dtd: Option<String>,
+
+    #[serde(default = "default_set")]
+    default_set: String,
 
     #[serde(default)]
     /// A prefix to assign when setting annotation IDs, within this string you can use the special variable `{resource}` to use the resource ID.
@@ -45,9 +55,10 @@ impl XmlConversionConfig {
     pub fn new() -> Self {
         Self {
             elements: Vec::new(),
-            attributes: Vec::new(),
             namespaces: HashMap::new(),
-            whitespace: Whitespace::Collapse,
+            context: HashMap::new(),
+            whitespace: XmlWhitespaceHandling::Collapse,
+            default_set: default_set(),
             inject_dtd: None,
             id_prefix: None,
             debug: false,
@@ -83,7 +94,7 @@ impl XmlConversionConfig {
     }
 
     /// Set default whitespace handling
-    pub fn with_whitespace(mut self, handling: Whitespace) -> Self {
+    pub fn with_whitespace(mut self, handling: XmlWhitespaceHandling) -> Self {
         self.whitespace = handling;
         self
     }
@@ -102,20 +113,6 @@ impl XmlConversionConfig {
         self
     }
 
-    /// Set an attribute configuration
-    pub fn with_attribute<F>(mut self, scope_expression: &str, name: &str, setup: F) -> Self
-    where
-        F: Fn(XmlAttributeConfig) -> XmlAttributeConfig,
-    {
-        let expression = XPathExpression::new(scope_expression);
-        let attribute = setup(XmlAttributeConfig::new(expression, name));
-        if self.debug {
-            eprintln!("[STAM fromxml] registered {:?}", attribute);
-        }
-        self.attributes.push(attribute);
-        self
-    }
-
     /// How to handle this element?
     fn element_config(&self, node: Node) -> Option<&XmlElementConfig> {
         let nodepath: NodePath = node.into();
@@ -126,26 +123,11 @@ impl XmlConversionConfig {
         }
         None
     }
-
-    /// How to handle this attribute?
-    fn attribute_config(&self, element: Node, attribute: Attribute) -> Option<&XmlAttributeConfig> {
-        let nodepath: NodePath = element.into();
-        for attributeconfig in self.attributes.iter().rev() {
-            let (namespace, name) = attributeconfig.resolve(self);
-            if (name == "*" || name == attribute.name())
-                && (namespace == attribute.namespace() || name == "*")
-                && attributeconfig.scope.test(&nodepath, self)
-            {
-                return Some(attributeconfig);
-            }
-        }
-        None
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
 /// Determines how to handle whitespace for an XML element
-pub enum Whitespace {
+pub enum XmlWhitespaceHandling {
     //Inherit from parent
     Inherit,
     /// Whitespace is kept as is in the XML
@@ -154,16 +136,31 @@ pub enum Whitespace {
     Collapse,
 }
 
-impl Default for Whitespace {
+impl Default for XmlWhitespaceHandling {
     fn default() -> Self {
-        Whitespace::Inherit
+        XmlWhitespaceHandling::Inherit
     }
 }
 
-impl Whitespace {
+impl XmlWhitespaceHandling {
     fn collapse() -> Self {
-        Whitespace::Collapse
+        XmlWhitespaceHandling::Collapse
     }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub enum XmlAnnotationHandling {
+    /// No annotation
+    None,
+
+    /// Selects the text pertaining to the current element
+    TextSelector,
+
+    /// Selects the text pertaining to the current resource
+    ResourceSelector,
+
+    /// Selects the text between the current element and the next instance of the same element type
+    TextSelectorBetweenMarkers,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -172,81 +169,106 @@ pub struct XmlElementConfig {
     /// This is XPath-like expression (just a small subset of XPath) to identify an element by its path
     path: XPathExpression,
 
+    annotation: XmlAnnotationHandling,
+
+    annotationdata: Vec<XmlAnnotationDataConfig>,
+
+    /// Template or None for no text handling, prefixes are never targeted by annotations
+    textprefix: Option<String>,
+
+    /// Template or None for no text handling
+    text: Option<String>,
+
+    /// Template or None for no text handling, suffixes are never targeted by annotations
+    textsuffix: Option<String>,
+
+    /// Template or None for no ID extraction
+    id: Option<String>,
+
     #[serde(default)]
-    /// This is the mode that determines how the element is handled
-    handling: ElementHandling,
+    /// Descend into children (false) or not? (true)
+    stop: bool,
 
     #[serde(default)]
     /// Whitespace handling for this element
-    whitespace: Whitespace,
-
-    /// When extracting text, insert this text *before* the actual text (if any)
-    /// It is often used for delimiters/whitspace/newlines.
-    textprefix: Option<String>,
-
-    /// When extracting text, insert this text *after* the actual text (if any)
-    /// It is often used for delimiters/whitspace/newlines.
-    textsuffix: Option<String>,
-
-    /// The STAM set to translate this element to
-    set: Option<String>,
-
-    /// The STAM key to translate this element to
-    key: Option<String>,
-
-    /// The value to translate this element
-    value: Option<String>,
+    whitespace: XmlWhitespaceHandling,
 }
 
 impl XmlElementConfig {
     fn new(expression: XPathExpression) -> Self {
         Self {
             path: expression,
-            handling: ElementHandling::AnnotateText,
-            whitespace: Whitespace::Inherit,
+            stop: false,
+            whitespace: XmlWhitespaceHandling::Inherit,
+            annotation: XmlAnnotationHandling::None,
+            annotationdata: Vec::new(),
+            id: None,
             textprefix: None,
+            text: None,
             textsuffix: None,
-
-            set: None,
-            key: None,
-            value: None,
         }
     }
 
-    /// This sets the mode that determines how the element is handled
-    pub fn with_handling(mut self, handling: ElementHandling) -> Self {
-        self.handling = handling;
+    pub fn compile(&self, engine: &mut Engine<'_>) -> upon::Result<()> {
+        if let Some(text) = self.text.as_ref() {
+            if engine.get_template(text.as_str()).is_none() {
+                engine.add_template(text.clone(), text.clone())?;
+            }
+        }
+        if let Some(id) = self.id.as_ref() {
+            if engine.get_template(id.as_str()).is_none() {
+                engine.add_template(id.clone(), id.clone())?;
+            }
+        }
+        for annotationdata in self.annotationdata.iter() {
+            if let Some(id) = annotationdata.id.as_ref() {
+                if engine.get_template(id.as_str()).is_none() {
+                    engine.add_template(id.clone(), id.clone())?;
+                }
+            }
+            if let Some(set) = annotationdata.set.as_ref() {
+                if engine.get_template(set.as_str()).is_none() {
+                    engine.add_template(set.clone(), set.clone())?;
+                }
+            }
+            if let Some(key) = annotationdata.key.as_ref() {
+                if engine.get_template(key.as_str()).is_none() {
+                    engine.add_template(key.clone(), key.clone())?;
+                }
+            }
+            if let Some(value) = annotationdata.value.as_ref() {
+                if engine.get_template(value.as_str()).is_none() {
+                    engine.add_template(value.clone(), value.clone())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// This sets the mode that determines how the element is handledhttps://www.youtube.com/watch?v=G_BrbhRrP6g
+    pub fn with_stop(mut self, stop: bool) -> Self {
+        self.stop = stop;
         self
     }
 
     /// This sets the whitespace handling for this element
-    pub fn with_whitespace(mut self, handling: Whitespace) -> Self {
+    pub fn with_whitespace(mut self, handling: XmlWhitespaceHandling) -> Self {
         self.whitespace = handling;
         self
     }
 
-    pub fn with_textprefix(mut self, textprefix: impl Into<String>) -> Self {
-        self.textprefix = Some(textprefix.into());
+    pub fn with_text(mut self, text: impl Into<String>) -> Self {
+        self.text = Some(text.into());
         self
     }
 
-    pub fn with_textsuffix(mut self, textsuffix: impl Into<String>) -> Self {
-        self.textsuffix = Some(textsuffix.into());
+    pub fn without_text(mut self) -> Self {
+        self.text = None;
         self
     }
 
-    pub fn with_set(mut self, set: impl Into<String>) -> Self {
-        self.set = Some(set.into());
-        self
-    }
-
-    pub fn with_key(mut self, key: impl Into<String>) -> Self {
-        self.key = Some(key.into());
-        self
-    }
-
-    pub fn with_value(mut self, value: impl Into<String>) -> Self {
-        self.value = Some(value.into());
+    pub fn with_annotation(mut self, annotation: XmlAnnotationHandling) -> Self {
+        self.annotation = annotation;
         self
     }
 
@@ -263,33 +285,34 @@ impl PartialEq for XmlElementConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct XmlAttributeConfig {
-    #[serde(default = "XPathExpression::any")]
-    scope: XPathExpression,
-
-    name: String,
-
-    #[serde(default)]
-    handling: AttributeHandling,
-
+pub struct XmlAnnotationDataConfig {
+    /// Template
+    id: Option<String>,
+    /// Template
     set: Option<String>,
+    /// Template
     key: Option<String>,
+    /// Template
+    value: Option<String>,
+
+    /// Allow value templates that yield an empty string?
+    #[serde(default)]
+    allow_empty_value: bool,
 }
 
-impl XmlAttributeConfig {
-    fn new(expression: XPathExpression, name: impl Into<String>) -> Self {
+impl XmlAnnotationDataConfig {
+    fn new() -> Self {
         Self {
-            scope: expression,
-            handling: AttributeHandling::KeyValue,
-            name: name.into(),
-
+            id: None,
             set: None,
             key: None,
+            value: None,
+            allow_empty_value: false,
         }
     }
 
-    pub fn with_handling(mut self, handling: AttributeHandling) -> Self {
-        self.handling = handling;
+    pub fn with_id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into());
         self
     }
 
@@ -303,20 +326,9 @@ impl XmlAttributeConfig {
         self
     }
 
-    /// get namespace and name
-    pub fn resolve<'a>(&'a self, config: &'a XmlConversionConfig) -> (Option<&'a str>, &'a str) {
-        if let Some((prefix, name)) = self.name.split_once(":") {
-            if let Some(namespace) = config.namespaces.get(prefix).map(|x| x.as_str()) {
-                (Some(namespace), name)
-            } else {
-                panic!(
-                    "XML namespace prefix not known in configuration: {}",
-                    prefix
-                );
-            }
-        } else {
-            (None, self.name.as_str())
-        }
+    pub fn with_value(mut self, value: impl Into<String>) -> Self {
+        self.key = Some(value.into());
+        self
     }
 }
 
@@ -444,6 +456,7 @@ pub fn from_xml<'a>(
     .map_err(|e| format!("Error parsing XML file {}: {}", filename.display(), e))?;
 
     let mut converter = XmlToStamConverter::new(config);
+    converter.compile();
 
     let textoutfilename = format!(
         "{}.txt",
@@ -499,10 +512,16 @@ struct XmlToStamConverter<'a> {
     /// The extracted plain-text after/during untangling
     text: String,
 
+    /// The template engine
+    template_engine: Engine<'a>,
+
     /// Keep track of the new positions (unicode offset) where the node starts in the untangled document
     positionmap: HashMap<NodeId, Offset>,
 
-    /// Keep track of markers (XML elements with `ElementHandling::MarkersToTextSpan`), the key in this map is some hash of XmlElementConfig.
+    /// Keep track of the new positions (bytes offset) where the node starts in the untangled document
+    bytepositionmap: HashMap<NodeId, (usize, usize)>,
+
+    /// Keep track of markers (XML elements with `XmlAnnotationHandling::TextSelectorBetweenMarkers`), the key in this map is some hash of XmlElementConfig.
     markers: HashMap<usize, Vec<NodeId>>,
 
     /// The resource
@@ -513,94 +532,71 @@ struct XmlToStamConverter<'a> {
 
     /// The configuration
     config: &'a XmlConversionConfig,
+
+    /// Namespace to prefix map
+    prefixes: HashMap<String, String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
-/// This determines how an XML element translates to STAM.
-pub enum ElementHandling {
-    /// Skip this element and any text in it, do not create any annotations, but do descend into its child elements and their text
-    PassThrough,
-
-    /// Skip this element and all its descendants, it will be converted neither to text nor to annotations
-    Exclude,
-
-    /// Include the element text, discard the annotation, do descend into children
-    ExtractTextOnly,
-
-    /// Include this element's text and annotation, and descend into the children
-    AnnotateText,
-
-    /// Ignore any text, associate metadata with the resource
-    AnnotateResource,
-
-    /// Associate metadata with the resource, take the text of the element as data value
-    /// This is useful for mapping XML metadata like `<author>John Doe</author>` to an annotation with datakey 'author' and value 'John Doe'.
-    AnnotateResourceWithTextAsData,
-
-    /// Annotate the text span from element until the next occurence of the same element.
-    /// This can be used for example to convert <br/> elements annotations spanning whole lines.
-    AnnotateBetweenMarkers,
+pub enum XmlConversionError {
+    StamError(StamError),
+    TemplateError(upon::Error),
 }
 
-impl Default for ElementHandling {
-    fn default() -> Self {
-        Self::AnnotateText
+impl From<StamError> for XmlConversionError {
+    fn from(error: StamError) -> Self {
+        Self::StamError(error)
     }
 }
 
-impl ElementHandling {
-    fn extract_text(&self) -> bool {
+impl From<upon::Error> for XmlConversionError {
+    fn from(error: upon::Error) -> Self {
+        Self::TemplateError(error)
+    }
+}
+
+impl Display for XmlConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::AnnotateText | Self::ExtractTextOnly => true,
-            _ => false,
+            Self::StamError(e) => e.fmt(f),
+            Self::TemplateError(e) => e.fmt(f),
         }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
-/// This determines how an XML attribute translates to STAM.
-pub enum AttributeHandling {
-    /// Skip this attribute
-    Exclude,
-
-    /// Include this attribute as data ([`stam::AnnotationData`]) with corresponding key and value.
-    KeyValue,
-
-    /// Use this attribute as identifier for the annotation
-    Identifier,
-
-    /// Use this attribute to extract the text from (prior to any text in the element, but after the element's textprefix)
-    ExtractTextFirst,
-
-    /// Use this attribute to extract the text from (after any text in the element, but before the elements's textpostfix)
-    ExtractTextAfter,
-
-    /// Use this attribute value as key.
-    /// This implies that there must be a single other attribute with [`AttributeHandling::Value`]
-    Key,
-
-    /// Use this attribute value as value.
-    /// If there is another attribute with [`AttributeHandling::Key`], then that will be used as key,
-    /// otherwise the element name itself will be used as key.
-    Value,
-}
-
-impl Default for AttributeHandling {
-    fn default() -> Self {
-        Self::KeyValue
     }
 }
 
 impl<'a> XmlToStamConverter<'a> {
     fn new(config: &'a XmlConversionConfig) -> Self {
+        let mut prefixes: HashMap<String, String> = HashMap::new();
+        for (prefix, namespace) in config.namespaces.iter() {
+            prefixes.insert(namespace.to_string(), prefix.to_string());
+        }
+        let mut template_engine = Engine::new();
+        template_engine.add_filter("capitalize", filter_capitalize);
+        template_engine.add_filter("lower", str::to_lowercase);
+        template_engine.add_filter("upper", str::to_uppercase);
+        template_engine.add_filter("plus", |a: i64, b: i64| a + b);
+        template_engine.add_filter("minus", |a: i64, b: i64| a - b);
+        template_engine.add_filter("last", |list: &[upon::Value]| list.last().map(Clone::clone));
+        template_engine.add_filter("first", |list: &[upon::Value]| {
+            list.first().map(Clone::clone)
+        });
         Self {
             cursor: 0,
             text: String::new(),
+            template_engine: Engine::new(),
             positionmap: HashMap::new(),
+            bytepositionmap: HashMap::new(),
             markers: HashMap::new(),
             resource_handle: None,
             pending_whitespace: false,
+            prefixes,
             config,
+        }
+    }
+
+    /// Compile templates
+    fn compile(&mut self) {
+        for element in self.config.elements.iter() {
+            element.compile(&mut self.template_engine);
         }
     }
 
@@ -611,8 +607,8 @@ impl<'a> XmlToStamConverter<'a> {
     fn extract_element_text(
         &mut self,
         node: Node,
-        whitespace: Whitespace,
-    ) -> Result<(), StamError> {
+        whitespace: XmlWhitespaceHandling,
+    ) -> Result<(), XmlConversionError> {
         if self.config.debug {
             let path: NodePath = node.into();
             eprintln!("[STAM fromxml] extracting text from {}", path);
@@ -629,63 +625,51 @@ impl<'a> XmlToStamConverter<'a> {
                 eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
             }
 
-            if element_config.handling != ElementHandling::Exclude
-                && element_config.handling != ElementHandling::AnnotateBetweenMarkers
-                && element_config.handling.extract_text()
+            if !element_config.stop
+                && element_config.annotation != XmlAnnotationHandling::TextSelectorBetweenMarkers
+                && element_config.text.is_some()
             {
                 //do text extraction for this element
 
                 let whitespace = if node.has_attribute((NS_XML, "space")) {
                     // if there is an explicit xml:space attributes, it overrides whatever whitespace handling we have set:
                     match node.attribute((NS_XML, "space")).unwrap() {
-                        "preserve" => Whitespace::Preserve,
-                        "collapse" | "replace" => Whitespace::Collapse,
+                        "preserve" => XmlWhitespaceHandling::Preserve,
+                        "collapse" | "replace" => XmlWhitespaceHandling::Collapse,
                         _ => whitespace,
                     }
-                } else if element_config.whitespace == Whitespace::Inherit {
+                } else if element_config.whitespace == XmlWhitespaceHandling::Inherit {
                     whitespace //from parent, i.e. passed to this (recursive) function by caller
                 } else {
                     element_config.whitespace //default from the config
                 };
 
-                // process the text prefix, a preconfigured string of text to include prior to the actual text
+                let mut context = NodeForTemplate {
+                    node: &node,
+                    text: None,
+                    begin: Some(self.cursor),
+                    end: None,
+                    length: None,
+                    config: &self.config,
+                    prefixes: &self.prefixes,
+                };
+
+                // process the text prefix, a text template to include prior to the actual text
                 if let Some(textprefix) = &element_config.textprefix {
                     self.pending_whitespace = false;
                     if self.config.debug {
                         eprintln!("[STAM fromxml]   outputting textprefix: {:?}", textprefix);
                     }
-                    let (textprefix_len, textprefix_bytelen) = if has_variables(textprefix) {
-                        let s = resolve_variables(textprefix, node);
-                        self.text += &s;
-                        (s.chars().count(), s.len())
-                    } else {
-                        self.text += textprefix;
-                        (textprefix.chars().count(), textprefix.len())
-                    };
-                    self.cursor += textprefix_len;
-                    // the textprefix will never be part of the annotation's text selection, increment the offsets:
-                    begin += textprefix_len;
-                    bytebegin += textprefix_bytelen;
-                }
+                    let template = self.template_engine.template(textprefix.as_str());
+                    let result = template.render(&context).to_string()?;
+                    let result_charlen = result.chars().count();
+                    self.cursor += result_charlen;
+                    self.text += &result;
+                    context.begin = Some(self.cursor);
 
-                // test if this element is configured to grab text from attributes
-                let mut textfromattrib_after = None;
-                for attribute in node.attributes() {
-                    if let Some(attribute_config) = self.config.attribute_config(node, attribute) {
-                        if attribute_config.handling == AttributeHandling::ExtractTextFirst {
-                            if self.pending_whitespace {
-                                self.text.push(' ');
-                                self.pending_whitespace = false;
-                                begin += 1;
-                                bytebegin += 1;
-                            }
-                            firsttext = false;
-                            self.text += attribute.value();
-                        } else if attribute_config.handling == AttributeHandling::ExtractTextAfter {
-                            //store for later output
-                            textfromattrib_after = Some(attribute.value());
-                        }
-                    }
+                    // the textprefix will never be part of the annotation's text selection, increment the offsets:
+                    begin += result_charlen;
+                    bytebegin += result.len();
                 }
 
                 // process all child elements
@@ -700,7 +684,7 @@ impl<'a> XmlToStamConverter<'a> {
                         let mut innertext = child.text().expect("text node must have text");
                         let mut pending_whitespace = false;
                         let mut leading_whitespace = false;
-                        if whitespace == Whitespace::Collapse && !innertext.is_empty() {
+                        if whitespace == XmlWhitespaceHandling::Collapse && !innertext.is_empty() {
                             // analyse what kind of whitespace we are dealing with
                             let mut all_whitespace = true;
                             leading_whitespace = innertext.chars().next().unwrap().is_whitespace();
@@ -754,7 +738,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
 
                         // finally we output the actual text, and advance the cursor
-                        if whitespace == Whitespace::Collapse {
+                        if whitespace == XmlWhitespaceHandling::Collapse {
                             let mut prevc = ' ';
                             let mut innertext = innertext.replace(|c: char| c.is_whitespace(), " ");
                             innertext.retain(|c| {
@@ -785,32 +769,37 @@ impl<'a> XmlToStamConverter<'a> {
                         continue;
                     }
                 }
-                // was there text from an attribute we need to output still? then do so
-                if let Some(textfromattrib) = textfromattrib_after {
-                    self.text += textfromattrib;
-                    self.cursor += textfromattrib.chars().count();
+
+                if let Some(template) = &element_config.text {
+                    let template = self.template_engine.template(template.as_str());
+                    context.text = Some(&self.text[bytebegin..]);
+                    let result = template.render(&context).to_string()?;
+                    let result_charlen = result.chars().count();
+                    self.cursor += result_charlen;
+                    self.text += &result;
+                    context.end = Some(self.cursor);
+                    context.length = Some(context.begin.unwrap() - self.cursor);
                 }
 
                 // process the text suffix, a preconfigured string of text to include after to the actual text
                 if let Some(textsuffix) = &element_config.textsuffix {
                     if self.config.debug {
-                        eprintln!("[STAM fromxml]   outputing textsuffix: {:?}", textsuffix);
+                        eprintln!("[STAM fromxml]   outputting textsuffix: {:?}", textsuffix);
                     }
-                    let (end_discount_tmp, end_bytediscount_tmp) = if has_variables(textsuffix) {
-                        let s = resolve_variables(textsuffix, node);
-                        self.text += &s;
-                        (s.chars().count(), s.len())
-                    } else {
-                        self.text += textsuffix;
-                        (textsuffix.chars().count(), textsuffix.len())
-                    };
+                    let template = self.template_engine.template(textsuffix.as_str());
+                    let result = template.render(&context).to_string()?;
+                    let end_discount_tmp = result.chars().count();
+                    let end_bytediscount_tmp = result.len();
+                    self.text += &result;
+
                     // the textsuffix will never be part of the annotation's text selection, we substract a 'discount'
                     self.cursor += end_discount_tmp;
                     self.pending_whitespace = false;
                     end_discount = end_discount_tmp;
                     end_bytediscount = end_bytediscount_tmp;
                 }
-            } else if element_config.handling == ElementHandling::AnnotateBetweenMarkers {
+            } else if element_config.annotation == XmlAnnotationHandling::TextSelectorBetweenMarkers
+            {
                 // this is a marker, keep track of it so we can extract the span between markers in [`extract_element_annotation()`] later
                 if self.config.debug {
                     eprintln!("[STAM fromxml]   adding to markers");
@@ -833,6 +822,8 @@ impl<'a> XmlToStamConverter<'a> {
         if begin <= (self.cursor - end_discount) {
             let offset = Offset::simple(begin, self.cursor - end_discount);
             self.positionmap.insert(node.id(), offset);
+            self.bytepositionmap
+                .insert(node.id(), (bytebegin, self.text.len() - end_bytediscount));
             if self.config.debug {
                 let path: NodePath = node.into();
                 eprintln!(
@@ -853,125 +844,104 @@ impl<'a> XmlToStamConverter<'a> {
         &mut self,
         node: Node,
         store: &mut AnnotationStore,
-    ) -> Result<(), StamError> {
+    ) -> Result<(), XmlConversionError> {
         if self.config.debug {
             let path: NodePath = node.into();
             eprintln!("[STAM fromxml] extracting annotation from {}", path);
         }
-
         // obtain the configuration that applies to this element
         if let Some(element_config) = self.config.element_config(node) {
             if self.config.debug {
                 eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
             }
-            if element_config.handling != ElementHandling::Exclude
-                && element_config.handling != ElementHandling::ExtractTextOnly
-                && element_config.handling != ElementHandling::PassThrough
-            {
+            if element_config.annotation != XmlAnnotationHandling::None {
                 let mut builder = AnnotationBuilder::new();
 
-                if element_config.handling != ElementHandling::AnnotateResourceWithTextAsData {
-                    // add annotation data that corresponds to the type of the element
-                    builder =
-                        builder.with_data_builder(self.translate_elementtype(node, element_config));
-                }
-
-                // these are needed for certain types of attribute handling where processing is deferred until are attributes are checked
-                let mut set = None;
-                let mut key = None;
-                let mut value = None;
-
-                for attribute in node.attributes() {
-                    // obtain the configuration that applies to this attribute
-                    if let Some(attribute_config) = self.config.attribute_config(node, attribute) {
-                        if self.config.debug {
-                            eprintln!(
-                                "[STAM fromxml]   Extracting {:?} with config {:?}",
-                                attribute, attribute_config
-                            );
-                        }
-                        if attribute_config.handling == AttributeHandling::KeyValue {
-                            // XML attribute name maps to a STAM key, XML attribute value to STAM datavalue
-                            // (simplest one-to-one mapping)
-                            builder = builder.with_data_builder(
-                                self.translate_attribute(attribute, attribute_config),
-                            );
-                        } else if attribute_config.handling == AttributeHandling::Key {
-                            // This attribute determines the STAM key, *another* attribute determines the value
-                            // (so building data is deferred until both are found)
-                            if set.is_none() && attribute_config.set.is_some() {
-                                set = attribute_config.set.as_deref();
-                            }
-                            if key.is_some() {
-                                eprintln!("[STAM fromxml] WARNING: A key attribute was already assigned, this one is ignored: {:?}", attribute);
-                                continue;
-                            }
-                            key = Some(attribute);
-                        } else if attribute_config.handling == AttributeHandling::Value {
-                            // This attribute determines the STAM value, *another* attribute determines the key
-                            // or if no such key element exists, the element type is used as key
-                            // (so building data is deferred until both are found)
-                            if set.is_none() && attribute_config.set.is_some() {
-                                set = attribute_config.set.as_deref();
-                            }
-                            if value.is_some() {
-                                eprintln!("[STAM fromxml] WARNING: A value attribute was already assigned, this one is ignored: {:?}", attribute);
-                                continue;
-                            }
-                            value = Some(attribute);
-                        } else if attribute_config.handling == AttributeHandling::Identifier {
-                            // This attribute determines the ID of the annotation as a whole
-                            // (note: there is no way to set the ID of AnnotationData in this converter)
-                            if let Some(id_prefix) = &self.config.id_prefix {
-                                if id_prefix.find("{resource}").is_some() {
-                                    let resource_id = store
-                                        .resource(
-                                            self.resource_handle
-                                                .expect("resource must have been created"),
-                                        )
-                                        .or_fail()?
-                                        .id()
-                                        .expect("resource must have ID");
-                                    builder = builder.with_id(format!(
-                                        "{}{}",
-                                        &id_prefix.replace("{resource}", resource_id),
-                                        attribute.value()
-                                    ));
-                                } else {
-                                    builder = builder.with_id(attribute.value());
-                                }
-                            } else {
-                                builder = builder.with_id(attribute.value());
-                            }
+                let offset = self.positionmap.get(&node.id());
+                let context = NodeForTemplate {
+                    node: &node,
+                    text: if element_config.annotation == XmlAnnotationHandling::TextSelector {
+                        if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&node.id()) {
+                            Some(&self.text[*beginbyte..*endbyte])
+                        } else {
+                            None
                         }
                     } else {
-                        eprintln!(
-                            "[STAM fromxml]   WARNING: no match for attribute {} (skipped)",
-                            attribute.name()
-                        );
+                        None
+                    },
+                    begin: if let Some(offset) = offset {
+                        if let Cursor::BeginAligned(begin) = offset.begin {
+                            Some(begin)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    },
+                    end: if let Some(offset) = offset {
+                        if let Cursor::BeginAligned(end) = offset.end {
+                            Some(end)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    },
+                    length: if let Some(offset) = offset {
+                        if let (Cursor::BeginAligned(begin), Cursor::BeginAligned(end)) =
+                            (offset.begin, offset.end)
+                        {
+                            Some(end - begin)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    },
+                    config: &self.config,
+                    prefixes: &self.prefixes,
+                };
+
+                if let Some(template) = &element_config.id {
+                    let template = self.template_engine.template(template.as_str());
+                    let id = template.render(&context).to_string()?;
+                    if !id.is_empty() {
+                        builder = builder.with_id(id);
                     }
                 }
 
-                // add data in cases where processing was deferred due to use of AttributeHandling::Key and/or AttributeHandling::Value
-                if let (Some(key), Some(value)) = (key, value) {
-                    builder = builder.with_data_builder(self.translate_combine_attributes(
-                        set,
-                        key,
-                        value,
-                        element_config,
-                    ))
-                } else if let Some(value) = value {
-                    builder = builder.with_data_builder(self.translate_combine_element_attribute(
-                        set,
-                        node,
-                        value,
-                        element_config,
-                    ))
+                for annotationdata in element_config.annotationdata.iter() {
+                    let mut databuilder = AnnotationDataBuilder::new();
+                    if let Some(template) = &annotationdata.set {
+                        let template = self.template_engine.template(template.as_str());
+                        let dataset = template.render(&context).to_string()?;
+                        if !dataset.is_empty() {
+                            databuilder = databuilder.with_dataset(dataset.into());
+                        }
+                    } else {
+                        databuilder =
+                            databuilder.with_dataset(self.config.default_set.as_str().into());
+                    }
+                    if let Some(template) = &annotationdata.key {
+                        let template = self.template_engine.template(template.as_str());
+                        let key = template.render(&context).to_string()?;
+                        if !key.is_empty() {
+                            databuilder = databuilder.with_key(key.into())
+                        }
+                    }
+                    if let Some(template) = &annotationdata.value {
+                        let template = self.template_engine.template(template.as_str());
+                        let value = template.render(&context).to_string()?;
+                        if !value.is_empty() || annotationdata.allow_empty_value {
+                            databuilder = databuilder.with_value(value.into());
+                        }
+                    }
+                    builder.with_data_builder(databuilder);
                 }
 
                 // Finish the builder and add the actual annotation to the store, according to its element handling
-                match element_config.handling {
-                    ElementHandling::AnnotateText => {
+                match element_config.annotation {
+                    XmlAnnotationHandling::TextSelector => {
                         // Annotation is on text, translates to TextSelector
                         if let Some(selector) = self.textselector(node) {
                             builder = builder.with_target(selector);
@@ -981,7 +951,7 @@ impl<'a> XmlToStamConverter<'a> {
                             store.annotate(builder)?;
                         }
                     }
-                    ElementHandling::AnnotateResource => {
+                    XmlAnnotationHandling::ResourceSelector => {
                         // Annotation is metadata, translates to ResourceSelector
                         builder = builder.with_target(SelectorBuilder::ResourceSelector(
                             self.resource_handle.into(),
@@ -991,25 +961,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                         store.annotate(builder)?;
                     }
-                    ElementHandling::AnnotateResourceWithTextAsData => {
-                        // Annotation is metadata, translates to ResourceSelector
-                        if node.text().is_some() {
-                            builder = builder.with_target(SelectorBuilder::ResourceSelector(
-                                self.resource_handle.into(),
-                            ));
-                            builder = builder.with_data_builder(
-                                self.translate_text_as_data(node, element_config),
-                            );
-                            if self.config.debug {
-                                eprintln!(
-                                    "[STAM fromxml]   builder AnnotateResourceWithTextAsData: {:?}",
-                                    builder
-                                );
-                            }
-                            store.annotate(builder).expect("annotation should succeed");
-                        }
-                    }
-                    ElementHandling::AnnotateBetweenMarkers => {
+                    XmlAnnotationHandling::TextSelectorBetweenMarkers => {
                         // Annotation is on a text span *between* two marker elements
                         if let Some(selector) =
                             self.textselector_for_markers(node, store, element_config)
@@ -1017,19 +969,22 @@ impl<'a> XmlToStamConverter<'a> {
                             builder = builder.with_target(selector);
                             if self.config.debug {
                                 eprintln!(
-                                    "[STAM fromxml]   builder AnnotateBetweenMarkers: {:?}",
+                                    "[STAM fromxml]   builder TextSelectorBetweenMarkers: {:?}",
                                     builder
                                 );
                             }
                             store.annotate(builder)?;
                         }
                     }
-                    _ => panic!("Invalid elementhandling: {:?}", element_config.handling),
+                    _ => panic!(
+                        "Invalid annotationhandling: {:?}",
+                        element_config.annotation
+                    ),
                 }
             }
 
             // Recursion step
-            if element_config.handling != ElementHandling::Exclude {
+            if !element_config.stop {
                 for child in node.children() {
                     if child.is_element() {
                         self.extract_element_annotation(child, store)?;
@@ -1049,7 +1004,7 @@ impl<'a> XmlToStamConverter<'a> {
     fn translate_attribute<'b>(
         &self,
         attribute: Attribute<'b, 'b>,
-        attrib_config: &'b XmlAttributeConfig,
+        attrib_config: &'b XmlAnnotationDataConfig,
     ) -> AnnotationDataBuilder<'b> {
         if let Some(namespace) = attribute.namespace() {
             if let Some(set) = attrib_config.set.as_deref() {
@@ -1075,139 +1030,6 @@ impl<'a> XmlToStamConverter<'a> {
                 )
                 .with_key(attribute.name().into())
                 .with_value(attribute.value().into())
-        }
-    }
-
-    /// translates an XML attribute like key=value  to an equivalent STAM annotationdata pair
-    fn translate_elementtype<'b>(
-        &self,
-        node: Node<'b, 'b>,
-        element_config: &'b XmlElementConfig,
-    ) -> AnnotationDataBuilder<'b> {
-        if let (Some(set), Some(key)) =
-            (element_config.set.as_deref(), element_config.key.as_deref())
-        {
-            let builder = AnnotationDataBuilder::new()
-                .with_dataset(set.into())
-                .with_key(key.into());
-            self.translate_element_value(builder, node, element_config)
-        } else if let Some(namespace) = node.tag_name().namespace() {
-            let builder = if let Some(set) = element_config.set.as_deref() {
-                AnnotationDataBuilder::new()
-                    .with_dataset(set.into())
-                    .with_key(node.tag_name().name().into())
-            } else {
-                AnnotationDataBuilder::new()
-                    .with_dataset(namespace.into())
-                    .with_key(node.tag_name().name().into())
-            };
-            self.translate_element_value(builder, node, element_config)
-        } else {
-            let builder = AnnotationDataBuilder::new()
-                .with_dataset("urn:stam-fromxml".into())
-                .with_key(node.tag_name().name().into());
-            self.translate_element_value(builder, node, element_config)
-        }
-    }
-
-    fn translate_element_value<'b>(
-        &self,
-        builder: AnnotationDataBuilder<'b>,
-        node: Node<'b, 'b>,
-        element_config: &'b XmlElementConfig,
-    ) -> AnnotationDataBuilder<'b> {
-        if let Some(value) = &element_config.value {
-            //string value may have a template we need to resolve
-            builder.with_value(resolve_variables(value.as_str(), node).into())
-        } else {
-            builder.with_value(DataValue::Null)
-        }
-    }
-
-    /// Can convert something like `<author value="John Doe">` to STAM annotationdata with key "author" and value "John Doe".
-    fn translate_combine_element_attribute<'b>(
-        &self,
-        set: Option<&'b str>,
-        node: Node<'b, 'b>,
-        value: Attribute<'b, 'b>,
-        element_config: &'b XmlElementConfig,
-    ) -> AnnotationDataBuilder<'b> {
-        if let Some(set) = set {
-            AnnotationDataBuilder::new()
-                .with_dataset(set.into())
-                .with_key(node.tag_name().name().into())
-                .with_value(value.value().into())
-        } else if let Some(set) = element_config.set.as_deref() {
-            AnnotationDataBuilder::new()
-                .with_dataset(set.into())
-                .with_key(node.tag_name().name().into())
-                .with_value(value.value().into())
-        } else {
-            AnnotationDataBuilder::new()
-                .with_dataset("urn:stam-fromxml".into())
-                .with_key(node.tag_name().name().into())
-                .with_value(value.value().into())
-        }
-    }
-
-    /// Can convert something like `<meta name="author" content="John Doe">` to STAM annotationdata with key "author" and value "John Doe".
-    fn translate_combine_attributes<'b>(
-        &self,
-        set: Option<&'b str>,
-        key: Attribute<'b, 'b>,
-        value: Attribute<'b, 'b>,
-        element_config: &'b XmlElementConfig,
-    ) -> AnnotationDataBuilder<'b> {
-        if let Some(set) = set {
-            AnnotationDataBuilder::new()
-                .with_dataset(set.into())
-                .with_key(key.value().into())
-                .with_value(value.value().into())
-        } else if let Some(set) = element_config.set.as_deref() {
-            AnnotationDataBuilder::new()
-                .with_dataset(set.into())
-                .with_key(key.value().into())
-                .with_value(value.value().into())
-        } else {
-            AnnotationDataBuilder::new()
-                .with_dataset("urn:stam-fromxml".into())
-                .with_key(key.value().into())
-                .with_value(value.value().into())
-        }
-    }
-
-    /// Maps XML text to STAM AnnotationData, i.e. the text is NOT used in actual text extraction but turns into data
-    /// Useful for metadata elements like HTML <title>
-    fn translate_text_as_data<'b>(
-        &self,
-        node: Node<'b, 'b>,
-        element_config: &'b XmlElementConfig,
-    ) -> AnnotationDataBuilder<'b> {
-        let text = recursive_text(node);
-        if let (Some(set), Some(key)) =
-            (element_config.set.as_deref(), element_config.set.as_deref())
-        {
-            AnnotationDataBuilder::new()
-                .with_dataset(set.into())
-                .with_key(key.into())
-                .with_value(text.into())
-        } else if let Some(namespace) = node.tag_name().namespace() {
-            if let Some(set) = element_config.set.as_deref() {
-                AnnotationDataBuilder::new()
-                    .with_dataset(set.into())
-                    .with_key(node.tag_name().name().into())
-                    .with_value(text.into())
-            } else {
-                AnnotationDataBuilder::new()
-                    .with_dataset(namespace.into())
-                    .with_key(node.tag_name().name().into())
-                    .with_value(text.into())
-            }
-        } else {
-            AnnotationDataBuilder::new()
-                .with_dataset("urn:stam-fromxml".into())
-                .with_key(node.tag_name().name().into())
-                .with_value(text.into())
         }
     }
 
@@ -1291,6 +1113,99 @@ fn recursive_text(node: Node) -> String {
     s
 }
 
+struct NodeForTemplate<'a, 'input> {
+    /// Node
+    node: &'a Node<'a, 'input>,
+
+    begin: Option<usize>,
+    end: Option<usize>,
+    length: Option<usize>,
+    text: Option<&'a str>,
+
+    ///Maps namespaces to prefixes
+    prefixes: &'a HashMap<String, String>,
+
+    /// Global configuration
+    config: &'a XmlConversionConfig,
+}
+
+impl<'a, 'input> Serialize for NodeForTemplate<'a, 'input> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_map(None)?;
+        //name without namespace
+        state.serialize_entry("localname", &self.node.tag_name().name())?;
+        if let Some(name) = self.name() {
+            //name with namespace prefix (if any)
+            state.serialize_entry("name", &name)?;
+        }
+        if let Some(namespace) = self.node.tag_name().namespace() {
+            //the full namespace
+            state.serialize_entry("namespace", &namespace)?;
+        }
+
+        // Offset in the untangled plain text
+        if let Some(begin) = &self.begin {
+            state.serialize_entry("begin", begin)?;
+        }
+        if let Some(end) = &self.end {
+            state.serialize_entry("end", end)?;
+        }
+        if let Some(length) = &self.length {
+            state.serialize_entry("length", length)?;
+        }
+        if let Some(text) = self.text.as_ref() {
+            state.serialize_entry("text", text)?;
+        }
+        state.serialize_entry("context", &self.config.context)?;
+        state.serialize_entry("namespaces", &self.config.namespaces)?;
+        state.serialize_entry("default_set", &self.config.default_set)?;
+
+        for attrib in self.node.attributes() {
+            if let Some(namespace) = attrib.namespace() {
+                if let Some(prefix) = self.prefixes.get(namespace) {
+                    state.serialize_entry(
+                        &format!("@{}:{}", prefix, attrib.name()),
+                        attrib.value(),
+                    )?;
+                } else {
+                    state.serialize_entry(&format!("@{}", attrib.name()), attrib.value())?;
+                }
+            } else {
+                state.serialize_entry(&format!("@{}", attrib.name()), attrib.value())?;
+            }
+        }
+        state.end()
+    }
+}
+
+impl<'a, 'input> NodeForTemplate<'a, 'input> {
+    // gets a node's name with XML prefix (if any)
+    fn name(&self) -> Option<Cow<'input, str>> {
+        let extended_name = self.node.tag_name();
+        match (extended_name.namespace(), extended_name.name()) {
+            (Some(namespace), tagname) => {
+                if let Some(prefix) = self.prefixes.get(namespace) {
+                    Some(Cow::Owned(format!("{}:{}", prefix, tagname)))
+                } else {
+                    Some(Cow::Borrowed(tagname))
+                }
+            }
+            (None, tagname) => Some(Cow::Borrowed(tagname)),
+            _ => None,
+        }
+    }
+}
+
+/*
+fn precompile_template(s: &str) -> String {
+    let template = String::with_capacity(s.len());
+    for c in s.char_indices() {}
+}
+*/
+
 /// Tests if this string is a template that has variables that reference attributes using the `{@attrib}` syntax.
 fn has_variables(s: &str) -> bool {
     while let Some(pos) = s.find("{@") {
@@ -1336,6 +1251,19 @@ fn resolve_variables(s: &str, node: Node) -> String {
     if let Some(begin) = begin {
         //flush remainder of buffer
         out += &s[begin..];
+    }
+    out
+}
+
+// Filters
+fn filter_capitalize(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for (i, c) in s.chars().enumerate() {
+        if i == 0 {
+            out.push_str(&c.to_uppercase().collect::<String>())
+        } else {
+            out.push(c);
+        }
     }
     out
 }

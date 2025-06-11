@@ -3,6 +3,7 @@
 
 #default whitespace handling (Collapse or Preserve)
 whitespace = "Collapse"
+set = "https://ns.tt.di.huc.knaw.nl/tei" 
 
 [namespaces]
 #this defines the namespace prefixes you can use in this configuration
@@ -12,32 +13,14 @@ xlink = "http://www.w3.org/1999/xlink"
 tei = "http://www.tei-c.org/ns/1.0"
 
 
+[context]
+#this defines context variables that will be available in all templates
+
 # elements and attributes are matched in reverse-order, so put more generic statements before more specific ones
 
-# default matching for elements, will match all
-[[elements]]
-path = "*"
-handling = "AnnotateText" 
-
-# Element Syntax:
-#
-# * `path` - The element path is an Xpath-like statement (very limited subset!), you can use any of the namespace prefixes defined in [namespaces]. Use * as wildcard
-# * `handling` - Determines how this element is mapped to STAM, it can be any of the following:
-#   * `PassThrough` - Skip this element and any text in it, do not create any annotations, but do descend into its child elements and their text
-#   * `Exclude` - Skip this element and all its descendants, it will be converted neither to text nor to annotations
-#   * `ExtractTextOnly` - Include the element text, discard the annotation, do descend into children
-#   * `AnnotateText` (default) -  Include this element's text and annotation, and descend into the children
-#   * `AnnotateResource` - Ignore any text, associate metadata with the resource
-#   * `AnnotateResourceWithTextAsData` - Associate metadata with the resource, take the text of the element as data value. This is useful for mapping XML metadata like `<author>John Doe</author>` to an annotation with datakey 'author' and value 'John Doe'.
-# * `set` (optional) - The STAM set to use for this mapping, if not set, it will be derived from the namespace (if any), or `urn:stam-fromxml` if all else fails.
-# * `key` (optional) - The STAM key to use for this element's mapping, if not set, it will be derived from the name of the element. If set, the *value* of the annotation data for this key in this set will be derived from the name of the element.
 
 
-# default matching for attributes, will match all
-[[attributes]]
-scope = "*"
-name = "*"
-handling = "KeyValue"
+
 
 # Attribute Syntax:
 #
@@ -54,64 +37,73 @@ handling = "KeyValue"
 # * `set` (optional) - The STAM set to use for this mapping, if not set, it will be derived from the namespace of the attribute (if any), or `urn:stam-fromxml` if all else fails.
 # * `key` (optional) - The STAM key to use for this attribute's mapping, if not set, it will be derived from the name of the attribute
 
-# use xml:id as identifier for annotations
-[[attributes]]
-scope = "*"
-name = "xml:id"
-handling = "Identifier"
+# default matching for elements, will match all
+[[elements]]
+path = "*"
+text = "{{text}}"
+annotation = "TextSelector" 
+id = "{{ @xml:id }}"
 
-# do not convert xml:space, it is already handled by the internal text extraction process, no need to turn it into an explicit annotation
-[[attributes]]
-scope = "*"
-name = "xml:space"
-handling = "Exclude"
+    [[elements.annotationdata]]
+    key = "type"
+    value = "{{ localname | capitalize }}"
 
 
 # Pass through the following elements without mapping them:
 [[elements]]
 path = "//tei:teiHeader"
-handling = "PassThrough"
 
 # By default, ignore any tags in the head (unless they're mentioned specifically later in the config)
 [[elements]]
 path = "//tei:teiHeader/*"
-handling = "Exclude"
+stop = true
 
 [[elements]]
 path = "//tei:teiHeader/tei:fileDesc"
-handling = "PassThrough"
 
 [[elements]]
 path = "//tei:teiHeader/tei:fileDesc/*"
-handling = "Exclude"
+stop = true
 
 [[elements]]
 path = "//tei:teiHeader/tei:fileDesc/tei:titleStmt"
-handling = "PassThrough"
 
 [[elements]]
 path = "//tei:teiHeader/tei:fileDesc/tei:publicationStmt"
-handling = "PassThrough"
 
 [[elements]]
 path = "//tei:teiHeader/tei:fileDesc/tei:publicationStmt"
-handling = "PassThrough"
 
 [[elements]]
 path = "//tei:facsimile"
-handling = "Exclude"
+stop = true
 
 [[elements]]
 path = "//tei:fileDesc/tei:titleSmt/tei:title"
-handling = "AnnotateResourceWithTextAsData"
+annotation = "ResourceSelector"
+
+    [[elements.annotationdata]]
+    set = "http://www.tei-c.org/ns/1.0"
+    key = "title"
+    value = "{{text}}
 
 [[elements]]
 path = "//tei:fileDesc/tei:titleSmt/tei:editor"
-handling = "AnnotateResourceWithTextAsData"
+annotation = "ResourceSelector"
+
+    [[elements.annotationdata]]
+    set = "http://www.tei-c.org/ns/1.0"
+    key = "editor"
+    value = "{{text}}
 
 [[elements]]
 path = "//tei:fileDesc/tei:publicationStmt/tei:publisher"
-handling = "AnnotateResourceWithTextAsData"
+annotation = "ResourceSelector"
+
+    [[elements.annotationdata]]
+    set = "http://www.tei-c.org/ns/1.0"
+    key = "publisher"
+    value = "{{text}}
 
 [[elements]]
 path = "//tei:fileDesc/tei:publicationStmt/tei:ptr"
