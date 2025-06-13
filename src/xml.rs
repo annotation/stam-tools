@@ -1,15 +1,15 @@
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
 
-use roxmltree::{Attribute, Document, Node, NodeId, NodeType, ParsingOptions};
+use roxmltree::{Attribute, Document, Node, NodeId, ParsingOptions};
 use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 use stam::*;
 use toml;
-use upon::{Engine, Template};
+use upon::Engine;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
 
@@ -535,6 +535,9 @@ struct XmlToStamConverter<'a> {
 
     /// Namespace to prefix map
     prefixes: HashMap<String, String>,
+
+    ///  Global context for template
+    global_context: BTreeMap<String, upon::Value>,
 }
 
 pub enum XmlConversionError {
@@ -579,7 +582,7 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_filter("first", |list: &[upon::Value]| {
             list.first().map(Clone::clone)
         });
-        Self {
+        let mut converter = Self {
             cursor: 0,
             text: String::new(),
             template_engine: Engine::new(),
@@ -588,9 +591,12 @@ impl<'a> XmlToStamConverter<'a> {
             markers: HashMap::new(),
             resource_handle: None,
             pending_whitespace: false,
+            global_context: BTreeMap::new(),
             prefixes,
             config,
-        }
+        };
+        converter.set_global_context();
+        converter
     }
 
     /// Compile templates
@@ -644,16 +650,6 @@ impl<'a> XmlToStamConverter<'a> {
                     element_config.whitespace //default from the config
                 };
 
-                let mut context = NodeForTemplate {
-                    node: &node,
-                    text: None,
-                    begin: Some(self.cursor),
-                    end: None,
-                    length: None,
-                    config: &self.config,
-                    prefixes: &self.prefixes,
-                };
-
                 // process the text prefix, a text template to include prior to the actual text
                 if let Some(textprefix) = &element_config.textprefix {
                     self.pending_whitespace = false;
@@ -661,11 +657,11 @@ impl<'a> XmlToStamConverter<'a> {
                         eprintln!("[STAM fromxml]   outputting textprefix: {:?}", textprefix);
                     }
                     let template = self.template_engine.template(textprefix.as_str());
-                    let result = template.render(&context).to_string()?;
+                    let context = self.context_for_node(&node, None, Some(self.cursor), None);
+                    let result = template.render(context).to_string()?;
                     let result_charlen = result.chars().count();
                     self.cursor += result_charlen;
                     self.text += &result;
-                    context.begin = Some(self.cursor);
 
                     // the textprefix will never be part of the annotation's text selection, increment the offsets:
                     begin += result_charlen;
@@ -770,15 +766,19 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
 
+                let textbegin = self.cursor;
                 if let Some(template) = &element_config.text {
+                    let context = self.context_for_node(
+                        &node,
+                        Some(&self.text[bytebegin..]),
+                        Some(self.cursor),
+                        None,
+                    );
                     let template = self.template_engine.template(template.as_str());
-                    context.text = Some(&self.text[bytebegin..]);
                     let result = template.render(&context).to_string()?;
                     let result_charlen = result.chars().count();
                     self.cursor += result_charlen;
                     self.text += &result;
-                    context.end = Some(self.cursor);
-                    context.length = Some(context.begin.unwrap() - self.cursor);
                 }
 
                 // process the text suffix, a preconfigured string of text to include after to the actual text
@@ -786,6 +786,12 @@ impl<'a> XmlToStamConverter<'a> {
                     if self.config.debug {
                         eprintln!("[STAM fromxml]   outputting textsuffix: {:?}", textsuffix);
                     }
+                    let context = self.context_for_node(
+                        &node,
+                        Some(&self.text[bytebegin..]),
+                        Some(textbegin),
+                        Some(self.cursor),
+                    );
                     let template = self.template_engine.template(textsuffix.as_str());
                     let result = template.render(&context).to_string()?;
                     let end_discount_tmp = result.chars().count();
@@ -857,50 +863,37 @@ impl<'a> XmlToStamConverter<'a> {
             if element_config.annotation != XmlAnnotationHandling::None {
                 let mut builder = AnnotationBuilder::new();
 
+                //prepare variables to pass to the template context
                 let offset = self.positionmap.get(&node.id());
-                let context = NodeForTemplate {
-                    node: &node,
-                    text: if element_config.annotation == XmlAnnotationHandling::TextSelector {
-                        if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&node.id()) {
-                            Some(&self.text[*beginbyte..*endbyte])
-                        } else {
-                            None
-                        }
+                let text = if element_config.annotation == XmlAnnotationHandling::TextSelector {
+                    if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&node.id()) {
+                        Some(&self.text[*beginbyte..*endbyte])
                     } else {
                         None
-                    },
-                    begin: if let Some(offset) = offset {
-                        if let Cursor::BeginAligned(begin) = offset.begin {
-                            Some(begin)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    },
-                    end: if let Some(offset) = offset {
-                        if let Cursor::BeginAligned(end) = offset.end {
-                            Some(end)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    },
-                    length: if let Some(offset) = offset {
-                        if let (Cursor::BeginAligned(begin), Cursor::BeginAligned(end)) =
-                            (offset.begin, offset.end)
-                        {
-                            Some(end - begin)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    },
-                    config: &self.config,
-                    prefixes: &self.prefixes,
+                    }
+                } else {
+                    None
                 };
+                let begin = if let Some(offset) = offset {
+                    if let Cursor::BeginAligned(begin) = offset.begin {
+                        Some(begin)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+                let end = if let Some(offset) = offset {
+                    if let Cursor::BeginAligned(end) = offset.end {
+                        Some(end)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let context = self.context_for_node(&node, text, begin, end);
 
                 if let Some(template) = &element_config.id {
                     let template = self.template_engine.template(template.as_str());
@@ -936,7 +929,7 @@ impl<'a> XmlToStamConverter<'a> {
                             databuilder = databuilder.with_value(value.into());
                         }
                     }
-                    builder.with_data_builder(databuilder);
+                    builder = builder.with_data_builder(databuilder);
                 }
 
                 // Finish the builder and add the actual annotation to the store, according to its element handling
@@ -1098,6 +1091,80 @@ impl<'a> XmlToStamConverter<'a> {
             None
         }
     }
+
+    fn set_global_context(&mut self) {
+        self.global_context
+            .insert("context".into(), self.config.context.clone().into());
+        self.global_context
+            .insert("namespaces".into(), self.config.namespaces.clone().into());
+        self.global_context
+            .insert("default_set".into(), self.config.default_set.clone().into());
+    }
+
+    fn context_for_node<'input>(
+        &self,
+        node: &Node<'a, 'input>,
+        text: Option<&'input str>,
+        begin: Option<usize>,
+        end: Option<usize>,
+    ) -> upon::Value {
+        let mut context = self.global_context.clone();
+        let length = if let (Some(begin), Some(end)) = (begin, end) {
+            Some(end - begin)
+        } else {
+            None
+        };
+        let extended_name = node.tag_name();
+        let name = match (extended_name.namespace(), extended_name.name()) {
+            (Some(namespace), tagname) => {
+                if let Some(prefix) = self.prefixes.get(namespace) {
+                    Some(Cow::Owned(format!("{}:{}", prefix, tagname)))
+                } else {
+                    Some(Cow::Borrowed(tagname))
+                }
+            }
+            (None, tagname) => Some(Cow::Borrowed(tagname)),
+        };
+        context.insert("localname".into(), node.tag_name().name().into());
+        if let Some(name) = name {
+            //name with namespace prefix (if any)
+            context.insert("name".into(), name.into());
+        }
+        if let Some(namespace) = node.tag_name().namespace() {
+            //the full namespace
+            context.insert("namespace".into(), namespace.into());
+        }
+
+        // Offset in the untangled plain text
+        if let Some(begin) = begin {
+            context.insert("begin".into(), upon::Value::Integer(begin as i64));
+        }
+        if let Some(end) = end {
+            context.insert("end".into(), upon::Value::Integer(end as i64));
+        }
+        if let Some(length) = length {
+            context.insert("length".into(), upon::Value::Integer(length as i64));
+        }
+        if let Some(text) = text {
+            context.insert("text".into(), text.into());
+        }
+        for attrib in node.attributes() {
+            if let Some(namespace) = attrib.namespace() {
+                if let Some(prefix) = self.prefixes.get(namespace) {
+                    context.insert(
+                        format!("@{}:{}", prefix, attrib.name()).into(),
+                        attrib.value().into(),
+                    );
+                } else {
+                    context.insert(format!("@{}", attrib.name()).into(), attrib.value().into());
+                }
+            } else {
+                context.insert(format!("@{}", attrib.name()).into(), attrib.value().into());
+            }
+        }
+
+        upon::Value::Map(context)
+    }
 }
 
 /// Get recursive text without any elements
@@ -1111,148 +1178,6 @@ fn recursive_text(node: Node) -> String {
         }
     }
     s
-}
-
-struct NodeForTemplate<'a, 'input> {
-    /// Node
-    node: &'a Node<'a, 'input>,
-
-    begin: Option<usize>,
-    end: Option<usize>,
-    length: Option<usize>,
-    text: Option<&'a str>,
-
-    ///Maps namespaces to prefixes
-    prefixes: &'a HashMap<String, String>,
-
-    /// Global configuration
-    config: &'a XmlConversionConfig,
-}
-
-impl<'a, 'input> Serialize for NodeForTemplate<'a, 'input> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_map(None)?;
-        //name without namespace
-        state.serialize_entry("localname", &self.node.tag_name().name())?;
-        if let Some(name) = self.name() {
-            //name with namespace prefix (if any)
-            state.serialize_entry("name", &name)?;
-        }
-        if let Some(namespace) = self.node.tag_name().namespace() {
-            //the full namespace
-            state.serialize_entry("namespace", &namespace)?;
-        }
-
-        // Offset in the untangled plain text
-        if let Some(begin) = &self.begin {
-            state.serialize_entry("begin", begin)?;
-        }
-        if let Some(end) = &self.end {
-            state.serialize_entry("end", end)?;
-        }
-        if let Some(length) = &self.length {
-            state.serialize_entry("length", length)?;
-        }
-        if let Some(text) = self.text.as_ref() {
-            state.serialize_entry("text", text)?;
-        }
-        state.serialize_entry("context", &self.config.context)?;
-        state.serialize_entry("namespaces", &self.config.namespaces)?;
-        state.serialize_entry("default_set", &self.config.default_set)?;
-
-        for attrib in self.node.attributes() {
-            if let Some(namespace) = attrib.namespace() {
-                if let Some(prefix) = self.prefixes.get(namespace) {
-                    state.serialize_entry(
-                        &format!("@{}:{}", prefix, attrib.name()),
-                        attrib.value(),
-                    )?;
-                } else {
-                    state.serialize_entry(&format!("@{}", attrib.name()), attrib.value())?;
-                }
-            } else {
-                state.serialize_entry(&format!("@{}", attrib.name()), attrib.value())?;
-            }
-        }
-        state.end()
-    }
-}
-
-impl<'a, 'input> NodeForTemplate<'a, 'input> {
-    // gets a node's name with XML prefix (if any)
-    fn name(&self) -> Option<Cow<'input, str>> {
-        let extended_name = self.node.tag_name();
-        match (extended_name.namespace(), extended_name.name()) {
-            (Some(namespace), tagname) => {
-                if let Some(prefix) = self.prefixes.get(namespace) {
-                    Some(Cow::Owned(format!("{}:{}", prefix, tagname)))
-                } else {
-                    Some(Cow::Borrowed(tagname))
-                }
-            }
-            (None, tagname) => Some(Cow::Borrowed(tagname)),
-            _ => None,
-        }
-    }
-}
-
-/*
-fn precompile_template(s: &str) -> String {
-    let template = String::with_capacity(s.len());
-    for c in s.char_indices() {}
-}
-*/
-
-/// Tests if this string is a template that has variables that reference attributes using the `{@attrib}` syntax.
-fn has_variables(s: &str) -> bool {
-    while let Some(pos) = s.find("{@") {
-        for c in s[pos..].chars() {
-            if c.is_whitespace() {
-                break;
-            } else if c == '}' {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// resolve attribute variables in a string
-fn resolve_variables(s: &str, node: Node) -> String {
-    let mut out = String::new();
-    let mut begin = None;
-    for (bytepos, c) in s.char_indices() {
-        if begin.is_some() {
-            if c == '}' {
-                let varname = &s[begin.unwrap() + 1..bytepos];
-                if varname.starts_with('@') {
-                    let varname = &varname[1..];
-                    //TODO: handle namespaces prefixes
-                    if let Some(value) = node.attribute(varname) {
-                        out += value;
-                    }
-                    //(note: if not found it resolve to an empty string)
-                    begin = None;
-                }
-            } else if c.is_whitespace() {
-                //not a variable, flush buffer
-                out += &s[begin.unwrap()..bytepos];
-                begin = None;
-            }
-        } else if c == '{' {
-            begin = Some(bytepos)
-        } else {
-            out.push(c);
-        }
-    }
-    if let Some(begin) = begin {
-        //flush remainder of buffer
-        out += &s[begin..];
-    }
-    out
 }
 
 // Filters
