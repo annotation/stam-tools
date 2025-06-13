@@ -25,6 +25,10 @@ pub struct XmlConversionConfig {
     elements: Vec<XmlElementConfig>,
 
     #[serde(default)]
+    /// Base elements are named templates, other elements can derive from this
+    baseelements: HashMap<String, XmlElementConfig>,
+
+    #[serde(default)]
     /// Maps XML prefixes to namespace
     namespaces: HashMap<String, String>,
 
@@ -55,6 +59,7 @@ impl XmlConversionConfig {
     pub fn new() -> Self {
         Self {
             elements: Vec::new(),
+            baseelements: HashMap::new(),
             namespaces: HashMap::new(),
             context: HashMap::new(),
             whitespace: XmlWhitespaceHandling::Collapse,
@@ -63,6 +68,35 @@ impl XmlConversionConfig {
             id_prefix: None,
             debug: false,
         }
+    }
+
+    pub fn resolve_baseelements(&mut self) -> Result<(), XmlConversionError> {
+        let mut replace: Vec<(usize, XmlElementConfig)> = Vec::new();
+        for (i, element) in self.elements.iter().enumerate() {
+            let mut newelement = None;
+            for basename in element.base.iter().rev() {
+                if let Some(baseelement) = self.baseelements.get(basename) {
+                    if newelement.is_none() {
+                        newelement = Some(element.clone());
+                    }
+                    newelement
+                        .as_mut()
+                        .map(|newelement| newelement.update(baseelement));
+                } else {
+                    return Err(XmlConversionError::ConfigError(format!(
+                        "No such base element: {}",
+                        basename
+                    )));
+                }
+            }
+            if let Some(newelement) = newelement {
+                replace.push((i, newelement));
+            }
+        }
+        for (i, element) in replace {
+            self.elements[i] = element;
+        }
+        Ok(())
     }
 
     /// Parse the configuration from a TOML string (load the data from file yourself).
@@ -128,6 +162,8 @@ impl XmlConversionConfig {
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
 /// Determines how to handle whitespace for an XML element
 pub enum XmlWhitespaceHandling {
+    /// Not specified (used for base templates)
+    Unspecified,
     //Inherit from parent
     Inherit,
     /// Whitespace is kept as is in the XML
@@ -138,7 +174,7 @@ pub enum XmlWhitespaceHandling {
 
 impl Default for XmlWhitespaceHandling {
     fn default() -> Self {
-        XmlWhitespaceHandling::Inherit
+        XmlWhitespaceHandling::Unspecified
     }
 }
 
@@ -148,8 +184,11 @@ impl XmlWhitespaceHandling {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Copy)]
 pub enum XmlAnnotationHandling {
+    /// No annotation
+    Unspecified,
+
     /// No annotation
     None,
 
@@ -182,12 +221,15 @@ pub struct XmlElementConfig {
     /// Template or None for no text handling, suffixes are never targeted by annotations
     textsuffix: Option<String>,
 
+    /// Base elements to derive from
+    base: Vec<String>,
+
     /// Template or None for no ID extraction
     id: Option<String>,
 
     #[serde(default)]
-    /// Descend into children (false) or not? (true)
-    stop: bool,
+    /// Descend into children (false) or not? (true). None means unspecified and defaults to false
+    stop: Option<bool>,
 
     #[serde(default)]
     /// Whitespace handling for this element
@@ -198,14 +240,48 @@ impl XmlElementConfig {
     fn new(expression: XPathExpression) -> Self {
         Self {
             path: expression,
-            stop: false,
-            whitespace: XmlWhitespaceHandling::Inherit,
-            annotation: XmlAnnotationHandling::None,
+            stop: None,
+            whitespace: XmlWhitespaceHandling::Unspecified,
+            annotation: XmlAnnotationHandling::Unspecified,
             annotationdata: Vec::new(),
+            base: Vec::new(),
             id: None,
             textprefix: None,
             text: None,
             textsuffix: None,
+        }
+    }
+
+    pub fn update(&mut self, base: &XmlElementConfig) {
+        if self.whitespace == XmlWhitespaceHandling::Unspecified
+            && base.whitespace != XmlWhitespaceHandling::Unspecified
+        {
+            self.whitespace = base.whitespace;
+        }
+        if self.annotation == XmlAnnotationHandling::Unspecified
+            && base.annotation != XmlAnnotationHandling::Unspecified
+        {
+            self.annotation = base.annotation;
+        }
+        if self.textprefix.is_none() && base.textprefix.is_some() {
+            self.textprefix = base.textprefix.clone();
+        }
+        if self.text.is_none() && base.text.is_some() {
+            self.text = base.text.clone();
+        }
+        if self.textsuffix.is_none() && base.textsuffix.is_some() {
+            self.textsuffix = base.textsuffix.clone();
+        }
+        if self.id.is_none() && base.id.is_some() {
+            self.text = base.text.clone();
+        }
+        if self.stop.is_none() && base.stop.is_some() {
+            self.stop = base.stop;
+        }
+        for annotationdata in base.annotationdata.iter() {
+            if !self.annotationdata.contains(annotationdata) {
+                self.annotationdata.push(annotationdata.clone());
+            }
         }
     }
 
@@ -247,7 +323,7 @@ impl XmlElementConfig {
 
     /// This sets the mode that determines how the element is handledhttps://www.youtube.com/watch?v=G_BrbhRrP6g
     pub fn with_stop(mut self, stop: bool) -> Self {
-        self.stop = stop;
+        self.stop = Some(stop);
         self
     }
 
@@ -259,6 +335,11 @@ impl XmlElementConfig {
 
     pub fn with_text(mut self, text: impl Into<String>) -> Self {
         self.text = Some(text.into());
+        self
+    }
+
+    pub fn with_base(mut self, iter: impl Iterator<Item = impl Into<String>>) -> Self {
+        self.base = iter.into_iter().map(|s| s.into()).collect();
         self
     }
 
@@ -284,7 +365,7 @@ impl PartialEq for XmlElementConfig {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct XmlAnnotationDataConfig {
     /// Template
     id: Option<String>,
@@ -456,7 +537,9 @@ pub fn from_xml<'a>(
     .map_err(|e| format!("Error parsing XML file {}: {}", filename.display(), e))?;
 
     let mut converter = XmlToStamConverter::new(config);
-    converter.compile();
+    converter
+        .compile()
+        .map_err(|e| format!("Error compiling templates: {}", e))?;
 
     let textoutfilename = format!(
         "{}.txt",
@@ -543,6 +626,7 @@ struct XmlToStamConverter<'a> {
 pub enum XmlConversionError {
     StamError(StamError),
     TemplateError(upon::Error),
+    ConfigError(String),
 }
 
 impl From<StamError> for XmlConversionError {
@@ -562,6 +646,7 @@ impl Display for XmlConversionError {
         match self {
             Self::StamError(e) => e.fmt(f),
             Self::TemplateError(e) => e.fmt(f),
+            Self::ConfigError(e) => e.fmt(f),
         }
     }
 }
@@ -600,10 +685,11 @@ impl<'a> XmlToStamConverter<'a> {
     }
 
     /// Compile templates
-    fn compile(&mut self) {
+    fn compile(&mut self) -> Result<(), XmlConversionError> {
         for element in self.config.elements.iter() {
-            element.compile(&mut self.template_engine);
+            element.compile(&mut self.template_engine)?;
         }
+        Ok(())
     }
 
     /// untangle text, extract the text (and only the text)
@@ -631,7 +717,7 @@ impl<'a> XmlToStamConverter<'a> {
                 eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
             }
 
-            if !element_config.stop
+            if (element_config.stop == Some(false) || element_config.stop.is_none())
                 && element_config.annotation != XmlAnnotationHandling::TextSelectorBetweenMarkers
                 && element_config.text.is_some()
             {
@@ -644,7 +730,9 @@ impl<'a> XmlToStamConverter<'a> {
                         "collapse" | "replace" => XmlWhitespaceHandling::Collapse,
                         _ => whitespace,
                     }
-                } else if element_config.whitespace == XmlWhitespaceHandling::Inherit {
+                } else if element_config.whitespace == XmlWhitespaceHandling::Inherit
+                    || element_config.whitespace == XmlWhitespaceHandling::Unspecified
+                {
                     whitespace //from parent, i.e. passed to this (recursive) function by caller
                 } else {
                     element_config.whitespace //default from the config
@@ -860,7 +948,9 @@ impl<'a> XmlToStamConverter<'a> {
             if self.config.debug {
                 eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
             }
-            if element_config.annotation != XmlAnnotationHandling::None {
+            if element_config.annotation != XmlAnnotationHandling::None
+                && element_config.annotation != XmlAnnotationHandling::Unspecified
+            {
                 let mut builder = AnnotationBuilder::new();
 
                 //prepare variables to pass to the template context
@@ -977,7 +1067,7 @@ impl<'a> XmlToStamConverter<'a> {
             }
 
             // Recursion step
-            if !element_config.stop {
+            if (element_config.stop == Some(false) || element_config.stop.is_none()) {
                 for child in node.children() {
                     if child.is_element() {
                         self.extract_element_annotation(child, store)?;
@@ -991,39 +1081,6 @@ impl<'a> XmlToStamConverter<'a> {
             );
         }
         Ok(())
-    }
-
-    // translates an XML attribute to a STAM AnnotationData (constructs a builder)
-    fn translate_attribute<'b>(
-        &self,
-        attribute: Attribute<'b, 'b>,
-        attrib_config: &'b XmlAnnotationDataConfig,
-    ) -> AnnotationDataBuilder<'b> {
-        if let Some(namespace) = attribute.namespace() {
-            if let Some(set) = attrib_config.set.as_deref() {
-                AnnotationDataBuilder::new()
-                    .with_dataset(set.into())
-                    .with_key(attribute.name().into())
-                    .with_value(attribute.value().into())
-            } else {
-                AnnotationDataBuilder::new()
-                    .with_dataset(namespace.into())
-                    .with_key(attribute.name().into())
-                    .with_value(attribute.value().into())
-            }
-        } else {
-            AnnotationDataBuilder::new()
-                .with_dataset(
-                    if let Some(set) = attrib_config.set.as_deref() {
-                        set
-                    } else {
-                        "urn:stam-fromxml"
-                    }
-                    .into(),
-                )
-                .with_key(attribute.name().into())
-                .with_value(attribute.value().into())
-        }
     }
 
     /// Select text corresponding to the element/node
