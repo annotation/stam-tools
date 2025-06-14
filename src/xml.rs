@@ -4,14 +4,16 @@ use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
 
+use aho_corasick::AhoCorasick;
 use roxmltree::{Attribute, Document, Node, NodeId, ParsingOptions};
-use serde::ser::{SerializeMap, Serializer};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use stam::*;
 use toml;
 use upon::Engine;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
+const PRECOMPILE_PATTERNS: &[&str; 2] = &["@", ":"];
+const PRECOMPILE_REPLACEMENTS: &[&str; 2] = &["ATTRIB_", "__"];
 
 fn default_set() -> String {
     "urn:stam-fromxml".into()
@@ -184,9 +186,10 @@ impl XmlWhitespaceHandling {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Copy)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Copy, Default)]
 pub enum XmlAnnotationHandling {
     /// No annotation
+    #[default]
     Unspecified,
 
     /// No annotation
@@ -208,23 +211,30 @@ pub struct XmlElementConfig {
     /// This is XPath-like expression (just a small subset of XPath) to identify an element by its path
     path: XPathExpression,
 
+    #[serde(default)]
     annotation: XmlAnnotationHandling,
 
+    #[serde(default)]
     annotationdata: Vec<XmlAnnotationDataConfig>,
 
     /// Template or None for no text handling, prefixes are never targeted by annotations
+    #[serde(default)]
     textprefix: Option<String>,
 
     /// Template or None for no text handling
+    #[serde(default)]
     text: Option<String>,
 
     /// Template or None for no text handling, suffixes are never targeted by annotations
+    #[serde(default)]
     textsuffix: Option<String>,
 
     /// Base elements to derive from
+    #[serde(default)]
     base: Vec<String>,
 
     /// Template or None for no ID extraction
+    #[serde(default)]
     id: Option<String>,
 
     #[serde(default)]
@@ -285,36 +295,110 @@ impl XmlElementConfig {
         }
     }
 
-    pub fn compile(&self, engine: &mut Engine<'_>) -> upon::Result<()> {
+    pub fn compile(
+        &self,
+        engine: &mut Engine<'_>,
+        template_precompiler: &AhoCorasick,
+    ) -> Result<(), XmlConversionError> {
         if let Some(text) = self.text.as_ref() {
             if engine.get_template(text.as_str()).is_none() {
-                engine.add_template(text.clone(), text.clone())?;
+                let template =
+                    template_precompiler.replace_all(text.as_str(), PRECOMPILE_REPLACEMENTS);
+                engine.add_template(text.clone(), template).map_err(|e| {
+                    XmlConversionError::TemplateError(
+                        format!("element/text template {}", text.clone()),
+                        e,
+                    )
+                })?;
+            }
+        }
+        if let Some(textprefix) = self.textprefix.as_ref() {
+            if engine.get_template(textprefix.as_str()).is_none() {
+                let template =
+                    template_precompiler.replace_all(textprefix.as_str(), PRECOMPILE_REPLACEMENTS);
+                engine
+                    .add_template(textprefix.clone(), template)
+                    .map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("element/textprefix template {}", textprefix.clone()),
+                            e,
+                        )
+                    })?;
+            }
+        }
+        if let Some(textsuffix) = self.textsuffix.as_ref() {
+            if engine.get_template(textsuffix.as_str()).is_none() {
+                let template =
+                    template_precompiler.replace_all(textsuffix.as_str(), PRECOMPILE_REPLACEMENTS);
+                engine
+                    .add_template(textsuffix.clone(), template)
+                    .map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("element/textsuffix template {}", textsuffix.clone()),
+                            e,
+                        )
+                    })?;
             }
         }
         if let Some(id) = self.id.as_ref() {
             if engine.get_template(id.as_str()).is_none() {
-                engine.add_template(id.clone(), id.clone())?;
+                let template =
+                    template_precompiler.replace_all(id.as_str(), PRECOMPILE_REPLACEMENTS);
+                engine.add_template(id.clone(), template).map_err(|e| {
+                    XmlConversionError::TemplateError(
+                        format!("element/id template {}", id.clone()),
+                        e,
+                    )
+                })?;
             }
         }
         for annotationdata in self.annotationdata.iter() {
             if let Some(id) = annotationdata.id.as_ref() {
                 if engine.get_template(id.as_str()).is_none() {
-                    engine.add_template(id.clone(), id.clone())?;
+                    let template =
+                        template_precompiler.replace_all(id.as_str(), PRECOMPILE_REPLACEMENTS);
+                    engine.add_template(id.clone(), template).map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("annotationdata/id template {}", id.clone()),
+                            e,
+                        )
+                    })?;
                 }
             }
             if let Some(set) = annotationdata.set.as_ref() {
                 if engine.get_template(set.as_str()).is_none() {
-                    engine.add_template(set.clone(), set.clone())?;
+                    let template =
+                        template_precompiler.replace_all(set.as_str(), PRECOMPILE_REPLACEMENTS);
+                    engine.add_template(set.clone(), template).map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("annotationdata/set template {}", set.clone()),
+                            e,
+                        )
+                    })?;
                 }
             }
             if let Some(key) = annotationdata.key.as_ref() {
                 if engine.get_template(key.as_str()).is_none() {
-                    engine.add_template(key.clone(), key.clone())?;
+                    let template =
+                        template_precompiler.replace_all(key.as_str(), PRECOMPILE_REPLACEMENTS);
+                    engine.add_template(key.clone(), template).map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("annotationdata/key template {}", key.clone()),
+                            e,
+                        )
+                    })?;
                 }
             }
             if let Some(value) = annotationdata.value.as_ref() {
                 if engine.get_template(value.as_str()).is_none() {
-                    engine.add_template(value.clone(), value.clone())?;
+                    let template =
+                        template_precompiler.replace_all(value.as_str(), PRECOMPILE_REPLACEMENTS);
+                    engine.add_template(value.clone(), template).map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("annotationdata/value template {}", value.clone()),
+                            e,
+                        )
+                    })?;
                 }
             }
         }
@@ -598,6 +682,8 @@ struct XmlToStamConverter<'a> {
     /// The template engine
     template_engine: Engine<'a>,
 
+    template_precompiler: AhoCorasick,
+
     /// Keep track of the new positions (unicode offset) where the node starts in the untangled document
     positionmap: HashMap<NodeId, Offset>,
 
@@ -625,7 +711,7 @@ struct XmlToStamConverter<'a> {
 
 pub enum XmlConversionError {
     StamError(StamError),
-    TemplateError(upon::Error),
+    TemplateError(String, upon::Error),
     ConfigError(String),
 }
 
@@ -637,7 +723,7 @@ impl From<StamError> for XmlConversionError {
 
 impl From<upon::Error> for XmlConversionError {
     fn from(error: upon::Error) -> Self {
-        Self::TemplateError(error)
+        Self::TemplateError("".into(), error)
     }
 }
 
@@ -645,7 +731,11 @@ impl Display for XmlConversionError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::StamError(e) => e.fmt(f),
-            Self::TemplateError(e) => e.fmt(f),
+            Self::TemplateError(s, e) => {
+                f.write_str(s.as_str());
+                f.write_str(": ");
+                e.fmt(f)
+            }
             Self::ConfigError(e) => e.fmt(f),
         }
     }
@@ -667,6 +757,7 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_filter("first", |list: &[upon::Value]| {
             list.first().map(Clone::clone)
         });
+        let template_precompiler = AhoCorasick::new(PRECOMPILE_PATTERNS).expect("precompiler");
         let mut converter = Self {
             cursor: 0,
             text: String::new(),
@@ -677,6 +768,7 @@ impl<'a> XmlToStamConverter<'a> {
             resource_handle: None,
             pending_whitespace: false,
             global_context: BTreeMap::new(),
+            template_precompiler,
             prefixes,
             config,
         };
@@ -686,8 +778,11 @@ impl<'a> XmlToStamConverter<'a> {
 
     /// Compile templates
     fn compile(&mut self) -> Result<(), XmlConversionError> {
+        if self.config.debug {
+            eprintln!("[STAM fromxml] compiling templates");
+        }
         for element in self.config.elements.iter() {
-            element.compile(&mut self.template_engine)?;
+            element.compile(&mut self.template_engine, &self.template_precompiler)?;
         }
         Ok(())
     }
@@ -703,7 +798,7 @@ impl<'a> XmlToStamConverter<'a> {
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
             let path: NodePath = node.into();
-            eprintln!("[STAM fromxml] extracting text from {}", path);
+            eprintln!("[STAM fromxml] extracting text for element {}", path);
         }
         let mut begin = self.cursor; //current character pos marks the begin
         let mut bytebegin = self.text.len(); //current byte pos marks the begin
@@ -719,7 +814,6 @@ impl<'a> XmlToStamConverter<'a> {
 
             if (element_config.stop == Some(false) || element_config.stop.is_none())
                 && element_config.annotation != XmlAnnotationHandling::TextSelectorBetweenMarkers
-                && element_config.text.is_some()
             {
                 //do text extraction for this element
 
@@ -744,9 +838,20 @@ impl<'a> XmlToStamConverter<'a> {
                     if self.config.debug {
                         eprintln!("[STAM fromxml]   outputting textprefix: {:?}", textprefix);
                     }
-                    let template = self.template_engine.template(textprefix.as_str());
-                    let context = self.context_for_node(&node, None, Some(self.cursor), None);
-                    let result = template.render(context).to_string()?;
+                    let result =
+                        self.render_template(textprefix, &node, None, Some(self.cursor), None)
+                            .map_err(|e| match e {
+                                XmlConversionError::TemplateError(s, e) => {
+                                    XmlConversionError::TemplateError(
+                                        format!(
+                                        "whilst rendering textprefix template '{}' for node '{}': {}",
+                                        textprefix, node.tag_name().name(), s
+                                    ),
+                                        e,
+                                    )
+                                }
+                                e => e,
+                            })?;
                     let result_charlen = result.chars().count();
                     self.cursor += result_charlen;
                     self.text += &result;
@@ -761,7 +866,7 @@ impl<'a> XmlToStamConverter<'a> {
                     if self.config.debug {
                         eprintln!("[STAM fromxml]   child {:?}", child);
                     }
-                    if child.is_text() {
+                    if child.is_text() && element_config.text.is_some() {
                         // extract the actual element text
                         // this may trigger multiple times if the XML element (`node`) has mixed content
 
@@ -856,14 +961,28 @@ impl<'a> XmlToStamConverter<'a> {
 
                 let textbegin = self.cursor;
                 if let Some(template) = &element_config.text {
-                    let context = self.context_for_node(
-                        &node,
-                        Some(&self.text[bytebegin..]),
-                        Some(self.cursor),
-                        None,
-                    );
-                    let template = self.template_engine.template(template.as_str());
-                    let result = template.render(&context).to_string()?;
+                    let result = self
+                        .render_template(
+                            template,
+                            &node,
+                            Some(&self.text[bytebegin..]),
+                            Some(self.cursor),
+                            None,
+                        )
+                        .map_err(|e| match e {
+                            XmlConversionError::TemplateError(s, e) => {
+                                XmlConversionError::TemplateError(
+                                    format!(
+                                        "whilst rendering text template '{}' for node '{}': {}",
+                                        template,
+                                        node.tag_name().name(),
+                                        s
+                                    ),
+                                    e,
+                                )
+                            }
+                            e => e,
+                        })?;
                     let result_charlen = result.chars().count();
                     self.cursor += result_charlen;
                     self.text += &result;
@@ -874,14 +993,26 @@ impl<'a> XmlToStamConverter<'a> {
                     if self.config.debug {
                         eprintln!("[STAM fromxml]   outputting textsuffix: {:?}", textsuffix);
                     }
-                    let context = self.context_for_node(
+                    let result = self.render_template(
+                        textsuffix.as_str(),
                         &node,
                         Some(&self.text[bytebegin..]),
                         Some(textbegin),
                         Some(self.cursor),
-                    );
-                    let template = self.template_engine.template(textsuffix.as_str());
-                    let result = template.render(&context).to_string()?;
+                    ).map_err(|e| match e {
+                            XmlConversionError::TemplateError(s, e) => {
+                                XmlConversionError::TemplateError(
+                                    format!(
+                                        "whilst rendering textsuffix template '{}' for node '{}': {}",
+                                        textsuffix,
+                                        node.tag_name().name(),
+                                        s
+                                    ),
+                                    e,
+                                )
+                            }
+                            e => e,
+                    })?;
                     let end_discount_tmp = result.chars().count();
                     let end_bytediscount_tmp = result.len();
                     self.text += &result;
@@ -1067,7 +1198,7 @@ impl<'a> XmlToStamConverter<'a> {
             }
 
             // Recursion step
-            if (element_config.stop == Some(false) || element_config.stop.is_none()) {
+            if element_config.stop == Some(false) || element_config.stop.is_none() {
                 for child in node.children() {
                     if child.is_element() {
                         self.extract_element_annotation(child, store)?;
@@ -1156,6 +1287,26 @@ impl<'a> XmlToStamConverter<'a> {
             .insert("namespaces".into(), self.config.namespaces.clone().into());
         self.global_context
             .insert("default_set".into(), self.config.default_set.clone().into());
+    }
+
+    fn render_template<'input, 't>(
+        &self,
+        template: &'t str,
+        node: &Node<'a, 'input>,
+        text: Option<&'input str>,
+        begin: Option<usize>,
+        end: Option<usize>,
+    ) -> Result<Cow<'t, str>, XmlConversionError> {
+        if template.chars().any(|c| c == '{') {
+            //value is a template, templating engine probably needed
+            let template = self.template_engine.template(template);
+            let context = self.context_for_node(&node, text, begin, end);
+            let result = template.render(context).to_string()?;
+            Ok(Cow::Owned(result))
+        } else {
+            //value is a literal: templating engine not needed
+            Ok(Cow::Borrowed(template))
+        }
     }
 
     fn context_for_node<'input>(

@@ -39,6 +39,9 @@ id = "{{ @xml:id }}"
 
 # Elements with only a path are passed through without mapping text or annotation
 [[elements]]
+path = "//tei:TEI"
+
+[[elements]]
 path = "//tei:teiHeader"
 
 # By default, ignore any tags in the head (unless they're mentioned specifically later in the config)
@@ -74,7 +77,7 @@ annotation = "ResourceSelector"
     [[elements.annotationdata]]
     set = "http://www.tei-c.org/ns/1.0"
     key = "title"
-    value = "{{text}}
+    value = "{{text}}"
 
 [[elements]]
 base = [ "withtype" ]
@@ -83,7 +86,7 @@ annotation = "ResourceSelector"
 
     [[elements.annotationdata]]
     key = "editor"
-    value = "{{text}}
+    value = "{{text}}"
 
 [[elements]]
 base = [ "withtype" ]
@@ -92,7 +95,7 @@ annotation = "ResourceSelector"
 
     [[elements.annotationdata]]
     key = "publisher"
-    value = "{{text}}
+    value = "{{text}}"
 
 [[elements]]
 base = [ "withtype" ]
@@ -101,7 +104,7 @@ handling = "ResourceSelector"
 
     [[elements.annotationdata]]
     key = "target"
-    value = "{{text}}
+    value = "{{text}}"
 
 
 # Determine how various structural elements are converted to text 
@@ -148,7 +151,7 @@ textsuffix = "\n"
 base = [ "withtype", "withtext" ]
 path = "//tei:note"
 handling = "AnnotateText"
-textprefix = "[{% if @n %}{@n}{% else %}*{% endif %}]:"
+textprefix = "[{% if @n %}{{@n}}{% else %}*{% endif %}]:"
 
 [[elements]]
 base = [ "withtype" ]
