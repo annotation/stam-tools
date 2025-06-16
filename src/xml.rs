@@ -12,8 +12,8 @@ use toml;
 use upon::Engine;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
-const PRECOMPILE_PATTERNS: &[&str; 2] = &["@", ":"];
-const PRECOMPILE_REPLACEMENTS: &[&str; 2] = &["ATTRIB_", "__"];
+const PRECOMPILE_PATTERNS: &[&str; 3] = &["@", ":", "/"];
+const PRECOMPILE_REPLACEMENTS: &[&str; 3] = &["ATTRIB_", "__", "_IN_"];
 
 fn default_set() -> String {
     "urn:stam-fromxml".into()
@@ -103,7 +103,9 @@ impl XmlConversionConfig {
 
     /// Parse the configuration from a TOML string (load the data from file yourself).
     pub fn from_toml_str(tomlstr: &str) -> Result<Self, String> {
-        toml::from_str(tomlstr).map_err(|e| format!("{}", e))
+        let mut config: Self = toml::from_str(tomlstr).map_err(|e| format!("{}", e))?;
+        config.resolve_baseelements().map_err(|e| format!("{}", e))?;
+        Ok(config)
     }
 
     pub fn with_debug(mut self, value: bool) -> Self {
@@ -209,6 +211,8 @@ pub enum XmlAnnotationHandling {
 /// XML Element configuration, determines how to map an XML element (identified by an XPath expression) to STAM
 pub struct XmlElementConfig {
     /// This is XPath-like expression (just a small subset of XPath) to identify an element by its path
+
+    #[serde(default)]
     path: XPathExpression,
 
     #[serde(default)]
@@ -307,7 +311,7 @@ impl XmlElementConfig {
                 engine.add_template(text.clone(), template).map_err(|e| {
                     XmlConversionError::TemplateError(
                         format!("element/text template {}", text.clone()),
-                        e,
+                        Some(e),
                     )
                 })?;
             }
@@ -321,7 +325,7 @@ impl XmlElementConfig {
                     .map_err(|e| {
                         XmlConversionError::TemplateError(
                             format!("element/textprefix template {}", textprefix.clone()),
-                            e,
+                            Some(e),
                         )
                     })?;
             }
@@ -335,7 +339,7 @@ impl XmlElementConfig {
                     .map_err(|e| {
                         XmlConversionError::TemplateError(
                             format!("element/textsuffix template {}", textsuffix.clone()),
-                            e,
+                            Some(e),
                         )
                     })?;
             }
@@ -347,7 +351,7 @@ impl XmlElementConfig {
                 engine.add_template(id.clone(), template).map_err(|e| {
                     XmlConversionError::TemplateError(
                         format!("element/id template {}", id.clone()),
-                        e,
+                        Some(e),
                     )
                 })?;
             }
@@ -360,7 +364,7 @@ impl XmlElementConfig {
                     engine.add_template(id.clone(), template).map_err(|e| {
                         XmlConversionError::TemplateError(
                             format!("annotationdata/id template {}", id.clone()),
-                            e,
+                            Some(e),
                         )
                     })?;
                 }
@@ -372,7 +376,7 @@ impl XmlElementConfig {
                     engine.add_template(set.clone(), template).map_err(|e| {
                         XmlConversionError::TemplateError(
                             format!("annotationdata/set template {}", set.clone()),
-                            e,
+                            Some(e),
                         )
                     })?;
                 }
@@ -384,7 +388,7 @@ impl XmlElementConfig {
                     engine.add_template(key.clone(), template).map_err(|e| {
                         XmlConversionError::TemplateError(
                             format!("annotationdata/key template {}", key.clone()),
-                            e,
+                            Some(e),
                         )
                     })?;
                 }
@@ -396,7 +400,7 @@ impl XmlElementConfig {
                     engine.add_template(value.clone(), template).map_err(|e| {
                         XmlConversionError::TemplateError(
                             format!("annotationdata/value template {}", value.clone()),
-                            e,
+                            Some(e),
                         )
                     })?;
                 }
@@ -463,6 +467,10 @@ pub struct XmlAnnotationDataConfig {
     /// Allow value templates that yield an empty string?
     #[serde(default)]
     allow_empty_value: bool,
+
+    /// Skip this data entirely if any underlying variables in the templates are undefined
+    #[serde(default)]
+    skip_if_missing: bool,
 }
 
 impl XmlAnnotationDataConfig {
@@ -473,6 +481,7 @@ impl XmlAnnotationDataConfig {
             key: None,
             value: None,
             allow_empty_value: false,
+            skip_if_missing: false,
         }
     }
 
@@ -547,6 +556,12 @@ impl XPathExpression {
             }
         }
         true
+    }
+}
+
+impl Default for XPathExpression {
+    fn default() -> Self {
+        Self::any()
     }
 }
 
@@ -711,7 +726,7 @@ struct XmlToStamConverter<'a> {
 
 pub enum XmlConversionError {
     StamError(StamError),
-    TemplateError(String, upon::Error),
+    TemplateError(String, Option<upon::Error>),
     ConfigError(String),
 }
 
@@ -723,7 +738,7 @@ impl From<StamError> for XmlConversionError {
 
 impl From<upon::Error> for XmlConversionError {
     fn from(error: upon::Error) -> Self {
-        Self::TemplateError("".into(), error)
+        Self::TemplateError("".into(), Some(error))
     }
 }
 
@@ -734,7 +749,10 @@ impl Display for XmlConversionError {
             Self::TemplateError(s, e) => {
                 f.write_str(s.as_str());
                 f.write_str(": ");
-                e.fmt(f)
+                if let Some(e) = e {
+                    e.fmt(f)?;
+                }
+                f.write_str("")
             }
             Self::ConfigError(e) => e.fmt(f),
         }
@@ -748,13 +766,13 @@ impl<'a> XmlToStamConverter<'a> {
             prefixes.insert(namespace.to_string(), prefix.to_string());
         }
         let mut template_engine = Engine::new();
-        template_engine.add_filter("capitalize", filter_capitalize);
-        template_engine.add_filter("lower", str::to_lowercase);
-        template_engine.add_filter("upper", str::to_uppercase);
-        template_engine.add_filter("plus", |a: i64, b: i64| a + b);
-        template_engine.add_filter("minus", |a: i64, b: i64| a - b);
-        template_engine.add_filter("last", |list: &[upon::Value]| list.last().map(Clone::clone));
-        template_engine.add_filter("first", |list: &[upon::Value]| {
+        template_engine.add_function("capitalize", filter_capitalize);
+        template_engine.add_function("lower", str::to_lowercase);
+        template_engine.add_function("upper", str::to_uppercase);
+        template_engine.add_function("plus", |a: i64, b: i64| a + b);
+        template_engine.add_function("minus", |a: i64, b: i64| a - b);
+        template_engine.add_function("last", |list: &[upon::Value]| list.last().map(Clone::clone));
+        template_engine.add_function("first", |list: &[upon::Value]| {
             list.first().map(Clone::clone)
         });
         let template_precompiler = AhoCorasick::new(PRECOMPILE_PATTERNS).expect("precompiler");
@@ -1127,27 +1145,81 @@ impl<'a> XmlToStamConverter<'a> {
                 for annotationdata in element_config.annotationdata.iter() {
                     let mut databuilder = AnnotationDataBuilder::new();
                     if let Some(template) = &annotationdata.set {
-                        let template = self.template_engine.template(template.as_str());
-                        let dataset = template.render(&context).to_string()?;
+                        let compiled_template = self.template_engine.template(template.as_str());
+                        let dataset = compiled_template.render(&context).to_string().map_err(|e| 
+                                XmlConversionError::TemplateError(
+                                    format!(
+                                        "whilst rendering annotationdata/dataset template '{}' for node '{}'",
+                                        template,
+                                        node.tag_name().name(),
+                                    ),
+                                    Some(e),
+                                )
+                            )?;
                         if !dataset.is_empty() {
-                            databuilder = databuilder.with_dataset(dataset.into());
+                            databuilder = databuilder.with_dataset(dataset.into())
                         }
                     } else {
                         databuilder =
                             databuilder.with_dataset(self.config.default_set.as_str().into());
                     }
                     if let Some(template) = &annotationdata.key {
-                        let template = self.template_engine.template(template.as_str());
-                        let key = template.render(&context).to_string()?;
-                        if !key.is_empty() {
-                            databuilder = databuilder.with_key(key.into())
+                        let compiled_template = self.template_engine.template(template.as_str());
+                        match compiled_template.render(&context).to_string().map_err(|e| 
+                                XmlConversionError::TemplateError(
+                                    format!(
+                                        "whilst rendering annotationdata/key template '{}' for node '{}'",
+                                        template,
+                                        node.tag_name().name(),
+                                    ),
+                                    Some(e),
+                                )
+                            )  {
+                            Ok(key) if !key.is_empty() =>
+                                databuilder = databuilder.with_key(key.into()) ,
+                            Ok(_) if !annotationdata.skip_if_missing => {
+                                return Err(XmlConversionError::TemplateError(
+                                    format!(
+                                        "whilst rendering annotationdata/key template '{}' for node '{}'",
+                                        template,
+                                        node.tag_name().name(),
+                                    ),
+                                    None
+                                ));
+                            },
+                            Err(e) if !annotationdata.skip_if_missing => {
+                                return Err(e)
+                            },
+                            _ => {
+                                //skip if missing, no op
+                            }
                         }
                     }
                     if let Some(template) = &annotationdata.value {
-                        let template = self.template_engine.template(template.as_str());
-                        let value = template.render(&context).to_string()?;
-                        if !value.is_empty() || annotationdata.allow_empty_value {
-                            databuilder = databuilder.with_value(value.into());
+                        let compiled_template = self.template_engine.template(template.as_str());
+                        match compiled_template.render(&context).to_string().map_err(|e| 
+                                XmlConversionError::TemplateError(
+                                    format!(
+                                        "whilst rendering annotationdata/value template '{}' for node '{}'",
+                                        template,
+                                        node.tag_name().name(),
+                                    ),
+                                    Some(e),
+                                )
+                            )  {
+                            Ok(value) =>
+                                if !value.is_empty() || annotationdata.allow_empty_value {
+                                    databuilder = databuilder.with_value(value.into());
+                                },
+                            Err(e) if !annotationdata.skip_if_missing => {
+                                return Err(e)
+                            },
+                            Err(_) if annotationdata.allow_empty_value => {
+                                    databuilder = databuilder.with_value("".into());
+                                },
+                            Err(_) => {
+                                //skip if missing, no op
+                            }
                         }
                     }
                     builder = builder.with_data_builder(databuilder);
@@ -1326,7 +1398,7 @@ impl<'a> XmlToStamConverter<'a> {
         let name = match (extended_name.namespace(), extended_name.name()) {
             (Some(namespace), tagname) => {
                 if let Some(prefix) = self.prefixes.get(namespace) {
-                    Some(Cow::Owned(format!("{}:{}", prefix, tagname)))
+                    Some(Cow::Owned(format!("{}__{}", prefix, tagname)))
                 } else {
                     Some(Cow::Borrowed(tagname))
                 }
@@ -1360,14 +1432,14 @@ impl<'a> XmlToStamConverter<'a> {
             if let Some(namespace) = attrib.namespace() {
                 if let Some(prefix) = self.prefixes.get(namespace) {
                     context.insert(
-                        format!("@{}:{}", prefix, attrib.name()).into(),
+                        format!("ATTRIB_{}__{}", prefix, attrib.name()).into(),
                         attrib.value().into(),
                     );
                 } else {
-                    context.insert(format!("@{}", attrib.name()).into(), attrib.value().into());
+                    context.insert(format!("ATTRIB_{}", attrib.name()).into(), attrib.value().into());
                 }
             } else {
-                context.insert(format!("@{}", attrib.name()).into(), attrib.value().into());
+                context.insert(format!("ATTRIB_{}", attrib.name()).into(), attrib.value().into());
             }
         }
 

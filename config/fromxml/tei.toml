@@ -18,15 +18,15 @@ tei = "http://www.tei-c.org/ns/1.0"
 
 
 #Define some base elements
-[[baseelement.withtype]]
+[baseelements.withtype]
 id = "{% if @xml:id %}{{ @xml:id }}{% endif %}"
 
-    [[baseelement.withtype.annotationdata]]
+    [[baseelements.withtype.annotationdata]]
     key = "type"
     value = "{{ localname | capitalize }}"
 
 #Define some base elements
-[[baseelement.withtext]]
+[baseelements.withtext]
 text = "{{text}}"
 annotation = "TextSelector"
 
@@ -78,6 +78,7 @@ annotation = "ResourceSelector"
     set = "http://www.tei-c.org/ns/1.0"
     key = "title"
     value = "{{text}}"
+    skip_if_missing = true
 
 [[elements]]
 base = [ "withtype" ]
@@ -87,6 +88,7 @@ annotation = "ResourceSelector"
     [[elements.annotationdata]]
     key = "editor"
     value = "{{text}}"
+    skip_if_missing = true
 
 [[elements]]
 base = [ "withtype" ]
@@ -96,6 +98,7 @@ annotation = "ResourceSelector"
     [[elements.annotationdata]]
     key = "publisher"
     value = "{{text}}"
+    skip_if_missing = true
 
 [[elements]]
 base = [ "withtype" ]
@@ -105,7 +108,7 @@ handling = "ResourceSelector"
     [[elements.annotationdata]]
     key = "target"
     value = "{{text}}"
-
+    skip_if_missing = true
 
 # Determine how various structural elements are converted to text 
 
@@ -151,7 +154,7 @@ textsuffix = "\n"
 base = [ "withtype", "withtext" ]
 path = "//tei:note"
 handling = "AnnotateText"
-textprefix = "[{% if @n %}{{@n}}{% else %}*{% endif %}]:"
+textprefix = "[{% if ?.@n %}{{@n}}{% else %}*{% endif %}]:"
 
 [[elements]]
 base = [ "withtype" ]
@@ -162,3 +165,5 @@ text = "{{ text }}"
     [[elements.annotationdata]]
     key = "page"
     value = "{{ @n }}"
+    skip_if_missing = true
+
