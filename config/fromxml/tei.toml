@@ -17,7 +17,7 @@ tei = "http://www.tei-c.org/ns/1.0"
 #this defines context variables that will be available to the templating engine globally
 
 
-#Define some base elements
+#Define some base elements that we reuse later for actual elements (prevents unnecessary repetition)
 [baseelements.withtype]
 id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
 
@@ -25,10 +25,21 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
     key = "type"
     value = "{{ localname | capitalize }}"
 
+    [[baseelement.withtype.annotationdata]]
+    key = "lang"
+    value = "{{ @xml:lang }}"
+    skip_if_missing = true
+
+    [[baseelement.withtype.annotationdata]]
+    key = "n"
+    value = "{{ @n }}"
+    skip_if_missing = true
+
 #Define some base elements
 [baseelements.withtext]
 text = true
 annotation = "TextSelector"
+
 
 # elements are matched in reverse-order, so put more generic statements before more specific ones
 
@@ -62,15 +73,23 @@ path = "//tei:teiHeader/tei:fileDesc/tei:titleStmt"
 path = "//tei:teiHeader/tei:fileDesc/tei:publicationStmt"
 
 [[elements]]
-path = "//tei:teiHeader/tei:fileDesc/tei:publicationStmt"
-
-[[elements]]
 path = "//tei:facsimile"
 stop = true
 
 [[elements]]
 base = [ "withtype" ] #base element to derive from (multiple allowed)
-path = "//tei:fileDesc/tei:titleSmt/tei:title"
+path = "//tei:fileDesc/tei:titleStmt/tei:title"
+annotation = "ResourceSelector"
+
+    [[elements.annotationdata]]
+    set = "http://www.tei-c.org/ns/1.0"
+    key = "title"
+    value = "{{text}}"
+    skip_if_missing = true
+
+[[elements]]
+base = [ "withtype" ] #base element to derive from (multiple allowed)
+path = "//tei:fileDesc/tei:titleSmt"
 annotation = "ResourceSelector"
 
     [[elements.annotationdata]]
@@ -93,9 +112,44 @@ annotation = "ResourceSelector"
 base = [ "withtype" ]
 path = "//tei:fileDesc/tei:publicationStmt/tei:publisher"
 annotation = "ResourceSelector"
+stop = true
 
     [[elements.annotationdata]]
     key = "publisher"
+    value = "{{text}}"
+    skip_if_missing = true
+
+[[elements]]
+base = [ "withtype" ]
+path = "//tei:fileDesc/tei:publicationStmt/tei:pubPlace"
+annotation = "ResourceSelector"
+stop = true
+
+    [[elements.annotationdata]]
+    key = "pubPlace"
+    value = "{{text}}"
+    skip_if_missing = true
+
+[[elements]]
+base = [ "withtype" ]
+path = "//tei:fileDesc/tei:publicationStmt/tei:availability/tei:license"
+annotation = "ResourceSelector"
+stop = true
+
+    [[elements.annotationdata]]
+    key = "license"
+    value = "{{text | trim}}"
+    skip_if_missing = true
+
+
+[[elements]]
+base = [ "withtype" ]
+path = "//tei:fileDesc/tei:publicationStmt/tei:date"
+annotation = "ResourceSelector"
+stop = true
+
+    [[elements.annotationdata]]
+    key = "date"
     value = "{{text}}"
     skip_if_missing = true
 
@@ -108,6 +162,10 @@ handling = "ResourceSelector"
     key = "target"
     value = "{{text}}"
     skip_if_missing = true
+
+[[elements]]
+path = "//tei:fileDesc/tei:publicationStmt/*"
+stop = true
 
 # Determine how various structural elements are converted to text 
 
@@ -166,3 +224,12 @@ text = true
     value = "{{ @n }}"
     skip_if_missing = true
 
+    [[elements.annotationdata]]
+    key = "facs"
+    value = "{{ @facs }}"
+    skip_if_missing = true
+
+    [[elements.annotationdata]]
+    key = "f"
+    value = "{{ @f }}"
+    skip_if_missing = true

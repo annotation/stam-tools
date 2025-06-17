@@ -760,8 +760,10 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("capitalize", filter_capitalize);
         template_engine.add_function("lower", str::to_lowercase);
         template_engine.add_function("upper", str::to_uppercase);
+        template_engine.add_function("trim", |s: &str| s.trim().to_string() );
         template_engine.add_function("plus", |a: i64, b: i64| a + b);
         template_engine.add_function("minus", |a: i64, b: i64| a - b);
+        template_engine.add_function("eq", |a: &upon::Value, b: &upon::Value| a == b);
         template_engine.add_function("last", |list: &[upon::Value]| list.last().map(Clone::clone));
         template_engine.add_function("first", |list: &[upon::Value]| {
             list.first().map(Clone::clone)
@@ -849,7 +851,7 @@ impl<'a> XmlToStamConverter<'a> {
                         eprintln!("[STAM fromxml]{} outputting textprefix: {:?}", self.debugindent, textprefix);
                     }
                     let result =
-                        self.render_template(textprefix, &node, None, Some(self.cursor), None)
+                        self.render_template(textprefix, &node, Some(self.cursor), None)
                             .map_err(|e| match e {
                                 XmlConversionError::TemplateError(s, e) => {
                                     XmlConversionError::TemplateError(
@@ -987,7 +989,6 @@ impl<'a> XmlToStamConverter<'a> {
                     let result = self.render_template(
                         textsuffix.as_str(),
                         &node,
-                        Some(&self.text[bytebegin..]),
                         Some(textbegin),
                         Some(self.cursor),
                     ).map_err(|e| match e {
@@ -1112,7 +1113,7 @@ impl<'a> XmlToStamConverter<'a> {
                     None
                 };
 
-                let context = self.context_for_node(&node, text, begin, end);
+                let context = self.context_for_node(&node, begin, end);
 
                 if let Some(template) = &element_config.id {
                     let compiled_template = self.template_engine.template(template.as_str());
@@ -1358,14 +1359,13 @@ impl<'a> XmlToStamConverter<'a> {
         &self,
         template: &'t str,
         node: &Node<'a, 'input>,
-        text: Option<&'input str>,
         begin: Option<usize>,
         end: Option<usize>,
     ) -> Result<Cow<'t, str>, XmlConversionError> {
         if template.chars().any(|c| c == '{') {
             //value is a template, templating engine probably needed
             let template = self.template_engine.template(template);
-            let context = self.context_for_node(&node, text, begin, end);
+            let context = self.context_for_node(&node, begin, end);
             let result = template.render(context).to_string()?;
             Ok(Cow::Owned(result))
         } else {
@@ -1377,7 +1377,6 @@ impl<'a> XmlToStamConverter<'a> {
     fn context_for_node<'input>(
         &self,
         node: &Node<'a, 'input>,
-        text: Option<&'input str>,
         begin: Option<usize>,
         end: Option<usize>,
     ) -> upon::Value {
@@ -1418,9 +1417,7 @@ impl<'a> XmlToStamConverter<'a> {
         if let Some(length) = length {
             context.insert("length".into(), upon::Value::Integer(length as i64));
         }
-        if let Some(text) = text {
-            context.insert("text".into(), text.into());
-        }
+        context.insert("text".into(), recursive_text(node).into());
         for attrib in node.attributes() {
             if let Some(namespace) = attrib.namespace() {
                 if let Some(prefix) = self.prefixes.get(namespace) {
@@ -1440,13 +1437,13 @@ impl<'a> XmlToStamConverter<'a> {
 }
 
 /// Get recursive text without any elements
-fn recursive_text(node: Node) -> String {
+fn recursive_text(node: &Node) -> String {
     let mut s = String::new();
     for child in node.children() {
         if child.is_text() {
             s += child.text().expect("should have text");
         } else if child.is_element() {
-            s += &recursive_text(child);
+            s += &recursive_text(&child);
         }
     }
     s
