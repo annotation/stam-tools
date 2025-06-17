@@ -55,6 +55,7 @@ pub struct XmlConversionConfig {
 
     #[serde(skip_deserializing)]
     debug: bool,
+
 }
 
 impl XmlConversionConfig {
@@ -722,6 +723,8 @@ struct XmlToStamConverter<'a> {
 
     ///  Global context for template
     global_context: BTreeMap<String, upon::Value>,
+    
+    debugindent: String,
 }
 
 pub enum XmlConversionError {
@@ -786,6 +789,7 @@ impl<'a> XmlToStamConverter<'a> {
             resource_handle: None,
             pending_whitespace: false,
             global_context: BTreeMap::new(),
+            debugindent: String::new(),
             template_precompiler,
             prefixes,
             config,
@@ -816,7 +820,7 @@ impl<'a> XmlToStamConverter<'a> {
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
             let path: NodePath = node.into();
-            eprintln!("[STAM fromxml] extracting text for element {}", path);
+            eprintln!("[STAM fromxml]{} extracting text for element {}", self.debugindent, path);
         }
         let mut begin = self.cursor; //current character pos marks the begin
         let mut bytebegin = self.text.len(); //current byte pos marks the begin
@@ -827,7 +831,7 @@ impl<'a> XmlToStamConverter<'a> {
         // obtain the configuration that applies to this element
         if let Some(element_config) = self.config.element_config(node) {
             if self.config.debug {
-                eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
+                eprintln!("[STAM fromxml]{} matching config: {:?}", self.debugindent, element_config);
             }
 
             if (element_config.stop == Some(false) || element_config.stop.is_none())
@@ -854,7 +858,7 @@ impl<'a> XmlToStamConverter<'a> {
                 if let Some(textprefix) = &element_config.textprefix {
                     self.pending_whitespace = false;
                     if self.config.debug {
-                        eprintln!("[STAM fromxml]   outputting textprefix: {:?}", textprefix);
+                        eprintln!("[STAM fromxml]{} outputting textprefix: {:?}", self.debugindent, textprefix);
                     }
                     let result =
                         self.render_template(textprefix, &node, None, Some(self.cursor), None)
@@ -882,7 +886,7 @@ impl<'a> XmlToStamConverter<'a> {
                 // process all child elements
                 for child in node.children() {
                     if self.config.debug {
-                        eprintln!("[STAM fromxml]   child {:?}", child);
+                        eprintln!("[STAM fromxml]{} child {:?}", self.debugindent, child);
                     }
                     if child.is_text() && element_config.text.is_some() {
                         // extract the actual element text
@@ -912,7 +916,8 @@ impl<'a> XmlToStamConverter<'a> {
                                 self.pending_whitespace = true;
                                 if self.config.debug {
                                     eprintln!(
-                                        "[STAM fromxml]       all whitespace, flag pending whitespace and skipping...",
+                                        "[STAM fromxml]{} ^- all whitespace, flag pending whitespace and skipping...",
+                                        self.debugindent,
                                     );
                                 }
                                 continue;
@@ -920,7 +925,8 @@ impl<'a> XmlToStamConverter<'a> {
                             innertext = innertext.trim();
                             if self.config.debug {
                                 eprintln!(
-                                    "[STAM fromxml]       collapsed whitespace: {:?}",
+                                    "[STAM fromxml]{} ^- collapsed whitespace: {:?}",
+                                    self.debugindent,
                                     innertext
                                 );
                             }
@@ -931,7 +937,7 @@ impl<'a> XmlToStamConverter<'a> {
                                 && !self.text.chars().rev().next().unwrap().is_whitespace()
                             {
                                 if self.config.debug {
-                                    eprintln!("[STAM fromxml]       outputting pending whitespace",);
+                                    eprintln!("[STAM fromxml]{} ^- outputting pending whitespace",self.debugindent);
                                 }
                                 self.text.push(' ');
                                 self.cursor += 1;
@@ -955,23 +961,29 @@ impl<'a> XmlToStamConverter<'a> {
                             });
                             self.text += &innertext;
                             self.cursor += innertext.chars().count();
+                            if self.config.debug {
+                                eprintln!("[STAM fromxml]{} ^- outputting text child (collapsed whitespace), cursor is now {}: {}",self.debugindent, self.cursor, innertext);
+                            }
                         } else {
                             self.text += &innertext;
                             self.cursor += innertext.chars().count();
+                            if self.config.debug {
+                                eprintln!("[STAM fromxml]{} ^- outputting text child, cursor is now {}: {}",self.debugindent, self.cursor, innertext);
+                            }
                         }
                         self.pending_whitespace = pending_whitespace;
                     } else if child.is_element() {
                         if self.config.debug {
-                            eprintln!("[STAM fromxml] <recursion -^>");
+                            eprintln!("[STAM fromxml]{} \\- extracting text for this child", self.debugindent);
                         }
+                        self.debugindent.push_str("  ");
                         // recursion step, process child element, pass our whitespace handling mode since it may inherit it
                         self.extract_element_text(child, whitespace)?;
-                        if self.config.debug {
-                            eprintln!("[STAM fromxml] </recursion>");
-                        }
+                        self.debugindent.pop();
+                        self.debugindent.pop();
                     } else {
                         if self.config.debug {
-                            eprintln!("[STAM fromxml]   skipping child node");
+                            eprintln!("[STAM fromxml]{} ^- skipping this child node", self.debugindent);
                         }
                         continue;
                     }
@@ -1004,12 +1016,15 @@ impl<'a> XmlToStamConverter<'a> {
                     let result_charlen = result.chars().count();
                     self.cursor += result_charlen;
                     self.text += &result;
+                    if self.config.debug {
+                        eprintln!("[STAM fromxml]{} outputting text, cursor now at {}: {}", self.debugindent, self.cursor, &result);
+                    }
                 }
 
                 // process the text suffix, a preconfigured string of text to include after to the actual text
                 if let Some(textsuffix) = &element_config.textsuffix {
                     if self.config.debug {
-                        eprintln!("[STAM fromxml]   outputting textsuffix: {:?}", textsuffix);
+                        eprintln!("[STAM fromxml]{} outputting textsuffix: {:?}", self.debugindent, textsuffix);
                     }
                     let result = self.render_template(
                         textsuffix.as_str(),
@@ -1045,7 +1060,7 @@ impl<'a> XmlToStamConverter<'a> {
             {
                 // this is a marker, keep track of it so we can extract the span between markers in [`extract_element_annotation()`] later
                 if self.config.debug {
-                    eprintln!("[STAM fromxml]   adding to markers");
+                    eprintln!("[STAM fromxml]{} adding to markers", self.debugindent);
                 }
                 self.markers
                     .entry(element_config.hash())
@@ -1054,7 +1069,8 @@ impl<'a> XmlToStamConverter<'a> {
             }
         } else if self.config.debug {
             eprintln!(
-                "[STAM fromxml]   WARNING: no match, skipping text extraction for element {}",
+                "[STAM fromxml]{} WARNING: no match, skipping text extraction for element {}",
+                self.debugindent,
                 NodePath::from(node)
             );
         }
@@ -1064,17 +1080,19 @@ impl<'a> XmlToStamConverter<'a> {
         // actual annotations with this span.
         if begin <= (self.cursor - end_discount) {
             let offset = Offset::simple(begin, self.cursor - end_discount);
-            self.positionmap.insert(node.id(), offset);
-            self.bytepositionmap
-                .insert(node.id(), (bytebegin, self.text.len() - end_bytediscount));
             if self.config.debug {
                 let path: NodePath = node.into();
                 eprintln!(
-                    "[STAM fromxml]   extracted text for {}: {:?}",
+                    "[STAM fromxml]{} extracted text for {} @{:?}: {:?}",
+                    self.debugindent,
                     path,
+                    &offset,
                     &self.text[bytebegin..(self.text.len() - end_bytediscount)]
                 );
             }
+            self.positionmap.insert(node.id(), offset);
+            self.bytepositionmap
+                .insert(node.id(), (bytebegin, self.text.len() - end_bytediscount));
         }
         Ok(())
     }
@@ -1090,12 +1108,12 @@ impl<'a> XmlToStamConverter<'a> {
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
             let path: NodePath = node.into();
-            eprintln!("[STAM fromxml] extracting annotation from {}", path);
-        }
+            eprintln!("[STAM fromxml]{} extracting annotation from {}", self.debugindent, path);
+    }
         // obtain the configuration that applies to this element
         if let Some(element_config) = self.config.element_config(node) {
             if self.config.debug {
-                eprintln!("[STAM fromxml]   matching config: {:?}", element_config);
+                eprintln!("[STAM fromxml]{} matching config: {:?}", self.debugindent, element_config);
             }
             if element_config.annotation != XmlAnnotationHandling::None
                 && element_config.annotation != XmlAnnotationHandling::Unspecified
@@ -1273,13 +1291,17 @@ impl<'a> XmlToStamConverter<'a> {
             if element_config.stop == Some(false) || element_config.stop.is_none() {
                 for child in node.children() {
                     if child.is_element() {
+                        self.debugindent.push_str("  ");
                         self.extract_element_annotation(child, store)?;
+                        self.debugindent.pop();
+                        self.debugindent.pop();
                     }
                 }
             }
         } else {
             eprintln!(
-                "[STAM fromxml]   WARNING: no match, skipping annotation extraction for element {}",
+                "[STAM fromxml]{} WARNING: no match, skipping annotation extraction for element {}",
+                self.debugindent,
                 NodePath::from(node)
             );
         }
