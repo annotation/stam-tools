@@ -19,7 +19,7 @@ tei = "http://www.tei-c.org/ns/1.0"
 
 #Define some base elements
 [baseelements.withtype]
-id = "{% if @xml:id %}{{ @xml:id }}{% endif %}"
+id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
 
     [[baseelements.withtype.annotationdata]]
     key = "type"
@@ -27,7 +27,7 @@ id = "{% if @xml:id %}{{ @xml:id }}{% endif %}"
 
 #Define some base elements
 [baseelements.withtext]
-text = "{{text}}"
+text = true
 annotation = "TextSelector"
 
 # elements are matched in reverse-order, so put more generic statements before more specific ones
@@ -35,7 +35,6 @@ annotation = "TextSelector"
 [[elements]]
 base = [ "withtype", "withtext" ] #base element to derive from (multiple allowed)
 path = "*" # default matching for elements, will match all
-id = "{{ @xml:id }}"
 
 # Elements with only a path are passed through without mapping text or annotation
 [[elements]]
@@ -160,7 +159,7 @@ textprefix = "[{% if ?.@n %}{{@n}}{% else %}*{% endif %}]:"
 base = [ "withtype" ]
 path = "//tei:pb"
 annotation = "TextSelectorBetweenMarkers"
-text = "{{ text }}"
+text = true
 
     [[elements.annotationdata]]
     key = "page"

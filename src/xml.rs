@@ -226,9 +226,9 @@ pub struct XmlElementConfig {
     #[serde(default)]
     textprefix: Option<String>,
 
-    /// Template or None for no text handling
+    /// Extract text. None means unspecified and defaults to false.
     #[serde(default)]
-    text: Option<String>,
+    text: Option<bool>,
 
     /// Template or None for no text handling, suffixes are never targeted by annotations
     #[serde(default)]
@@ -282,13 +282,13 @@ impl XmlElementConfig {
             self.textprefix = base.textprefix.clone();
         }
         if self.text.is_none() && base.text.is_some() {
-            self.text = base.text.clone();
+            self.text = base.text;
         }
         if self.textsuffix.is_none() && base.textsuffix.is_some() {
             self.textsuffix = base.textsuffix.clone();
         }
         if self.id.is_none() && base.id.is_some() {
-            self.text = base.text.clone();
+            self.id = base.id.clone();
         }
         if self.stop.is_none() && base.stop.is_some() {
             self.stop = base.stop;
@@ -305,18 +305,6 @@ impl XmlElementConfig {
         engine: &mut Engine<'_>,
         template_precompiler: &AhoCorasick,
     ) -> Result<(), XmlConversionError> {
-        if let Some(text) = self.text.as_ref() {
-            if engine.get_template(text.as_str()).is_none() {
-                let template =
-                    template_precompiler.replace_all(text.as_str(), PRECOMPILE_REPLACEMENTS);
-                engine.add_template(text.clone(), template).map_err(|e| {
-                    XmlConversionError::TemplateError(
-                        format!("element/text template {}", text.clone()),
-                        Some(e),
-                    )
-                })?;
-            }
-        }
         if let Some(textprefix) = self.textprefix.as_ref() {
             if engine.get_template(textprefix.as_str()).is_none() {
                 let template =
@@ -422,8 +410,8 @@ impl XmlElementConfig {
         self
     }
 
-    pub fn with_text(mut self, text: impl Into<String>) -> Self {
-        self.text = Some(text.into());
+    pub fn with_text(mut self, text: bool) -> Self {
+        self.text = Some(text);
         self
     }
 
@@ -665,7 +653,7 @@ pub fn from_xml<'a>(
     }
     let resource = TextResourceBuilder::new()
         .with_id(textoutfilename.clone())
-        .with_text(std::mem::replace(&mut converter.text, String::new()))
+        .with_text(converter.text.clone())
         .with_filename(&textoutfilename);
 
     converter.resource_handle = Some(
@@ -782,7 +770,7 @@ impl<'a> XmlToStamConverter<'a> {
         let mut converter = Self {
             cursor: 0,
             text: String::new(),
-            template_engine: Engine::new(),
+            template_engine,
             positionmap: HashMap::new(),
             bytepositionmap: HashMap::new(),
             markers: HashMap::new(),
@@ -883,12 +871,13 @@ impl<'a> XmlToStamConverter<'a> {
                     bytebegin += result.len();
                 }
 
+                let textbegin = self.cursor;
                 // process all child elements
                 for child in node.children() {
                     if self.config.debug {
                         eprintln!("[STAM fromxml]{} child {:?}", self.debugindent, child);
                     }
-                    if child.is_text() && element_config.text.is_some() {
+                    if child.is_text() && element_config.text == Some(true) {
                         // extract the actual element text
                         // this may trigger multiple times if the XML element (`node`) has mixed content
 
@@ -989,37 +978,6 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
 
-                let textbegin = self.cursor;
-                if let Some(template) = &element_config.text {
-                    let result = self
-                        .render_template(
-                            template,
-                            &node,
-                            Some(&self.text[bytebegin..]),
-                            Some(self.cursor),
-                            None,
-                        )
-                        .map_err(|e| match e {
-                            XmlConversionError::TemplateError(s, e) => {
-                                XmlConversionError::TemplateError(
-                                    format!(
-                                        "whilst rendering text template '{}' for node '{}': {}",
-                                        template,
-                                        node.tag_name().name(),
-                                        s
-                                    ),
-                                    e,
-                                )
-                            }
-                            e => e,
-                        })?;
-                    let result_charlen = result.chars().count();
-                    self.cursor += result_charlen;
-                    self.text += &result;
-                    if self.config.debug {
-                        eprintln!("[STAM fromxml]{} outputting text, cursor now at {}: {}", self.debugindent, self.cursor, &result);
-                    }
-                }
 
                 // process the text suffix, a preconfigured string of text to include after to the actual text
                 if let Some(textsuffix) = &element_config.textsuffix {
@@ -1109,7 +1067,7 @@ impl<'a> XmlToStamConverter<'a> {
         if self.config.debug {
             let path: NodePath = node.into();
             eprintln!("[STAM fromxml]{} extracting annotation from {}", self.debugindent, path);
-    }
+        }
         // obtain the configuration that applies to this element
         if let Some(element_config) = self.config.element_config(node) {
             if self.config.debug {
@@ -1123,7 +1081,11 @@ impl<'a> XmlToStamConverter<'a> {
                 //prepare variables to pass to the template context
                 let offset = self.positionmap.get(&node.id());
                 let text = if element_config.annotation == XmlAnnotationHandling::TextSelector {
+                    if self.text.is_empty() {
+                        return Err(XmlConversionError::ConfigError("Can't extract annotations on text if no text was extracted!".into()));
+                    }
                     if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&node.id()) {
+                        eprintln!("[STAM fromxml]{} annotation covers text {:?} (bytes {}-{})", self.debugindent, offset, beginbyte, endbyte);
                         Some(&self.text[*beginbyte..*endbyte])
                     } else {
                         None
@@ -1153,8 +1115,17 @@ impl<'a> XmlToStamConverter<'a> {
                 let context = self.context_for_node(&node, text, begin, end);
 
                 if let Some(template) = &element_config.id {
-                    let template = self.template_engine.template(template.as_str());
-                    let id = template.render(&context).to_string()?;
+                    let compiled_template = self.template_engine.template(template.as_str());
+                    let id = compiled_template.render(&context).to_string().map_err(|e| 
+                            XmlConversionError::TemplateError(
+                                format!(
+                                    "whilst rendering id template '{}' for node '{}'",
+                                    template,
+                                    node.tag_name().name(),
+                                ),
+                                Some(e),
+                            )
+                        )?;
                     if !id.is_empty() {
                         builder = builder.with_id(id);
                     }
@@ -1464,7 +1435,6 @@ impl<'a> XmlToStamConverter<'a> {
                 context.insert(format!("ATTRIB_{}", attrib.name()).into(), attrib.value().into());
             }
         }
-
         upon::Value::Map(context)
     }
 }
