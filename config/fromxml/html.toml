@@ -3,6 +3,7 @@ inject_dtd = """<!DOCTYPE entities[<!ENTITY Tab "&#x9;"><!ENTITY NewLine "&#xA;"
 
 #default whitespace handling (Collapse or Preserve)
 whitespace = "Collapse"
+default_set = "urn:stam-fromhtml" 
 
 [namespaces]
 #this defines the namespace prefixes you can use in this configuration
@@ -13,128 +14,135 @@ xlink = "http://www.w3.org/1999/xlink"
 
 # elements and attributes are matched in reverse-order, so put more generic statements before more specific ones
 
-# default matching for elements, will match all
+#Define some base elements that we reuse later for actual elements (prevents unnecessary repetition)
+[baseelements.common]
+id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
+
+    [[baseelements.common.annotationdata]]
+    key = "type"
+    value = "{{ localname }}"
+
+    [[baseelement.common.annotationdata]]
+    key = "lang"
+    value = "{{ @xml:lang }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "n"
+    value = "{{ @n }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "style"
+    value = "{{ @style }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "class"
+    value = "{{ @class }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "src"
+    value = "{{ @src }}"
+    skip_if_missing = true
+
+[baseelements.text]
+text = true
+
+
 [[elements]]
+base = [ "text" ]
 path = "*"
-handling = "AnnotateText" 
+text = true
+annotation = "TextSelector"
 
-# Element Syntax:
-#
-# * `path` - The element path is an Xpath-like statement (very limited subset!), you can use any of the namespace prefixes defined in [namespaces]. Use * as wildcard
-# * `handling` - Determines how this element is mapped to STAM, it can be any of the following:
-#   * `PassThrough` - Skip this element and any text in it, do not create any annotations, but do descend into its child elements and their text
-#   * `Exclude` - Skip this element and all its descendants, it will be converted neither to text nor to annotations
-#   * `ExtractTextOnly` - Include the element text, discard the annotation, do descend into children
-#   * `AnnotateText` (default) -  Include this element's text and annotation, and descend into the children
-#   * `AnnotateResource` - Ignore any text, associate metadata with the resource
-#   * `AnnotateResourceWithTextAsData` - Associate metadata with the resource, take the text of the element as data value. This is useful for mapping XML metadata like `<author>John Doe</author>` to an annotation with datakey 'author' and value 'John Doe'.
-# * `set` (optional) - The STAM set to use for this mapping, if not set, it will be derived from the namespace (if any), or `urn:stam-fromxml` if all else fails.
-# * `key` (optional) - The STAM key to use for this element's mapping, if not set, it will be derived from the name of the element. If set, the *value* of the annotation data for this key in this set will be derived from the name of the element.
-
-
-# default matching for attributes, will match all
-[[attributes]]
-scope = "*"
-name = "*"
-handling = "KeyValue"
-
-# Attribute Syntax:
-#
-# * The scope is an Xpath-like statement (very limited subset!) that determines under which elements this attribute matches. 
-#   It allows definining different behaviour depending the context an attribute is found in.
-#   You can use any of the namespace prefixes defined in [namespaces]. Use * as wildcard
-# * Name is the name of the attribute, including any of the namespace prefixes defined in [namepaces] if so desired
-# * Handling determines how this attribute is mapped to STAM, it can be any of the following:
-#    * Exclude - Skip this attribute
-#    * KeyValue -  Include this attribute as annotation data with corresponding key and value.
-#    * Identifier - Use this attribute as identifier for the annotation
-#    * Key - Use this attribute value as key. This implies that there must be a single other attribute with `AttributeHandling = Value`
-#    * Value - Use this attribute value as value. If there is another attribute with `AttributeHandling = Key`, then that will be used as key, otherwise the element name itself will be used as key.
-# * `set` (optional) - The STAM set to use for this mapping, if not set, it will be derived from the namespace of the attribute (if any), or `urn:stam-fromxml` if all else fails.
-# * `key` (optional) - The STAM key to use for this attribute's mapping, if not set, it will be derived from the name of the attribute
-
-# use xml:id as identifier for annotations
-[[attributes]]
-scope = "*"
-name = "xml:id"
-handling = "Identifier"
-
-# do not convert xml:space, it is already handled by the internal text extraction process, no need to turn it into an explicit annotation
-[[attributes]]
-scope = "*"
-name = "xml:space"
-handling = "Exclude"
-
-
-# Pass through the following elements without mapping them:
+# Pass through the following elements without mapping to text
 [[elements]]
+base = [ "common" ]
 path = "//html:head"
-handling = "PassThrough"
+
+[[elements]]
+base = [ "common" ]
+path = "//html:head//*"
+
+# Map metadata like <meta name="key" content="value"> to annotations with key->value data selecting the resource (ResourceSelector)
+[[elements]]
+base = [ "common" ]
+path = "//html:head//html:meta"
+
+[[elements.annotationdata]]
+key = "{% if ?.@name %}{{ name }}{% endif %}"
+value = "{% if ?.@content %}{{ @content }}{% endif %}"
+skip_if_missing = true
 
 # By default, ignore any tags in the head (unless they're mentioned specifically later in the config)
 [[elements]]
-path = "//html:head/*"
-handling = "Exclude"
-
-# Map metadata like <meta name="key" content="value"> to annotations with key->value data selecting the resource (ResourceSelector)
-
-[[elements]]
-path = "//html:head/html:meta"
-handling = "AnnotateResource"
-
-[[attributes]]
-scope = "//html:meta"
-name = "name"
-handling = "Key"
-
-[[attributes]]
-scope = "//html:meta"
-name = "Value"
-handling = "Value"
-
-# Convert the <title> element to a metadata annotation: 
-[[elements]]
 path = "//html:head/html:title"
-handling = "AnnotateResourceWithTextAsData"
+
+[[elements.annotationdata]]
+key = "title"
+value = "{{ text | trim }}"
 
 
-# Determine how various structural elements are converted to text 
+# Determine how various structural elements are converted to text
 
 [[elements]]
+base = [ "common" ]
 path = "//html:br"
 textsuffix = "\n"
 
 [[elements]]
+base = [ "common", "text" ]
 path = "//html:p"
 textprefix = "\n"
 textsuffix = "\n"
 
+# Let's do headers and bulleted lists like markdown
 [[elements]]
+base = [ "common", "text" ]
 path = "//html:h1"
-textprefix = "\n"
+textprefix = "# "
 textsuffix = "\n"
 
 [[elements]]
+base = [ "common", "text" ]
 path = "//html:h2"
-textprefix = "\n"
+textprefix = "## "
 textsuffix = "\n"
 
 [[elements]]
+base = [ "common", "text" ]
 path = "//html:h3"
-textprefix = "\n"
+textprefix = "### \n"
 textsuffix = "\n"
 
 [[elements]]
+base = [ "common", "text" ]
+path = "//html:h4"
+textprefix = "#### \n"
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "text" ]
 path = "//html:li"
 textprefix = "* "
 textsuffix = "\n"
 
 [[elements]]
+base = [ "common", "text" ]
 path = "//html:li/html:li"
 textprefix = "  * "
 textsuffix = "\n"
 
 [[elements]]
+base = [ "common", "text" ]
 path = "//html:li/html:li/html:li"
 textprefix = "    * "
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common" ]
+path = "//html:img"
+textprefix = "![{% if ?.@caption %}{{ @caption }}{% else if ?.@alt %}{{ @alt }}{% else %}IMAGE{% endif %}](?.@src)"
 textsuffix = "\n"
