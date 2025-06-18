@@ -167,6 +167,12 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .required(false),
     );
     args.push(
+        Arg::with_name("nested-key-delimiter")
+            .long("nested-key-delimiter")
+            .help("Set this to a single character that is used to delimit keys that you want to expand into multiple blank nodes/maps in the output. For instance, set this to `.` and use it with keys such as `metadata.blah` to get an extra grouping `metadata` in the body. If not set, nested keys are not interpreted (default)")
+            .required(false),
+    );
+    args.push(
         Arg::with_name("add-context")
             .long("add-context")
             .help("(for Web Annotation output only) URL to a JSONLD context to include")
@@ -1366,6 +1372,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                     default_resource_iri: args.value_of("resource-prefix").unwrap().to_string(),
                     auto_generated: !args.is_present("no-generated"),
                     auto_generator: !args.is_present("no-generator"),
+                    nested_keys: args.value_of("nested-key-delimiter").map(|s| s.chars().next().unwrap()),
                     extra_context: args.values_of("add-context").unwrap_or(clap::Values::default()).map(|x| x.to_string()).collect(),
                     extra_target_template: args.get_one("extra-target-template").map(|s: &String| s.to_string()),
                     context_namespaces: { 
