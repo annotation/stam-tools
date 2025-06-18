@@ -1,0 +1,416 @@
+# stam fromxml: mapping configuration 
+
+The `stam fromxml` tool allows to map XML files with *inline annotations* to
+STAM. It will effectively *untangle* the inline annotations and produce plain
+text on the one hand, and stand-off STAM annotations on that plain text on the
+other hand. From STAM, you can easily carry on conversion to W3C Web Annotations.
+
+The mapping is provided in an external configuration file which is passed to
+`stam fromxml` via the `--config` parameter. The basic syntax for this configuration
+file is [toml](https://toml.io/en/). Basic familiarity with toml is assumed,
+the details of the actual mapping language are explained in this
+document.
+
+## Modelling choices
+
+A mapping between XML and STAM depends on various of choices you as a modeller need to make:
+
+* What parts of the XML go to the plain text and what parts go to annotations? For instance, is a `<title>` field something
+  you want to explicitly render in the text or is it considered metadata (an annotation) on the text as a whole?
+* How do you want to deal with the whitespace present in the XML? Preserve it or collapse it?
+* How do you want to map XML elements and attributes to annotations and annotation data (i.e. set, keys and values)?
+* If you intend to to export to W3C Web Annotations later, ensure you use full URIs for sets that correspond to the
+RDF vocabularies you intend to use.
+
+Because of all these choices and the flexible nature of STAM which allows you
+to model things as you want, there is no "one single way" to map XML to STAM.
+
+## Global configuration 
+
+### inject_dtd
+
+This key is used to inject a DTD (Document Type Definition) to the underlying XML processor. For the mapping, this is intended to specify a conversion from XML entities to their unicode values. Example:
+
+```toml
+inject_dtd = """<!DOCTYPE entities[<!ENTITY Tab "&#x9;"><!ENTITY NewLine "&#xA;"><!ENTITY excl "&#x21;"><!ENTITY quot "&#x22;">]>"""
+```
+
+If your XML document has any unknown entities that do not appear in the DTD, then an error will be raised an conversion will fail. 
+
+### whitespace
+
+Determines how to handle whitespace in XML. At the global level, this specifies
+the default for the entire document, it can be overridden at element level.
+Values are:
+
+* `Preserve` - Whitespace is kept exactly as it is in the XML.
+* `Collapse` - All whitespace is converted to a space, and consecutive whitespace is squashed. You usually want to set this for the global option.
+
+Example:
+
+```toml
+whitespace = "Collapse"
+```
+
+### default_set
+
+This is the default STAM set to fall back to if not set is provided on a higher
+level. It prevents unnecessary duplication and verbosity in your configuration
+if you rely on the same set. If you need compatibility with W3C Web Annotation
+export, this needs to be a URI.
+
+Example:
+
+```toml
+default_set = "https://ns.tt.di.huc.knaw.nl/tei" 
+```
+
+If you don't set this nor specify it on deeper levels, you'll get a set named `urn:stam-fromxml`.
+
+### namespaces
+
+This is a toml table mapping namespace prefixes to XML namespaces. Example:
+
+```toml
+xml = "http://www.w3.org/XML/1998/namespace"
+xsd =  "http://www.w3.org/2001/XMLSchema"
+xlink = "http://www.w3.org/1999/xlink"
+tei = "http://www.tei-c.org/ns/1.0"
+```
+
+These prefixes can subsequently be used in path selectors and templates.
+
+### elements
+
+Elements is a list of tables, each entry defines a how to map a certain XML
+element, identified by an XPath-like path expression, to plain text and
+annotations. This is the backbone of the conversion process. Elements should be
+defined in order from generic to specific. So elements that are defined later
+take precedence over those defined earlier (and therefore should be more
+specific). An particular XML node is only matches once with its most appropriate configuration. 
+
+The syntax for element configuration is explain in [its own section](#Element_configuration)
+
+## Element configuration
+
+### path
+
+The path is an XPath-like expression that identifies what to match in the input document.
+We say XPath-like, because only a relatively small subset of XPath is implemented.
+
+Use `/` to match an absolute path. Namespace prefixes are allowed in expressions, as long as you defined them in the `namespaces` section. Example, this matches to root of a TEI document:
+
+```toml
+[[elements]]
+path = "/tei:TEI"
+```
+
+A deeper path can look like this:
+
+```toml
+[[elements]]
+path = "/tei:TEI/tei:teiHeader/tei:fileDesc/tei:titleStmt/tei:title"
+```
+Use `//` to match anywhere in the document hierarchy. Example, this matches all TEI paragraph regardless where they occur:
+
+```toml
+[[elements]]
+path = "//tei:p"
+```
+
+You can also use-this mid-path, this is a more generic form of the expression we saw before:
+
+```toml
+[[elements]]
+path = "/tei:TEI/tei:teiHeader//tei:title"
+```
+
+A wildcard is available to match all nodes:
+
+```toml
+[[elements]]
+path = "*"
+```
+
+Or all nodes under a particular element:
+
+```toml
+[[elements]]
+path = "//tei:note/*"
+```
+
+Limited conditional syntax is supported by between square brackets. It can match an attribute:
+
+```toml
+[[elements]]
+path = "//tei:item[@n=1]"
+```
+
+... or the immediate XML text that is directly under the element (no mixed content nodes):
+
+```toml
+[[elements]]
+path = """//tei:item[text()="foobar"]"""
+```
+
+### text
+
+Once an attribute is matched, this boolean specified whether the text under it
+should be extracted to the plain text representation. This defaults to `false`, 
+effectively skipping the text directly under a node.
+
+For example, the following defines an element match that will extract the text of all elements:
+
+```toml
+[[elements]]
+path = "*"
+text = true
+```
+
+### textprefix  & textsuffix
+
+Whereas the `text` boolean extracts text from the XML text. The `textprefix` and `textsuffix` fields are used
+to insert text *before* respectively *after* the extracted text. Consider the following example:
+
+```toml
+[[elements]]
+path = "//tei:list/tei:item"
+textprefix = "* "
+text = true
+textsuffix = "\n"
+```
+
+This rule extracts bulleted lists and inserts a bullet marker (`*` in this case) in the plain text variant. It also
+ensures the extracted text ends with a newline. The latter is especially relevant if your whitespace handling is set to collapse. You'll often find yourself setting `textsuffix` to one or more newlines for different elements.
+
+`textprefix` and `textsuffix` take not just a string literals, but take *templates*. See [the templating section](#Templating_language). This allows for complex expressions like:
+
+```toml
+[[elements]]
+path = "//tei:list/tei:item"
+textprefix = "{% if ?.@n %}{{ @n }}.{% else %}*{% endif %} "
+text = true
+textsuffix = "\n"
+```
+
+### stop
+
+This boolean determines whether child elements of this node will be processed or not. The default value
+is `true`. By setting this to `false`, you can effectively ignore large parts from the XML input document.
+
+For example, this ignores the entire header in a TEI document:
+
+```toml
+[[elements]]
+path = "//tei:teiHeader"
+stop = true
+```
+
+When you set `text = true` and `stop = true`, only the immediate text under the element will be extracted (no mixed content).
+
+### whitespace
+
+This determines the whitespace handling for this match, values are:
+
+* `Preserve` - Whitespace is kept exactly as it is in the XML.
+* `Inherit` - Use the same setting as the parent node (this is the default)
+* `Collapse` - All whitespace is converted to a space, and consecutive whitespace is squashed. 
+
+
+```toml
+[[elements]]
+path = "//html:pre"
+whitespace = "Preserve"
+```
+
+### annotation
+
+This field specifies whether you want to create an annotation and if so, of what type. It specified the *target* of the annotation. The following values are implemented:
+
+* `None` - No annotation (this is the default). 
+* `TextSelector` - Create an annotation that points to the text that was extracted (this assumes `text = true`), using a `TextSelector`.
+* `ResourceSelector` - Create an annotation that points to the text resource as a whole, as opposed to a specific offset. This is  often used to associate metadata on a document-level.
+* `TextSelectorBetweenMarkers` - See [the section on Markers](#Markers).
+
+### id 
+
+This determines the ID of the annotation. This field supports [templating](#Templating_language) and you in fact rarely want to set it to a static value unless you are really sure it is a unique match in the input.
+
+A common situation is to take the existing `xml:id` attribute and set it as the identifier for the annotation:
+
+```toml
+[[elements]]
+path = "*"
+id = "{{ ?.@xml:id }}"
+```
+
+Empty IDs will be automatically discarded. The `?.` prefix is used to not raise
+an error on elements that have no `xml:id` attribute.
+
+### annotationdata
+
+This is a list of tables that specifies the actual data or body for the annotation. These are the key/value pairs of which we can have an arbitrary number per annotation. We assume you're familiar with the STAM's concept of *AnnotationData* concept and
+how it relates to annotations. If not, read up on it [here](https://github.com/annotation/stam#class-annotationdata).
+
+`annotationdata` takes the following fields, most of them are [templates](#Templating_language) and allow you to refer to XML attributes and other nodes in the XML input document:
+
+* `set` (template) - The STAM dataset for the annotationdata. Use an URI if exporting to W3C Web Annotations later. If not set, the global `default_set` will be used.
+* `key` (template) - The STAM key, e.g. some property name as you want it to appear in the output.
+* `value` (template) - The value for the annotationdata.
+* `skip_if_missing` (boolean) - If undefined variables are used in the template, silently skip this annotation data. Do not raise an error.
+* `allow_empty_value` (boolean) - Even if the value if an empty string, allow that as a valid value.
+
+A common situation is to copy from an XML attribute to STAM annotationdata, for example:
+
+```toml
+[[elements.annotationdata]]
+key = "n"
+value = "{{ @n }}"
+skip_if_missing = true
+```
+
+Another common situation is to convert what was text in the XML to an annotation value on the resource (e.g. metadata). The variable ``text`` can be used for this inside a template:
+
+```toml
+[[elements]]
+path = "//tei:fileDesc/tei:titleStmt/tei:title"
+annotation = "ResourceSelector"
+
+[[elements.annotationdata]]
+set = "http://www.tei-c.org/ns/1.0"
+key = "title"
+value = "{{text}}"
+skip_if_missing = true
+```
+
+Another common use is to express the XML element type in annotations. The variable `localname` holds the tagname (stripped of any XML namespaces or prefixes):
+
+
+```toml
+[[elements]]
+path = "*"
+
+[[elements.annotationdata]]
+key = "type"
+value = "{{ localname }}"
+```
+
+Multiple `annotationdata` elements can be specified per element.
+
+### base
+
+Derives this element definition from a base element defined earlier. This prevents unnecessary repetition. See [base elements](#Base_elements).
+
+Multiple are allowed.
+
+## Templating language
+
+The underlying templating syntax we use is as implemented in
+[upon](https://docs.rs/upon/latest/upon/syntax/index.html). The syntax is
+shares many similarities with well-known templating systems such as jinja2.
+
+* Value lookup and output is done using an expression in a double set of curly braces: `{{ x }}`.
+* Blocks are available wrapped in `{%` and `%}`. For example: `{% if expression %}{% else %}{% endif %}` and
+`{% for value in expression %}{% endfor %}`.
+
+Peculiarities in our implementation:
+
+* Variables for attributes start with `@`, for example: `{{ @n }}`
+* Use XML namespace prefixes: `{{ @xml:id }}`
+* Refer to the immediate text of a child element: `{{ child }}` or `{{ prefix:child }}`.
+* Refer an attribute of a child element: `{{ child@attrib }}` or `{{ prefix:child@attrib }}`.
+* Refer to the immediate text of the parent element: `{{ ../ }}`.
+* Refer to an attribute of the parent element: `{{ ../@attrib }}`.
+* Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error which would be the default: `{{ ?.@xml:id }}`
+
+### Filters
+
+The following filters are implemented in the templating engine:
+
+* `capitalize` - Converts first letter to uppercase
+* `upper` - Converts everything to uppercase 
+* `lower` - Converts everything to lowercase 
+* `trim` - Strips whitespace (includes newlines)
+* `first` - Returns the first element 
+* `last` - Returns the last element 
+* `eq: x` - equality testing
+
+Usage example:
+
+```
+{{ x | trim }}
+```
+
+## Markers
+
+The natural way in XML to mark a span of text is using some element that scopes over the text, i.e.:
+
+```xml
+<span>This is my text</span>
+```
+
+However, some XML formats use what we call *markers* or *milestones* to
+indirectly demarcate spans. These are empty-elements that are repeated to mark
+a span. Consider the `<tei:pb/>` to mark page breaks in TEI or `<br/>` to mark
+line breaks in HTML. What if you want to annotate the text *between two
+instances of the same marker element*? What if you want to mark *pages* or
+*lines* respectively with such a XML input?
+
+This conversion can be be specified as follows:
+
+```toml
+[[elements]]
+path == "//tei:pb"
+annotation = "TextSelectorBetweenMarkers"
+text = true
+```
+
+Now the annotation will not be made on the text underlying the element directly (because there isn't any),
+but on the text that follows it until the next marker is encountered.
+
+## Base elements
+
+Remember that an input node only matches one elements rule. Often though, you have lots
+of rules that may share a lot of aspects, such as common annotationdata specifications.
+
+In order to prevent unnecessary duplication, you can specify *base elements* at
+the global configuration level. These are effectively abstract elements or
+templates (not to be confused with the templating syntax) upon which you can
+base your element rules. By itself they do nothing, but you can use `base` the
+field in your element configuration to specify what base elements to derive
+from.
+
+Base elements are map, here we define a base element called `withtype` that sets a type key corresponding to the element type and also converts some common XML attributes like `xml:id` and `xml:lang`:
+
+```toml
+[baseelements.withtype]
+id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
+
+[[baseelements.withtype.annotationdata]]
+key = "type"
+value = "{{ localname }}"
+
+[[baseelement.withtype.annotationdata]]
+key = "lang"
+value = "{{ @xml:lang }}"
+skip_if_missing = true
+```
+
+You can now re-use this for your actual elements definitions as follows:
+
+
+```toml
+[[elements]]
+path = "*" 
+base = [ "withtype" ]
+```
+
+```toml
+[[elements]]
+path = "//html:p" 
+base = [ "withtype" ]
+```
+
+You can derive from multiple base elements so you can mix and match, just take
+note that fields are assigned on a first-come-first-serve basis in case there are
+conflicting definitions.

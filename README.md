@@ -455,9 +455,9 @@ other hand.
 
 As there is an endless variety of XML formats imaginable, this tool takes as
 extra input an external configuration file that defines how to map from a
-specific XML format (e.g. xHTML, TEI or PageXML) to STAM. See for example [this
-configuration for xHTML](config/fromxml/html.toml) which contains some inline
-documentation to help you get going.
+specific XML format (e.g. xHTML, TEI or PageXML) to STAM. This configuration 
+format is documented [here](docs/fromxml.md). See for example [this
+configuration for xHTML](config/fromxml/html.toml).
 
 Example:
 
