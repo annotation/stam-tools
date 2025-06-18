@@ -12,8 +12,8 @@ use toml;
 use upon::Engine;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
-const PRECOMPILE_PATTERNS: &[&str; 3] = &["@", ":", "/"];
-const PRECOMPILE_REPLACEMENTS: &[&str; 3] = &["ATTRIB_", "__", "_IN_"];
+const PRECOMPILE_PATTERNS: &[&str; 4] = &["@", ":", "../", "/"];
+const PRECOMPILE_REPLACEMENTS: &[&str; 4] = &["ATTRIB_", "__", "PARENT_", "_IN_",];
 
 fn default_set() -> String {
     "urn:stam-fromxml".into()
@@ -156,7 +156,7 @@ impl XmlConversionConfig {
     fn element_config(&self, node: Node) -> Option<&XmlElementConfig> {
         let nodepath: NodePath = node.into();
         for elementconfig in self.elements.iter().rev() {
-            if elementconfig.path.test(&nodepath, self) {
+            if elementconfig.path.test(&nodepath, &node, self) {
                 return Some(elementconfig);
             }
         }
@@ -512,7 +512,7 @@ impl XPathExpression {
         &'a self,
         config: &'a XmlConversionConfig,
     ) -> impl Iterator<Item = (Option<&'a str>, &'a str)> {
-        self.0.trim_start_matches('/').split("/").map(|segment| {
+        self.main().trim_start_matches('/').split("/").map(|segment| {
             if let Some((prefix, name)) = segment.split_once(":") {
                 if let Some(namespace) = config.namespaces.get(prefix).map(|x| x.as_str()) {
                     (Some(namespace), name)
@@ -529,7 +529,7 @@ impl XPathExpression {
     }
 
     /// matches a node path against an XPath-like expression
-    fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, config: &XmlConversionConfig) -> bool {
+    fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, node: &Node<'a,'b>, config: &XmlConversionConfig) -> bool {
         let mut pathiter = path.components.iter().rev();
         for (refns, pat) in self.iter(config).collect::<Vec<_>>().into_iter().rev() {
             if let Some((ns, name)) = pathiter.next() {
@@ -544,7 +544,71 @@ impl XPathExpression {
                 }
             }
         }
+        //condition parsing (very basic language only)
+        if let Some(condition) = self.condition() {
+            if let Some(pos) = condition.find("!=") {
+                let var = &condition[..pos];
+                let right = condition[pos..].trim_matches('"');
+                if self.get_var(var, node, config) == Some(right) {
+                    return false;
+                }
+            } else if let Some(pos) = condition.find("=") {
+                let var = &condition[..pos];
+                let right = condition[pos..].trim_matches('"');
+                if self.get_var(var, node, config) != Some(right) {
+                    return false;
+                }
+            } else {
+                //whole condition is one variable
+                let v = self.get_var(condition, node, config);
+                if v.is_none() || v == Some("") {
+                    return false;
+                }
+            }
+
+        }
         true
+    }
+
+    /// Resolve a variable from a conditional expression, given a variable name, node and condfig
+    fn get_var<'a,'b>(&self, var: &str, node: &Node<'a,'b>, config: &XmlConversionConfig) -> Option<&'a str> { 
+        if var.starts_with("@") {
+            if let Some(pos) = var.find(":") {
+                let prefix = &var[1..pos];
+                if let Some(ns) = config.namespaces.get(prefix) {
+                    let var = &var[pos+1..];
+                    node.attribute((ns.as_str(),var))
+                } else {
+                    None
+                }
+            } else {
+                node.attribute(&var[1..])
+            }
+        } else if var == "text()" {
+            node.text().map(|s|s.trim())
+        } else {
+            None
+        }
+    }
+
+
+
+    /// Returns the main part of the expression, without any conditions
+    fn main(&self) -> &str {
+        if let Some(end) = self.0.find("[") {
+            &self.0[..end]
+        } else {
+            &self.0
+        }
+    }
+
+    /// Returns the conditional part of the expression
+    fn condition(&self) -> Option<&str> {
+        if let (Some(begin), Some(end)) = (self.0.find("["), self.0.find("]")) {
+            Some(&self.0[begin + 1..end])
+        } else {
+            None
+        }
     }
 }
 
@@ -1386,19 +1450,8 @@ impl<'a> XmlToStamConverter<'a> {
         } else {
             None
         };
-        let extended_name = node.tag_name();
-        let name = match (extended_name.namespace(), extended_name.name()) {
-            (Some(namespace), tagname) => {
-                if let Some(prefix) = self.prefixes.get(namespace) {
-                    Some(Cow::Owned(format!("{}__{}", prefix, tagname)))
-                } else {
-                    Some(Cow::Borrowed(tagname))
-                }
-            }
-            (None, tagname) => Some(Cow::Borrowed(tagname)),
-        };
         context.insert("localname".into(), node.tag_name().name().into());
-        if let Some(name) = name {
+        if let Some(name) = self.get_node_name(node) {
             //name with namespace prefix (if any)
             context.insert("name".into(), name.into());
         }
@@ -1417,7 +1470,12 @@ impl<'a> XmlToStamConverter<'a> {
         if let Some(length) = length {
             context.insert("length".into(), upon::Value::Integer(length as i64));
         }
+
+        //MAYBE TODO: all this can be made more efficient by checking beforehand what variables are actually referenced in the template
+
         context.insert("text".into(), recursive_text(node).into());
+
+
         for attrib in node.attributes() {
             if let Some(namespace) = attrib.namespace() {
                 if let Some(prefix) = self.prefixes.get(namespace) {
@@ -1432,9 +1490,73 @@ impl<'a> XmlToStamConverter<'a> {
                 context.insert(format!("ATTRIB_{}", attrib.name()).into(), attrib.value().into());
             }
         }
+
+
+        // add parent
+        if let Some(parent) = node.parent() {
+            if parent.is_element() {
+                context.insert("PARENT_".into(), recursive_text(&parent).into());
+                context.insert("PARENT_localname".into(), parent.tag_name().name().into());
+                if let Some(namespace) = parent.tag_name().namespace() {
+                    context.insert("PARENT_namespace".into(), namespace.into());
+                }
+                for attrib in parent.attributes() {
+                    if let Some(namespace) = attrib.namespace() {
+                        if let Some(prefix) = self.prefixes.get(namespace) {
+                            context.insert(
+                                format!("PARENT_ATTRIB_{}__{}",  prefix, attrib.name()).into(),
+                                attrib.value().into(),
+                            );
+                        } else {
+                            context.insert(format!("PARENT_ATTRIB_{}", attrib.name()).into(), attrib.value().into());
+                        }
+                    } else {
+                        context.insert(format!("PARENT_ATTRIB_{}",  attrib.name()).into(), attrib.value().into());
+                    }
+                }
+            }
+        }
+
+        // add direct children
+        for child in node.children() {
+            if child.is_element() {
+                if let Some(name) = self.get_node_name(&child) {
+                    context.insert(name.to_owned().into(), recursive_text(&child).into());
+                    for attrib in child.attributes() {
+                        if let Some(namespace) = attrib.namespace() {
+                            if let Some(prefix) = self.prefixes.get(namespace) {
+                                context.insert(
+                                    format!("{}ATTRIB_{}__{}", name, prefix, attrib.name()).into(),
+                                    attrib.value().into(),
+                                );
+                            } else {
+                                context.insert(format!("{}ATTRIB_{}", name ,attrib.name()).into(), attrib.value().into());
+                            }
+                        } else {
+                            context.insert(format!("{}ATTRIB_{}", name, attrib.name()).into(), attrib.value().into());
+                        }
+                    }
+                }
+            }
+        }
         upon::Value::Map(context)
     }
+
+    fn get_node_name<'b>(&self, node: &'b Node) -> Option<Cow<'b,str>> {
+        let extended_name = node.tag_name();
+        match (extended_name.namespace(), extended_name.name()) {
+            (Some(namespace), tagname) => {
+                if let Some(prefix) = self.prefixes.get(namespace) {
+                    Some(Cow::Owned(format!("{}__{}", prefix, tagname)))
+                } else {
+                    Some(Cow::Borrowed(tagname))
+                }
+            }
+            (None, tagname) => Some(Cow::Borrowed(tagname)),
+        }
+    }
 }
+
 
 /// Get recursive text without any elements
 fn recursive_text(node: &Node) -> String {
