@@ -3,7 +3,7 @@
 
 #default whitespace handling (Collapse or Preserve)
 whitespace = "Collapse"
-default_set = "https://ns.tt.di.huc.knaw.nl/tei" 
+default_set = "http://www.tei-c.org/ns/1.0" 
 
 [namespaces]
 #this defines the XML namespace prefixes you can use in this configuration
@@ -11,6 +11,7 @@ xml = "http://www.w3.org/XML/1998/namespace"
 xsd =  "http://www.w3.org/2001/XMLSchema"
 xlink = "http://www.w3.org/1999/xlink"
 tei = "http://www.tei-c.org/ns/1.0"
+rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 
 
 [context]
@@ -18,21 +19,125 @@ tei = "http://www.tei-c.org/ns/1.0"
 
 
 #Define some base elements that we reuse later for actual elements (prevents unnecessary repetition)
-[baseelements.withtype]
+[baseelements.common]
 id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
 
-    [[baseelements.withtype.annotationdata]]
+    [[baseelements.common.annotationdata]]
+    set = "{{ namespaces.rdf }}"
     key = "type"
-    value = "{{ localname | capitalize }}"
+    #value is a full URI for w3anno/RDF export
+    value = "{{ namespaces.tei }}/#{{ localname }}"
 
-    [[baseelement.withtype.annotationdata]]
+    [[baseelements.common.annotationdata]]
+    #extra ID attribute in XML namespace
+    set = "{{ namespaces.xml }}"
+    key = "id"
+    value = "{{ @xml:id }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    set = "{{ namespaces.xml }}"
     key = "lang"
     value = "{{ @xml:lang }}"
     skip_if_missing = true
 
-    [[baseelement.withtype.annotationdata]]
+    [[baseelement.common.annotationdata]]
+    set = "{{ namespaces.xml }}"
+    key = "space"
+    value = "{{ @xml:space }}"
+    skip_if_missing = true
+
+    # the rest here are common TEI attributes from att.global: https://tei-c.org/release/doc/tei-p5-doc/en/html/ref-att.global.html
+
+    [[baseelement.common.annotationdata]]
     key = "n"
     value = "{{ @n }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    #tei:type attribute
+    key = "type"
+    value = "{{ @type }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "facs"
+    value = "{{ @facs }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "rend"
+    value = "{{ @rend }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "style"
+    value = "{{ @style }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "rendition"
+    value = "{{ @rendition }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "change"
+    value = "{{ @change }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "ana"
+    value = "{{ @ana }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "corresp"
+    value = "{{ @corresp }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "synch"
+    value = "{{ @synch }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "sameAs"
+    value = "{{ @sameAs }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "copyOf"
+    value = "{{ @copyOf }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "next"
+    value = "{{ @next }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "prev"
+    value = "{{ @prev }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "exclude"
+    value = "{{ exclude }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "select"
+    value = "{{ select }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "cert"
+    value = "{{ cert }}"
+    skip_if_missing = true
+
+    [[baseelement.common.annotationdata]]
+    key = "resp"
+    value = "{{ resp }}"
     skip_if_missing = true
 
 #Define some base elements
@@ -40,11 +145,10 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
 text = true
 annotation = "TextSelector"
 
-
 # elements are matched in reverse-order, so put more generic statements before more specific ones
 
 [[elements]]
-base = [ "withtype", "withtext" ] #base element to derive from (multiple allowed)
+base = [ "common", "withtext" ] #base element to derive from (multiple allowed)
 path = "*" # default matching for elements, will match all
 
 # Elements with only a path are passed through without mapping text or annotation
@@ -77,7 +181,7 @@ path = "//tei:facsimile"
 stop = true
 
 [[elements]]
-base = [ "withtype" ] #base element to derive from (multiple allowed)
+base = [ "common" ] #base element to derive from (multiple allowed)
 path = "//tei:fileDesc/tei:titleStmt/tei:title"
 annotation = "ResourceSelector"
 
@@ -88,7 +192,7 @@ annotation = "ResourceSelector"
     skip_if_missing = true
 
 [[elements]]
-base = [ "withtype" ] #base element to derive from (multiple allowed)
+base = [ "common" ] #base element to derive from (multiple allowed)
 path = "//tei:fileDesc/tei:titleSmt"
 annotation = "ResourceSelector"
 
@@ -99,7 +203,7 @@ annotation = "ResourceSelector"
     skip_if_missing = true
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:fileDesc/tei:titleSmt/tei:editor"
 annotation = "ResourceSelector"
 
@@ -109,7 +213,7 @@ annotation = "ResourceSelector"
     skip_if_missing = true
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:fileDesc/tei:publicationStmt/tei:publisher"
 annotation = "ResourceSelector"
 stop = true
@@ -120,7 +224,7 @@ stop = true
     skip_if_missing = true
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:fileDesc/tei:publicationStmt/tei:pubPlace"
 annotation = "ResourceSelector"
 stop = true
@@ -131,7 +235,7 @@ stop = true
     skip_if_missing = true
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:fileDesc/tei:publicationStmt/tei:availability/tei:license"
 annotation = "ResourceSelector"
 stop = true
@@ -143,7 +247,7 @@ stop = true
 
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:fileDesc/tei:publicationStmt/tei:date"
 annotation = "ResourceSelector"
 stop = true
@@ -154,7 +258,7 @@ stop = true
     skip_if_missing = true
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:fileDesc/tei:publicationStmt/tei:ptr"
 handling = "ResourceSelector"
 
@@ -170,51 +274,81 @@ stop = true
 # Determine how various structural elements are converted to text 
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:br"
 textsuffix = "\n"
 
 [[elements]]
-base = [ "withtype", "withtext" ]
+base = [ "common", "withtext" ]
+path = "//tei:div"
+textsuffix = "\n\n"
+
+    [[elements.annotationdata]]
+    #not a real TEI attribute but used in the eDITem project
+    key = "divRole"
+    value = "{{ @divRole }}"
+    skip_if_missing = true
+
+[[elements]]
+base = [ "common", "withtext" ]
 path = "//tei:p"
 textsuffix = "\n\n"
 
 [[elements]]
-base = [ "withtype", "withtext" ]
+base = [ "common", "withtext" ]
 path = "//tei:head"
 textsuffix = "\n\n"
 
 [[elements]]
-base = [ "withtype" ]
-path = "//tei:space"
+base = [ "common", "withtext" ]
+path = "//tei:lg"
 textsuffix = "\n\n"
 
 [[elements]]
-base = [ "withtype", "withtext" ]
+base = [ "common", "withtext" ]
+path = "//tei:l"
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common" ]
+path = """//tei:space[@dim="vertical"]"""
+textsuffix = "\n\n"
+
+    [[elements.annotationdata]]
+    key = "unit"
+    value = "{{ @unit }}"
+    skip_if_missing = true
+
+    [[elements.annotationdata]]
+    key = "lines"
+    value = "{{ @lines }}"
+    skip_if_missing = true
+
+[[elements]]
+base = [ "common", "withtext" ]
 path = "//tei:item"
 textprefix = "* "
 textsuffix = "\n"
 
 [[elements]]
-base = [ "withtype", "withtext" ]
+base = [ "common", "withtext" ]
 path = "//tei:item/tei:item"
 textprefix = "  * "
 textsuffix = "\n"
 
 [[elements]]
-base = [ "withtype", "withtext" ]
+base = [ "common", "withtext" ]
 path = "//tei:item/tei:item/tei:item"
 textprefix = "    * "
 textsuffix = "\n"
 
 [[elements]]
-base = [ "withtype", "withtext" ]
+base = [ "common", "withtext" ]
 path = "//tei:note"
-handling = "AnnotateText"
 textprefix = "[{% if ?.@n %}{{@n}}{% else %}*{% endif %}]:"
 
 [[elements]]
-base = [ "withtype" ]
+base = [ "common" ]
 path = "//tei:pb"
 annotation = "TextSelectorBetweenMarkers"
 text = true
@@ -224,12 +358,13 @@ text = true
     value = "{{ @n }}"
     skip_if_missing = true
 
-    [[elements.annotationdata]]
-    key = "facs"
-    value = "{{ @facs }}"
-    skip_if_missing = true
 
     [[elements.annotationdata]]
     key = "f"
     value = "{{ @f }}"
     skip_if_missing = true
+
+[[elements]]
+base = [ "common", "withtext" ]
+path = "//tei:hi"
+
