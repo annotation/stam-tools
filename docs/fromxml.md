@@ -333,6 +333,7 @@ The following filters are implemented in the templating engine:
 * `trim` - Strips whitespace (includes newlines)
 * `first` - Returns the first element 
 * `last` - Returns the last element 
+* `tokenize` - Split on whitespace and newlines (consecutive whitespace is squashed)
 * `eq: x` - equality testing
 
 Usage example:

@@ -832,6 +832,17 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("first", |list: &[upon::Value]| {
             list.first().map(Clone::clone)
         });
+        template_engine.add_function("tokenize", |s: &str| {
+            upon::Value::List(
+                s.split(" \n").filter_map(|x|
+                    if !x.is_empty() { 
+                        Some(upon::Value::String(x.to_string())) 
+                    } else {
+                        None
+                    }
+                )
+                .collect::<Vec<upon::Value>>())
+        });
         let template_precompiler = AhoCorasick::new(PRECOMPILE_PATTERNS).expect("precompiler");
         let mut converter = Self {
             cursor: 0,
