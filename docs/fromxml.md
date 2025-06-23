@@ -315,13 +315,19 @@ shares many similarities with well-known templating systems such as jinja2.
 
 Peculiarities in our implementation:
 
-* Variables for attributes start with `@`, for example: `{{ @n }}`
-* Use XML namespace prefixes: `{{ @xml:id }}`
-* Refer to the immediate text of a child element: `{{ child }}` or `{{ prefix:child }}`.
-* Refer an attribute of a child element: `{{ child@attrib }}` or `{{ prefix:child@attrib }}`.
-* Refer to the immediate text of the parent element: `{{ ../ }}`.
-* Refer to an attribute of the parent element: `{{ ../@attrib }}`.
-* Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error which would be the default: `{{ ?.@xml:id }}`
+* Variables for XML attributes start with `@`, for example: `{{ @n }}`
+    * XML namespaces are supported: `{{ @xml:id }}`
+* Variables for XML elements start with `$` and return the immediate text by default, for example: `{{ $child }}`
+    * XML namespaces are supported: `{{ $prefix:child }}`
+    * Only immediate text of the first match, no mixed content.
+* The text of the current element is returned with: `{{ $. }}`.
+    * It will contain the text of this node and all nodes under it recursively
+* If you want to return the attribute of a child element instead, combine `$` with `@`: 
+    * Refer to the immediate text of a child element: `{{ $child@attrib }}` or `{{ $prefix:child@attrib }}`.
+* Parent elements are denoted with `$..` and return the text:
+    * It will contain the text of the parent node and all nodes under it recursively
+    * Refer to an attribute: `{{ $../@attrib }}`.
+* Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
 
 ### Filters
 

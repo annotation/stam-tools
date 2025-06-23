@@ -22,27 +22,27 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
     key = "type"
     value = "{{ localname }}"
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "lang"
     value = "{{ @xml:lang }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "n"
     value = "{{ @n }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "style"
     value = "{{ @style }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "class"
     value = "{{ @class }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "src"
     value = "{{ @src }}"
     skip_if_missing = true
@@ -82,7 +82,7 @@ path = "//html:head/html:title"
 
 [[elements.annotationdata]]
 key = "title"
-value = "{{ text | trim }}"
+value = "{{ $. | trim }}"
 
 
 # Determine how various structural elements are converted to text

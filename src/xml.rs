@@ -1,19 +1,17 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, BTreeSet, VecDeque};
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
 
-use aho_corasick::AhoCorasick;
 use roxmltree::{Attribute, Document, Node, NodeId, ParsingOptions};
 use serde::Deserialize;
 use stam::*;
 use toml;
 use upon::Engine;
+use crate::info::info;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
-const PRECOMPILE_PATTERNS: &[&str; 4] = &["@", ":", "../", "/"];
-const PRECOMPILE_REPLACEMENTS: &[&str; 4] = &["ATTRIB_", "__", "PARENT_", "_IN_",];
 
 fn default_set() -> String {
     "urn:stam-fromxml".into()
@@ -300,103 +298,6 @@ impl XmlElementConfig {
         }
     }
 
-    pub fn compile(
-        &self,
-        engine: &mut Engine<'_>,
-        template_precompiler: &AhoCorasick,
-    ) -> Result<(), XmlConversionError> {
-        if let Some(textprefix) = self.textprefix.as_ref() {
-            if engine.get_template(textprefix.as_str()).is_none() {
-                let template =
-                    template_precompiler.replace_all(textprefix.as_str(), PRECOMPILE_REPLACEMENTS);
-                engine
-                    .add_template(textprefix.clone(), template)
-                    .map_err(|e| {
-                        XmlConversionError::TemplateError(
-                            format!("element/textprefix template {}", textprefix.clone()),
-                            Some(e),
-                        )
-                    })?;
-            }
-        }
-        if let Some(textsuffix) = self.textsuffix.as_ref() {
-            if engine.get_template(textsuffix.as_str()).is_none() {
-                let template =
-                    template_precompiler.replace_all(textsuffix.as_str(), PRECOMPILE_REPLACEMENTS);
-                engine
-                    .add_template(textsuffix.clone(), template)
-                    .map_err(|e| {
-                        XmlConversionError::TemplateError(
-                            format!("element/textsuffix template {}", textsuffix.clone()),
-                            Some(e),
-                        )
-                    })?;
-            }
-        }
-        if let Some(id) = self.id.as_ref() {
-            if engine.get_template(id.as_str()).is_none() {
-                let template =
-                    template_precompiler.replace_all(id.as_str(), PRECOMPILE_REPLACEMENTS);
-                engine.add_template(id.clone(), template).map_err(|e| {
-                    XmlConversionError::TemplateError(
-                        format!("element/id template {}", id.clone()),
-                        Some(e),
-                    )
-                })?;
-            }
-        }
-        for annotationdata in self.annotationdata.iter() {
-            if let Some(id) = annotationdata.id.as_ref() {
-                if engine.get_template(id.as_str()).is_none() {
-                    let template =
-                        template_precompiler.replace_all(id.as_str(), PRECOMPILE_REPLACEMENTS);
-                    engine.add_template(id.clone(), template).map_err(|e| {
-                        XmlConversionError::TemplateError(
-                            format!("annotationdata/id template {}", id.clone()),
-                            Some(e),
-                        )
-                    })?;
-                }
-            }
-            if let Some(set) = annotationdata.set.as_ref() {
-                if engine.get_template(set.as_str()).is_none() {
-                    let template =
-                        template_precompiler.replace_all(set.as_str(), PRECOMPILE_REPLACEMENTS);
-                    engine.add_template(set.clone(), template).map_err(|e| {
-                        XmlConversionError::TemplateError(
-                            format!("annotationdata/set template {}", set.clone()),
-                            Some(e),
-                        )
-                    })?;
-                }
-            }
-            if let Some(key) = annotationdata.key.as_ref() {
-                if engine.get_template(key.as_str()).is_none() {
-                    let template =
-                        template_precompiler.replace_all(key.as_str(), PRECOMPILE_REPLACEMENTS);
-                    engine.add_template(key.clone(), template).map_err(|e| {
-                        XmlConversionError::TemplateError(
-                            format!("annotationdata/key template {}", key.clone()),
-                            Some(e),
-                        )
-                    })?;
-                }
-            }
-            if let Some(value) = annotationdata.value.as_ref() {
-                if engine.get_template(value.as_str()).is_none() {
-                    let template =
-                        template_precompiler.replace_all(value.as_str(), PRECOMPILE_REPLACEMENTS);
-                    engine.add_template(value.clone(), template).map_err(|e| {
-                        XmlConversionError::TemplateError(
-                            format!("annotationdata/value template {}", value.clone()),
-                            Some(e),
-                        )
-                    })?;
-                }
-            }
-        }
-        Ok(())
-    }
 
     /// This sets the mode that determines how the element is handledhttps://www.youtube.com/watch?v=G_BrbhRrP6g
     pub fn with_stop(mut self, stop: bool) -> Self {
@@ -740,6 +641,69 @@ pub fn from_xml<'a>(
     Ok(())
 }
 
+/// Translate an XML file to STAM, given a particular configuration. Not writing output files and keeping all in memory. Does not support DTD injection.
+pub fn from_xml_in_memory<'a>(
+    resource_id: &str, 
+    xmlstring: &str,
+    config: &XmlConversionConfig,
+    store: &'a mut AnnotationStore,
+) -> Result<(), String> {
+    if config.debug {
+        eprintln!("[STAM fromxml] parsing XML string");
+    }
+
+    // parse the raw XML data into a DOM
+    let doc = Document::parse_with_options(
+        &xmlstring,
+        ParsingOptions {
+            allow_dtd: true,
+            ..ParsingOptions::default()
+        },
+    )
+    .map_err(|e| format!("Error parsing XML string: {}",  e))?;
+
+    let mut converter = XmlToStamConverter::new(config);
+    converter
+        .compile()
+        .map_err(|e| format!("Error compiling templates: {}", e))?;
+
+    // extract text (first pass)
+    converter
+        .extract_element_text(doc.root_element(), converter.config.whitespace)
+        .map_err(|e| {
+            format!(
+                "Error extracting element text from {}: {}",
+                resource_id,
+                e
+            )
+        })?;
+    if config.debug {
+        eprintln!("[STAM fromxml] extracted full text: {}", &converter.text);
+    }
+    let resource = TextResourceBuilder::new()
+        .with_id(resource_id)
+        .with_text(converter.text.clone());
+
+    converter.resource_handle = Some(
+        store
+            .add_resource(resource)
+            .map_err(|e| format!("Failed to add resource {}: {}", &resource_id, e))?,
+    );
+
+    // extract annotations (second pass)
+    converter
+        .extract_element_annotation(doc.root_element(), store)
+        .map_err(|e| {
+            format!(
+                "Error extracting element annotation from {}: {}",
+                resource_id,
+                e
+            )
+        })?;
+
+    Ok(())
+}
+
 struct XmlToStamConverter<'a> {
     /// The current character position the conversion process is at
     cursor: usize,
@@ -749,8 +713,6 @@ struct XmlToStamConverter<'a> {
 
     /// The template engine
     template_engine: Engine<'a>,
-
-    template_precompiler: AhoCorasick,
 
     /// Keep track of the new positions (unicode offset) where the node starts in the untangled document
     positionmap: HashMap<NodeId, Offset>,
@@ -775,6 +737,9 @@ struct XmlToStamConverter<'a> {
 
     ///  Global context for template
     global_context: BTreeMap<String, upon::Value>,
+
+    /// Variable names per template
+    variables: BTreeMap<String, BTreeSet<&'a str>>,
     
     debugindent: String,
 }
@@ -843,7 +808,6 @@ impl<'a> XmlToStamConverter<'a> {
                 )
                 .collect::<Vec<upon::Value>>())
         });
-        let template_precompiler = AhoCorasick::new(PRECOMPILE_PATTERNS).expect("precompiler");
         let mut converter = Self {
             cursor: 0,
             text: String::new(),
@@ -855,7 +819,7 @@ impl<'a> XmlToStamConverter<'a> {
             pending_whitespace: false,
             global_context: BTreeMap::new(),
             debugindent: String::new(),
-            template_precompiler,
+            variables: BTreeMap::new(),
             prefixes,
             config,
         };
@@ -869,7 +833,90 @@ impl<'a> XmlToStamConverter<'a> {
             eprintln!("[STAM fromxml] compiling templates");
         }
         for element in self.config.elements.iter() {
-            element.compile(&mut self.template_engine, &self.template_precompiler)?;
+            if let Some(textprefix) = element.textprefix.as_ref() {
+                if self.template_engine.get_template(textprefix.as_str()).is_none() {
+                    let template = self.precompile(textprefix.as_str());
+                    self.template_engine
+                        .add_template(textprefix.clone(), template)
+                        .map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("element/textprefix template {}", textprefix.clone()),
+                                Some(e),
+                            )
+                        })?;
+                }
+            }
+            if let Some(textsuffix) = element.textsuffix.as_ref() {
+                if self.template_engine.get_template(textsuffix.as_str()).is_none() {
+                    let template = self.precompile(textsuffix.as_str());
+                    self.template_engine
+                        .add_template(textsuffix.clone(), template)
+                        .map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("element/textsuffix template {}", textsuffix.clone()),
+                                Some(e),
+                            )
+                        })?;
+                }
+            }
+            if let Some(id) = element.id.as_ref() {
+                if self.template_engine.get_template(id.as_str()).is_none() {
+                    let template = self.precompile(id.as_str());
+                    self.template_engine.add_template(id.clone(), template).map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("element/id template {}", id.clone()),
+                            Some(e),
+                        )
+                    })?;
+                }
+            }
+            for annotationdata in element.annotationdata.iter() {
+                if let Some(id) = annotationdata.id.as_ref() {
+                    if self.template_engine.get_template(id.as_str()).is_none() {
+                        let template = self.precompile(id.as_str());
+                        self.template_engine.add_template(id.clone(), template).map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("annotationdata/id template {}", id.clone()),
+                                Some(e),
+                            )
+                        })?;
+                    }
+                }
+                if let Some(set) = annotationdata.set.as_ref() {
+                    if self.template_engine.get_template(set.as_str()).is_none() {
+                        let template = self.precompile(set.as_str());
+                        //eprintln!("------- DEBUG: {} -> {}", set.as_str(), template);
+                        self.template_engine.add_template(set.clone(), template).map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("annotationdata/set template {}", set.clone()),
+                                Some(e),
+                            )
+                        })?;
+                    }
+                }
+                if let Some(key) = annotationdata.key.as_ref() {
+                    if self.template_engine.get_template(key.as_str()).is_none() {
+                        let template = self.precompile(key.as_str());
+                        self.template_engine.add_template(key.clone(), template).map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("annotationdata/key template {}", key.clone()),
+                                Some(e),
+                            )
+                        })?;
+                    }
+                }
+                if let Some(value) = annotationdata.value.as_ref() {
+                    if self.template_engine.get_template(value.as_str()).is_none() {
+                        let template = self.precompile(value.as_str());
+                        self.template_engine.add_template(value.clone(), template).map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("annotationdata/value template {}", value.clone()),
+                                Some(e),
+                            )
+                        })?;
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -1156,19 +1203,16 @@ impl<'a> XmlToStamConverter<'a> {
 
                 //prepare variables to pass to the template context
                 let offset = self.positionmap.get(&node.id());
-                let text = if element_config.annotation == XmlAnnotationHandling::TextSelector {
+                if element_config.annotation == XmlAnnotationHandling::TextSelector {
                     if self.text.is_empty() {
                         return Err(XmlConversionError::ConfigError("Can't extract annotations on text if no text was extracted!".into()));
                     }
                     if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&node.id()) {
-                        eprintln!("[STAM fromxml]{} annotation covers text {:?} (bytes {}-{})", self.debugindent, offset, beginbyte, endbyte);
-                        Some(&self.text[*beginbyte..*endbyte])
-                    } else {
-                        None
+                        if self.config.debug {
+                            eprintln!("[STAM fromxml]{} annotation covers text {:?} (bytes {}-{})", self.debugindent, offset, beginbyte, endbyte);
+                        }
                     }
-                } else {
-                    None
-                };
+                }
                 let begin = if let Some(offset) = offset {
                     if let Cursor::BeginAligned(begin) = offset.begin {
                         Some(begin)
@@ -1188,9 +1232,9 @@ impl<'a> XmlToStamConverter<'a> {
                     None
                 };
 
-                let context = self.context_for_node(&node, begin, end);
 
                 if let Some(template) = &element_config.id {
+                    let context = self.context_for_node(&node, begin, end, template.as_str());
                     let compiled_template = self.template_engine.template(template.as_str());
                     let id = compiled_template.render(&context).to_string().map_err(|e| 
                             XmlConversionError::TemplateError(
@@ -1210,6 +1254,7 @@ impl<'a> XmlToStamConverter<'a> {
                 for annotationdata in element_config.annotationdata.iter() {
                     let mut databuilder = AnnotationDataBuilder::new();
                     if let Some(template) = &annotationdata.set {
+                        let context = self.context_for_node(&node, begin, end, template.as_str());
                         let compiled_template = self.template_engine.template(template.as_str());
                         let dataset = compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1229,6 +1274,7 @@ impl<'a> XmlToStamConverter<'a> {
                             databuilder.with_dataset(self.config.default_set.as_str().into());
                     }
                     if let Some(template) = &annotationdata.key {
+                        let context = self.context_for_node(&node, begin, end, template.as_str());
                         let compiled_template = self.template_engine.template(template.as_str());
                         match compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1261,6 +1307,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                     }
                     if let Some(template) = &annotationdata.value {
+                        let context = self.context_for_node(&node, begin, end, template.as_str());
                         let compiled_template = self.template_engine.template(template.as_str());
                         match compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1439,9 +1486,9 @@ impl<'a> XmlToStamConverter<'a> {
     ) -> Result<Cow<'t, str>, XmlConversionError> {
         if template.chars().any(|c| c == '{') {
             //value is a template, templating engine probably needed
-            let template = self.template_engine.template(template);
-            let context = self.context_for_node(&node, begin, end);
-            let result = template.render(context).to_string()?;
+            let compiled_template = self.template_engine.template(template);
+            let context = self.context_for_node(&node, begin, end, template);
+            let result = compiled_template.render(context).to_string()?;
             Ok(Cow::Owned(result))
         } else {
             //value is a literal: templating engine not needed
@@ -1454,6 +1501,7 @@ impl<'a> XmlToStamConverter<'a> {
         node: &Node<'a, 'input>,
         begin: Option<usize>,
         end: Option<usize>,
+        template: &str, 
     ) -> upon::Value {
         let mut context = self.global_context.clone();
         let length = if let (Some(begin), Some(end)) = (begin, end) {
@@ -1482,75 +1530,125 @@ impl<'a> XmlToStamConverter<'a> {
             context.insert("length".into(), upon::Value::Integer(length as i64));
         }
 
-        //MAYBE TODO: all this can be made more efficient by checking beforehand what variables are actually referenced in the template
-
-        context.insert("text".into(), recursive_text(node).into());
-
-
-        for attrib in node.attributes() {
-            if let Some(namespace) = attrib.namespace() {
-                if let Some(prefix) = self.prefixes.get(namespace) {
-                    context.insert(
-                        format!("ATTRIB_{}__{}", prefix, attrib.name()).into(),
-                        attrib.value().into(),
-                    );
-                } else {
-                    context.insert(format!("ATTRIB_{}", attrib.name()).into(), attrib.value().into());
-                }
-            } else {
-                context.insert(format!("ATTRIB_{}", attrib.name()).into(), attrib.value().into());
-            }
-        }
-
-
-        // add parent
-        if let Some(parent) = node.parent() {
-            if parent.is_element() {
-                context.insert("PARENT_".into(), recursive_text(&parent).into());
-                context.insert("PARENT_localname".into(), parent.tag_name().name().into());
-                if let Some(namespace) = parent.tag_name().namespace() {
-                    context.insert("PARENT_namespace".into(), namespace.into());
-                }
-                for attrib in parent.attributes() {
-                    if let Some(namespace) = attrib.namespace() {
-                        if let Some(prefix) = self.prefixes.get(namespace) {
-                            context.insert(
-                                format!("PARENT_ATTRIB_{}__{}",  prefix, attrib.name()).into(),
-                                attrib.value().into(),
-                            );
-                        } else {
-                            context.insert(format!("PARENT_ATTRIB_{}", attrib.name()).into(), attrib.value().into());
-                        }
-                    } else {
-                        context.insert(format!("PARENT_ATTRIB_{}",  attrib.name()).into(), attrib.value().into());
-                    }
-                }
-            }
-        }
-
-        // add direct children
-        for child in node.children() {
-            if child.is_element() {
-                if let Some(name) = self.get_node_name(&child) {
-                    context.insert(name.to_owned().into(), recursive_text(&child).into());
-                    for attrib in child.attributes() {
-                        if let Some(namespace) = attrib.namespace() {
-                            if let Some(prefix) = self.prefixes.get(namespace) {
-                                context.insert(
-                                    format!("{}ATTRIB_{}__{}", name, prefix, attrib.name()).into(),
-                                    attrib.value().into(),
-                                );
-                            } else {
-                                context.insert(format!("{}ATTRIB_{}", name ,attrib.name()).into(), attrib.value().into());
-                            }
-                        } else {
-                            context.insert(format!("{}ATTRIB_{}", name, attrib.name()).into(), attrib.value().into());
-                        }
-                    }
+        if let Some(vars) = self.variables.get(template) {
+            for var in vars {
+                if let Some((encodedvar, value)) = self.context_for_var(node, var) {
+                    context.insert(encodedvar, value);
                 }
             }
         }
         upon::Value::Map(context)
+    }
+
+    /// Returns a variable to be set for the context, from the XML DOM
+    // returns the *encoded* variable name (safe to pass to template), and the value
+    fn context_for_var<'input>(
+        &self,
+        mut node: &Node<'a, 'input>,
+        var: &str, 
+    ) -> Option<(String, upon::Value)> {
+        let mut path = String::new();
+        let var = 
+        if var.starts_with("?.$") {
+            path.push_str("?.ELEMENT_");
+            &var[3..]
+        } else if var.starts_with("$") {
+            path.push_str("ELEMENT_");
+            &var[1..]
+        } else if var.starts_with("?.@") {
+            path.push_str("?.");
+            &var[2..]
+        } else {
+            var
+        };
+        for (i, component) in var.split("/").enumerate() {
+            if component.starts_with("@"){
+                if let Some(pos) = component.find(":") {
+                    let prefix = &component[1..pos];
+                    if let Some(ns) = self.config.namespaces.get(prefix) {
+                        let var = &component[pos+1..];
+                        return Some((
+                            format!("{}ATTRIB_{}__{}", path, prefix, var).into(),
+                            node.attribute((ns.as_str(),var)).into()
+                        ));
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return Some((
+                        format!("{}ATTRIB_{}",  path, component).into(),
+                        node.attribute(component).into()
+                    ));
+                }
+            } else if component == ".." {
+                if let Some(parentnode) = node.parent_element().as_ref() {
+                    let mut truncvar = String::new();
+                    for (j, component2) in var.split("/").enumerate() {
+                        if j>i {
+                            if truncvar.is_empty() {
+                                truncvar.push('$');
+                            } else {
+                                truncvar.push('/');
+                            }
+                            truncvar.push_str(component2);
+                        }
+                    }
+                    //recursion needed because of lifetime issues
+                    if let Some((newpath, value)) = self.context_for_var(parentnode, truncvar.as_str()) {
+                        if newpath.starts_with("ELEMENT_") && !path.is_empty() {
+                            path.push_str(&newpath[8..])
+                        } else {
+                            path.push_str(&newpath);
+                        }
+                        return Some((path, value));
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            } else if component == "." {
+                path += "THIS";
+            } else {
+                let mut newnode: Option<_> = None;
+                let (prefix, localname)  = if let Some(pos) = component.find(":") {
+                    (Some(&component[pos+1..]),  &component[1..pos])
+                } else {
+                    (None, component)
+                };
+                for child in node.children() {
+                    if child.is_element() {
+                        let namedata = child.tag_name();
+                        let child_matches = if let Some(namespace) = namedata.namespace() {
+                            if let Some(foundprefix) = self.prefixes.get(namespace) {
+                                Some(foundprefix.as_str()) == prefix && localname == namedata.name()
+                            } else {
+                                false
+                            }
+                        } else {
+                            namedata.name() == localname
+                        };
+                        if child_matches {
+                            newnode = Some(node);
+                            if i > 0 {
+                                path.push_str("_IN_");
+                            }
+                            if let Some(prefix) = prefix {
+                                path.push_str(prefix);
+                                path.push_str("__");
+                            } else {
+                            }
+                            path.push_str(localname);
+                            break;
+                        }
+                    }
+                }
+                if let Some(newnode) = newnode {
+                    node = newnode;
+                }
+            }
+        }
+        return Some((path, recursive_text(node).into()));
     }
 
     fn get_node_name<'b>(&self, node: &'b Node) -> Option<Cow<'b,str>> {
@@ -1566,7 +1664,112 @@ impl<'a> XmlToStamConverter<'a> {
             (None, tagname) => Some(Cow::Borrowed(tagname)),
         }
     }
+
+    fn precompile(&mut self, template: &'a str) -> Cow<'a,str> {
+        let mut replacement = String::new();
+        let mut variables: BTreeSet<&'a str> = BTreeSet::new();
+        let mut begin = 0;
+        let mut end = 0;
+        for i  in 0..template.len() {
+            let slice = &template[i..];
+            if slice.starts_with("{{") || slice.starts_with("{%") {
+                begin = i;
+            } else if slice.starts_with("}}") || slice.starts_with("%}") {
+                if end < begin+2 {
+                    replacement.push_str(&template[end..begin+2]);
+                }
+                let inner = &template[begin+2..i]; //the part without the {{  }}
+                //eprintln!("DEBUG: inner: '{}'", inner);
+                replacement.push_str(&self.precompile_inblock(inner, &mut variables));
+                end = i;
+            }
+        }
+        if end > 0 {
+            replacement.push_str(&template[end..]);
+        }
+        self.variables.insert(template.into(), variables);
+
+        if !replacement.is_empty() {
+            //eprintln!("DEBUG: precompile: '{}'->'{}'", template, replacement);
+            Cow::Owned(replacement)
+        } else {
+            Cow::Borrowed(template)
+        }
+    }
+
+    fn precompile_inblock<'s>(&self, s: &'s str, vars: &mut BTreeSet<&'s str>) -> Cow<'s,str> {
+        let mut quoted = false;
+        let mut var = false;
+        let mut begin = 0;
+        let mut end = 0;
+        let mut replacement = String::new();
+        for (i,c) in s.char_indices() {
+            if c == '"' {
+                quoted = !quoted;
+            } else if !quoted {
+                if !var && (c == '@' || c == '$') {
+                    //token is an XML variable name, its syntax needs some changes before it can be used in the templating engine
+                    var = true;
+                    begin = i;
+                } else if var && !c.is_alphanumeric() && c != '.' && c != '/' && c != '_' && c != ':' && c != '@' {
+                    //end of variable
+                    if end < begin {
+                        replacement.push_str(&s[end..begin]);
+                    }
+                    let varname = &s[begin..i];
+                    vars.insert(varname);
+                    let replacement_var = self.precompile_name(varname);
+                    replacement += &replacement_var;
+                    var = false;
+                    end = i;
+                }
+            }
+        }
+        if end > 0 {
+            replacement.push_str(&s[end..]);
+        }
+        if !replacement.is_empty() {
+            Cow::Owned(replacement)
+        } else {
+            Cow::Borrowed(s)
+        }
+    }
+
+    /// upon's templating syntax doesn't support some of the characters we use in names, this function substitutes them for more verbose equivalents
+    fn precompile_name(&self, s: &str) -> String {
+        let mut replacement = String::new();
+        let mut skip = 0;
+        for (i,c) in s.char_indices() {
+            if skip > 0 {
+                skip -= 1;
+                continue;
+            }
+            if c == '$' {
+                let slice = &s[i..];
+                if slice.starts_with("$..") {
+                    replacement.push_str("ELEMENT_PARENT");
+                    skip = 2;
+                } else if slice.starts_with("$.") {
+                    replacement.push_str("ELEMENT_THIS");
+                    skip = 1;
+                } else {
+                    replacement.push_str("ELEMENT_");
+                }
+            } else if c == '@' {
+                replacement.push_str("ATTRIB_");
+            } else if c == '/' {
+                replacement.push_str("_IN_");
+            } else if c == ':' {
+                replacement.push_str("__");
+            } else {
+                replacement.push(c);
+            }
+        }
+        //eprintln!("DEBUG: precompile_name({}) -> {}", s, replacement);
+        replacement
+    }
 }
+
 
 
 /// Get recursive text without any elements
@@ -1593,4 +1796,334 @@ fn filter_capitalize(s: &str) -> String {
         }
     }
     out
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const XMLSMALLEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
+<body><head><title>test</title></head><h1>TEST</h1><p xml:id="p1">This  is a <em xml:id="emphasis">test</em>.</p></body></html>"#;
+
+    const XMLEXAMPLE: &'static str = r#"<!DOCTYPE entities[<!ENTITY nbsp "&#xA0;">]>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:my="http://example.com">
+<head>
+    <title>Test</title>
+    <meta name="author" content="proycon" />
+</head>
+<body>
+    <h1>Header</h1>
+
+    <p xml:id="par1">
+        <span xml:id="sen1">This is a sentence.</span>
+        <span xml:id="sen2">This is the second&nbsp;sentence.</span>
+    </p>
+    <p xml:id="par2">
+        <strong>This</strong> is    the <em>second</em> paragraph.
+            It has a <strong>bold</strong> word and one in <em>italics</em>.<br/>
+        Let's highlight stress in the following word: <span my:stress="secondary">re</span>pu<span my:stress="primary">ta</span>tion.
+    </p>
+    <p xml:space="preserve"><![CDATA[This    third
+paragraph consists
+of CDATA and is configured to preserve whitespace, and weird &entities; ]]></p>
+
+    <h2>Subsection</h2>
+
+    <p>
+    Have some fruits:<br/>
+    <ul xml:id="list1">
+        <li xml:id="fruit1">apple</li>
+        <li xml:id="fruit2">banana</li>
+        <li xml:id="fruit3">melon</li>
+    </ul>
+    </p>
+
+    Some lingering text outside of any confines...
+</body>
+</html>"#;
+
+    const CONF: &'static str = r#"#default whitespace handling (Collapse or Preserve)
+whitespace = "Collapse"
+default_set = "urn:stam-fromhtml" 
+
+[namespaces]
+#this defines the namespace prefixes you can use in this configuration
+xml = "http://www.w3.org/XML/1998/namespace"
+html = "http://www.w3.org/1999/xhtml"
+xsd =  "http://www.w3.org/2001/XMLSchema"
+xlink = "http://www.w3.org/1999/xlink"
+
+# elements and attributes are matched in reverse-order, so put more generic statements before more specific ones
+
+#Define some base elements that we reuse later for actual elements (prevents unnecessary repetition)
+[baseelements.common]
+id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
+
+    [[baseelements.common.annotationdata]]
+    key = "type"
+    value = "{{ localname }}"
+
+    [[baseelements.common.annotationdata]]
+    key = "lang"
+    value = "{{ @xml:lang }}"
+    skip_if_missing = true
+
+    [[baseelements.common.annotationdata]]
+    key = "n"
+    value = "{{ @n }}"
+    skip_if_missing = true
+
+    [[baseelements.common.annotationdata]]
+    key = "style"
+    value = "{{ @style }}"
+    skip_if_missing = true
+
+    [[baseelements.common.annotationdata]]
+    key = "class"
+    value = "{{ @class }}"
+    skip_if_missing = true
+
+    [[baseelements.common.annotationdata]]
+    key = "src"
+    value = "{{ @src }}"
+    skip_if_missing = true
+
+[baseelements.text]
+text = true
+
+
+[[elements]]
+base = [ "text", "common" ]
+path = "*"
+text = true
+annotation = "TextSelector"
+
+# Pass through the following elements without mapping to text
+[[elements]]
+base = [ "common" ]
+path = "//html:head"
+
+[[elements]]
+base = [ "common" ]
+path = "//html:head//*"
+
+# Map metadata like <meta name="key" content="value"> to annotations with key->value data selecting the resource (ResourceSelector)
+[[elements]]
+base = [ "common" ]
+path = "//html:head//html:meta"
+
+[[elements.annotationdata]]
+key = "{% if ?.@name %}{{ name }}{% endif %}"
+value = "{% if ?.@content %}{{ @content }}{% endif %}"
+skip_if_missing = true
+
+# By default, ignore any tags in the head (unless they're mentioned specifically later in the config)
+[[elements]]
+path = "//html:head/html:title"
+annotation = "ResourceSelector"
+
+[[elements.annotationdata]]
+key = "title"
+value = "{{ $. | trim }}"
+
+
+# Determine how various structural elements are converted to text
+
+[[elements]]
+base = [ "common" ]
+path = "//html:br"
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "text" ]
+path = "//html:p"
+textprefix = "\n"
+textsuffix = "\n"
+
+# Let's do headers and bulleted lists like markdown
+[[elements]]
+base = [ "common", "text" ]
+path = "//html:h1"
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "text" ]
+path = "//html:h2"
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "text" ]
+path = "//html:li"
+textprefix = "* "
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "text" ]
+path = "//html:li/html:li"
+textprefix = "  * "
+textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "text" ]
+path = "//html:li/html:li/html:li"
+textprefix = "    * "
+textsuffix = "\n"
+"#;
+
+    #[test]
+    fn test_precompile_template_nochange() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!( template_out, template_in);
+        //foo is not a special variable
+        assert!(!conv.variables.get(template_in).as_ref().unwrap().contains("foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_attrib() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ @foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ATTRIB_foo }}");
+        //foo is an attribute so is returned 
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("@foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_attrib_ns() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ @bar:foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ATTRIB_bar__foo }}");
+        //foo is an attribute so is returned 
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("@bar:foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_element() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ $foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ELEMENT_foo }}");
+        //foo is an element so is returned 
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_element_ns() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ $bar:foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ELEMENT_bar__foo }}");
+        //foo is an element so is returned 
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$bar:foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_this_text() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ $. }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ELEMENT_THIS }}");
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$."));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_parent_text() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ $.. }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ELEMENT_PARENT }}");
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$.."));
+        Ok(())
+    }
+
+
+    #[test]
+    fn test_precompile_template_attrib2() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{% for x in @foo %}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{% for x in ATTRIB_foo %}");
+        //foo is an attribute so is returned 
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("@foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_attrib3() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ ?.@foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ?.ATTRIB_foo }}");
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("@foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_path() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ $x/y/z/@a }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ELEMENT_x_IN_y_IN_z_IN_ATTRIB_a }}");
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$x/y/z/@a"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_loadconfig() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let mut conv = XmlToStamConverter::new(&config);
+        conv.compile().map_err(|e| format!("{}",e))?;
+        assert_eq!(conv.config.namespaces.len(),4 , "number of namespaces");
+        assert_eq!(conv.config.elements.len(), 12, "number of elements");
+        assert_eq!(conv.config.baseelements.len(), 2, "number of baseelements");
+        assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 6,"number of annotationdata under first element");
+        assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 6,"number of annotationdata under baseelement common");
+        Ok(())
+    }
+
+    #[test]
+    fn test_small() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLSMALLEXAMPLE, &config, &mut store)?;
+        let res = store.resource("test").expect("resource must have been created at this point");
+        assert_eq!(res.text(), "TEST\n\nThis is a test.\n", "resource text");
+        assert_eq!(store.annotations_len(), 4, "number of annotations");
+        info(&store, true);
+        let annotation = store.annotation("emphasis").expect("annotation must have been created at this point");
+        assert_eq!(annotation.text_simple(), Some("test"));
+        let key = store.key("urn:stam-fromhtml", "title").expect("key must exist");
+        let annotation = res.annotations_as_metadata().next().expect("annotation");
+        assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("test"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_full() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        Ok(())
+    }
+
 }

@@ -188,7 +188,7 @@ annotation = "ResourceSelector"
     [[elements.annotationdata]]
     set = "http://www.tei-c.org/ns/1.0"
     key = "title"
-    value = "{{text}}"
+    value = "{{$.}}"
     skip_if_missing = true
 
 [[elements]]
@@ -199,7 +199,7 @@ annotation = "ResourceSelector"
     [[elements.annotationdata]]
     set = "http://www.tei-c.org/ns/1.0"
     key = "title"
-    value = "{{text}}"
+    value = "{{$.}}"
     skip_if_missing = true
 
 [[elements]]
@@ -209,7 +209,7 @@ annotation = "ResourceSelector"
 
     [[elements.annotationdata]]
     key = "editor"
-    value = "{{text}}"
+    value = "{{$.}}"
     skip_if_missing = true
 
 [[elements]]
@@ -220,7 +220,7 @@ stop = true
 
     [[elements.annotationdata]]
     key = "publisher"
-    value = "{{text}}"
+    value = "{{$.}}"
     skip_if_missing = true
 
 [[elements]]
@@ -231,7 +231,7 @@ stop = true
 
     [[elements.annotationdata]]
     key = "pubPlace"
-    value = "{{text}}"
+    value = "{{$.}}"
     skip_if_missing = true
 
 [[elements]]
@@ -242,7 +242,7 @@ stop = true
 
     [[elements.annotationdata]]
     key = "license"
-    value = "{{text | trim}}"
+    value = "{{$. | trim}}"
     skip_if_missing = true
 
 
@@ -254,7 +254,7 @@ stop = true
 
     [[elements.annotationdata]]
     key = "date"
-    value = "{{text}}"
+    value = "{{$.}}"
     skip_if_missing = true
 
 [[elements]]
@@ -264,7 +264,7 @@ handling = "ResourceSelector"
 
     [[elements.annotationdata]]
     key = "target"
-    value = "{{text}}"
+    value = "{{$.}}"
     skip_if_missing = true
 
 [[elements]]
@@ -277,6 +277,16 @@ stop = true
 base = [ "common" ]
 path = "//tei:br"
 textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "withtext" ]
+path = "//tei:body"
+
+    [[elements.annotationdata]]
+    #not a real TEI attribute but used in the eDITem project
+    key = "divRole"
+    value = "{{ @divRole }}"
+    skip_if_missing = true
 
 [[elements]]
 base = [ "common", "withtext" ]
