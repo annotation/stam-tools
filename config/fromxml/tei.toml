@@ -1,5 +1,3 @@
-#inject a DTD to allow common HTML entities
-
 #default whitespace handling (Collapse or Preserve)
 whitespace = "Collapse"
 default_set = "http://www.tei-c.org/ns/1.0" 
@@ -121,22 +119,22 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
 
     [[baseelement.common.annotationdata]]
     key = "exclude"
-    value = "{{ exclude }}"
+    value = "{{ @exclude }}"
     skip_if_missing = true
 
     [[baseelement.common.annotationdata]]
     key = "select"
-    value = "{{ select }}"
+    value = "{{ @select }}"
     skip_if_missing = true
 
     [[baseelement.common.annotationdata]]
     key = "cert"
-    value = "{{ cert }}"
+    value = "{{ @cert }}"
     skip_if_missing = true
 
     [[baseelement.common.annotationdata]]
     key = "resp"
-    value = "{{ resp }}"
+    value = "{{ @resp }}"
     skip_if_missing = true
 
 #Define some base elements
@@ -398,7 +396,7 @@ path = "//tei:figure"
     [[elements.annotationdata]]
     #associate the url directly with the figure, this does assume only one graphic per figure which is a simplification
     key = "url"
-    value = "{{ tei:graphic@url }}"
+    value = "{{ $tei:graphic/@url }}"
     skip_if_missing = true
 
 [[elements]]

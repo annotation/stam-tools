@@ -1679,7 +1679,6 @@ impl<'a> XmlToStamConverter<'a> {
                     replacement.push_str(&template[end..begin+2]);
                 }
                 let inner = &template[begin+2..i]; //the part without the {{  }}
-                //eprintln!("DEBUG: inner: '{}'", inner);
                 replacement.push_str(&self.precompile_inblock(inner, &mut variables));
                 end = i;
             }
@@ -1690,7 +1689,6 @@ impl<'a> XmlToStamConverter<'a> {
         self.variables.insert(template.into(), variables);
 
         if !replacement.is_empty() {
-            //eprintln!("DEBUG: precompile: '{}'->'{}'", template, replacement);
             Cow::Owned(replacement)
         } else {
             Cow::Borrowed(template)
@@ -1727,6 +1725,13 @@ impl<'a> XmlToStamConverter<'a> {
         }
         if end > 0 {
             replacement.push_str(&s[end..]);
+        }
+        if var {
+            //don't forget last one
+            let varname = &s[begin..];
+            vars.insert(varname);
+            let replacement_var = self.precompile_name(varname);
+            replacement += &replacement_var;
         }
         if !replacement.is_empty() {
             Cow::Owned(replacement)
