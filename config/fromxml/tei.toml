@@ -1,6 +1,6 @@
 #default whitespace handling (Collapse or Preserve)
 whitespace = "Collapse"
-default_set = "http://www.tei-c.org/ns/1.0" 
+default_set = "http://www.tei-c.org/ns/1.0#" 
 
 [namespaces]
 #this defines the XML namespace prefixes you can use in this configuration
@@ -23,7 +23,7 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
     set = "{{ namespaces.rdf }}"
     key = "type"
     #value is a full URI for w3anno/RDF export
-    value = "{{ namespaces.tei }}/#{{ localname }}"
+    value = "{{ namespaces.tei }}#{{ localname }}"
 
     [[baseelements.common.annotationdata]]
     #extra ID attribute in XML namespace
