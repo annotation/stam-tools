@@ -9,7 +9,6 @@ use serde::Deserialize;
 use stam::*;
 use toml;
 use upon::Engine;
-use crate::info::info;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
 
@@ -2127,7 +2126,6 @@ textsuffix = "\n"
         let res = store.resource("test").expect("resource must have been created at this point");
         assert_eq!(res.text(), "TEST\n\nThis is a test.\n", "resource text");
         assert_eq!(store.annotations_len(), 4, "number of annotations");
-        info(&store, true);
         let annotation = store.annotation("emphasis").expect("annotation must have been created at this point");
         assert_eq!(annotation.text_simple(), Some("test"));
         let key = store.key("urn:stam-fromhtml", "title").expect("key must exist");
