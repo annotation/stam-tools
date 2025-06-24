@@ -1308,7 +1308,8 @@ impl<'a> XmlToStamConverter<'a> {
                                 return Err(e)
                             },
                             _ => {
-                                //skip if missing, no op
+                                //skip whole databuilder if missing
+                                continue
                             }
                         }
                     }
@@ -1328,6 +1329,8 @@ impl<'a> XmlToStamConverter<'a> {
                             Ok(value) =>
                                 if !value.is_empty() || annotationdata.allow_empty_value {
                                     databuilder = databuilder.with_value(value.into());
+                                } else {
+                                    continue;
                                 },
                             Err(e) if !annotationdata.skip_if_missing => {
                                 return Err(e)
@@ -1336,7 +1339,8 @@ impl<'a> XmlToStamConverter<'a> {
                                     databuilder = databuilder.with_value("".into());
                                 },
                             Err(_) => {
-                                //skip if missing, no op
+                                //skip whole databuilder if missing
+                                continue
                             }
                         }
                     }
@@ -1545,7 +1549,9 @@ impl<'a> XmlToStamConverter<'a> {
         if let Some(vars) = self.variables.get(template) {
             for var in vars {
                 if let Some((encodedvar, value)) = self.context_for_var(node, var) {
-                    context.insert(encodedvar, value);
+                    if value != upon::Value::None {
+                        context.insert(encodedvar, value);
+                    }
                 }
             }
         }
