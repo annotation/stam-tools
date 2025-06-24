@@ -269,7 +269,7 @@ value = "{{ @n }}"
 skip_if_missing = true
 ```
 
-Another common situation is to convert what was text in the XML to an annotation value on the resource (e.g. metadata). The variable ``text`` can be used for this inside a template:
+Another common situation is to convert what was text in the XML to an annotation value on the resource (e.g. metadata). The variable ``$.`` can be used for this inside a template:
 
 ```toml
 [[elements]]
@@ -279,9 +279,11 @@ annotation = "ResourceSelector"
 [[elements.annotationdata]]
 set = "http://www.tei-c.org/ns/1.0"
 key = "title"
-value = "{{text}}"
+value = "{{$.}}"
 skip_if_missing = true
 ```
+
+Likewise, `$..` can be used to get the text of the parent element, and any other text path can be specified with `$node/child` syntax.
 
 Another common use is to express the XML element type in annotations. The variable `localname` holds the tagname (stripped of any XML namespaces or prefixes):
 
@@ -328,6 +330,11 @@ Peculiarities in our implementation:
     * It will contain the text of the parent node and all nodes under it recursively
     * Refer to an attribute: `{{ $../@attrib }}`.
 * Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
+* The following variables are available as well:
+    * ``{{ resource }}`` -  the ID of the associated resource
+    * ``{{ localname }}`` -  the tag name of the current node (without namespace) 
+    * ``{{ namespace }}`` -  the namespace name of the current node (without tag)
+
 
 ### Filters
 
