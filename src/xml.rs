@@ -4,7 +4,7 @@ use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
 
-use roxmltree::{Attribute, Document, Node, NodeId, ParsingOptions};
+use roxmltree::{Document, Node, NodeId, ParsingOptions};
 use serde::Deserialize;
 use stam::*;
 use toml;
@@ -439,18 +439,19 @@ impl XPathExpression {
                 let condition = condition.trim();
                 if let Some(pos) = condition.find("!=") {
                     let var = &condition[..pos];
-                    let right = condition[pos..].trim_matches('"');
+                    let right = condition[pos+2..].trim_matches('"');
                     if self.get_var(var, node, config) == Some(right) {
                         return false;
                     }
                 } else if let Some(pos) = condition.find("=") {
                     let var = &condition[..pos];
-                    let right = condition[pos..].trim_matches('"');
-                    if self.get_var(var, node, config) != Some(right) {
+                    let right = condition[pos+1..].trim_matches('"');
+                    let value = self.get_var(var, node, config);
+                    if value != Some(right) {
                         return false;
                     }
                 } else {
-                    //whole condition is one variable
+                    //condition is one variable and merely needs to exist
                     let v = self.get_var(condition, node, config);
                     if v.is_none() || v == Some("") {
                         return false;
@@ -790,6 +791,12 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("lt", |a: i64, b: i64| a < b);
         template_engine.add_function("gte", |a: i64, b: i64| a >= b);
         template_engine.add_function("lte", |a: i64, b: i64| a <= b);
+        template_engine.add_function("int", |a: &upon::Value| match a {
+            upon::Value::Integer(x) => upon::Value::Integer(*x), 
+            upon::Value::Float(x) => upon::Value::Integer(*x as i64), 
+            upon::Value::String(s) => upon::Value::Integer(s.parse().expect("int filter expects an integer value")),
+            _ => panic!("int filter expects an integer value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        });
         template_engine.add_function("as_range", |a: i64| upon::Value::List(std::ops::Range { start: 0, end: a }.into_iter().map(|x| upon::Value::Integer(x+1)).collect::<Vec<_>>()) );
         template_engine.add_function("last", |list: &[upon::Value]| list.last().map(Clone::clone));
         template_engine.add_function("first", |list: &[upon::Value]| {
@@ -1204,13 +1211,12 @@ impl<'a> XmlToStamConverter<'a> {
                 //prepare variables to pass to the template context
                 let offset = self.positionmap.get(&node.id());
                 if element_config.annotation == XmlAnnotationHandling::TextSelector {
-                    if self.text.is_empty() {
-                        return Err(XmlConversionError::ConfigError("Can't extract annotations on text if no text was extracted!".into()));
-                    }
                     if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&node.id()) {
                         if self.config.debug {
                             eprintln!("[STAM fromxml]{} annotation covers text {:?} (bytes {}-{})", self.debugindent, offset, beginbyte, endbyte);
                         }
+                    }  else if self.text.is_empty() {
+                        return Err(XmlConversionError::ConfigError("Can't extract annotations on text if no text was extracted!".into()));
                     }
                 }
                 let begin = if let Some(offset) = offset {
@@ -1866,6 +1872,11 @@ of CDATA and is configured to preserve whitespace, and weird &entities; ]]></p>
 </body>
 </html>"#;
 
+    
+    //fake example (not real HTML, testing TEI-like space attribute with complex template)
+    const XMLTEISPACE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
+<body><space dim="vertical" unit="lines" quantity="3" /></body></html>"#;
+
     const CONF: &'static str = r#"#default whitespace handling (Collapse or Preserve)
 whitespace = "Collapse"
 default_set = "urn:stam-fromhtml" 
@@ -1992,6 +2003,13 @@ base = [ "common", "text" ]
 path = "//html:li/html:li/html:li"
 textprefix = "    * "
 textsuffix = "\n"
+
+#Not real HTML, test-case modelled after TEI space
+[[elements]]
+base = [ "common" ]
+path = """//html:space[@dim="vertical" and @unit="lines"]"""
+text = true
+textsuffix = """\n{% for x in @quantity | int | as_range %}\n{% endfor %}"""
 "#;
 
     #[test]
@@ -2117,7 +2135,7 @@ textsuffix = "\n"
         let mut conv = XmlToStamConverter::new(&config);
         conv.compile().map_err(|e| format!("{}",e))?;
         assert_eq!(conv.config.namespaces.len(),4 , "number of namespaces");
-        assert_eq!(conv.config.elements.len(), 12, "number of elements");
+        assert_eq!(conv.config.elements.len(), 13, "number of elements");
         assert_eq!(conv.config.baseelements.len(), 2, "number of baseelements");
         assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 6,"number of annotationdata under first element");
         assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 6,"number of annotationdata under baseelement common");
@@ -2148,6 +2166,16 @@ textsuffix = "\n"
         let config = XmlConversionConfig::from_toml_str(CONF)?;
         let mut store = stam::AnnotationStore::new(stam::Config::new());
         from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_teispace() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLTEISPACE, &config, &mut store)?;
+        let res = store.resource("test").expect("resource must have been created at this point");
+        assert_eq!(res.text(), "\n\n\n\n", "resource text");
         Ok(())
     }
 

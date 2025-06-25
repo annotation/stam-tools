@@ -353,6 +353,7 @@ The following filters are implemented in the templating engine:
 * `lt: x, y` - less than for integers
 * `gte: x, y` - greater than or equal for integers
 * `lte: x, y` - less than or equal for integers
+* `int: x` - Converts a value (string, float) to an integer
 * `as_range: x` - Converts an integer to a range of integers (starting with 1, ending with the number)
 * `plus: x, y` - addition (integers)
 * `minus: x, y` - subtraction (integers)
