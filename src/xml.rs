@@ -1593,9 +1593,10 @@ impl<'a> XmlToStamConverter<'a> {
                         return None;
                     }
                 } else {
+                    let var = &component[1..];
                     return Some((
-                        format!("{}ATTRIB_{}",  path, component).into(),
-                        node.attribute(component).into()
+                        format!("{}ATTRIB_{}",  path, var).into(),
+                        node.attribute(var).into()
                     ));
                 }
             } else if component == ".." {
@@ -1827,7 +1828,7 @@ mod tests {
     use super::*;
 
     const XMLSMALLEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
-<body><head><title>test</title></head><h1>TEST</h1><p xml:id="p1">This  is a <em xml:id="emphasis">test</em>.</p></body></html>"#;
+<body><head><title>test</title></head><h1>TEST</h1><p xml:id="p1">This  is a <em xml:id="emphasis" style="color:green">test</em>.</p></body></html>"#;
 
     const XMLEXAMPLE: &'static str = r#"<!DOCTYPE entities[<!ENTITY nbsp "&#xA0;">]>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:my="http://example.com">
@@ -2134,8 +2135,12 @@ textsuffix = "\n"
         assert_eq!(store.annotations_len(), 4, "number of annotations");
         let annotation = store.annotation("emphasis").expect("annotation must have been created at this point");
         assert_eq!(annotation.text_simple(), Some("test"));
+        //eprintln!("DEBUG: {:?}",annotation.data().collect::<Vec<_>>());
+        let key = store.key("urn:stam-fromhtml", "style").expect("key must exist");
+        assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("color:green"));
         let key = store.key("urn:stam-fromhtml", "title").expect("key must exist");
         let annotation = res.annotations_as_metadata().next().expect("annotation");
+        assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("test"));
         assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("test"));
         Ok(())
     }
