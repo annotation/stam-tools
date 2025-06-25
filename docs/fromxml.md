@@ -348,6 +348,16 @@ The following filters are implemented in the templating engine:
 * `last` - Returns the last element 
 * `tokenize` - Split on whitespace and newlines (consecutive whitespace is squashed)
 * `eq: x` - equality testing
+* `ne: x` - inequality testing
+* `gt: x, y` - greater than for integers
+* `lt: x, y` - less than for integers
+* `gte: x, y` - greater than or equal for integers
+* `lte: x, y` - less than or equal for integers
+* `as_range: x` - Converts an integer to a range of integers (starting with 1, ending with the number)
+* `plus: x, y` - addition (integers)
+* `minus: x, y` - subtraction (integers)
+* `multiply: x, y` - multiplication (integers)
+* `divide: x, y` - division (integers)
 
 Usage example:
 

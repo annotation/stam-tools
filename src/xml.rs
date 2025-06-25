@@ -363,17 +363,6 @@ pub struct XmlAnnotationDataConfig {
 }
 
 impl XmlAnnotationDataConfig {
-    fn new() -> Self {
-        Self {
-            id: None,
-            set: None,
-            key: None,
-            value: None,
-            allow_empty_value: false,
-            skip_if_missing: false,
-        }
-    }
-
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
         self.id = Some(id.into());
         self
@@ -446,26 +435,28 @@ impl XPathExpression {
         }
         //condition parsing (very basic language only)
         if let Some(condition) = self.condition() {
-            if let Some(pos) = condition.find("!=") {
-                let var = &condition[..pos];
-                let right = condition[pos..].trim_matches('"');
-                if self.get_var(var, node, config) == Some(right) {
-                    return false;
-                }
-            } else if let Some(pos) = condition.find("=") {
-                let var = &condition[..pos];
-                let right = condition[pos..].trim_matches('"');
-                if self.get_var(var, node, config) != Some(right) {
-                    return false;
-                }
-            } else {
-                //whole condition is one variable
-                let v = self.get_var(condition, node, config);
-                if v.is_none() || v == Some("") {
-                    return false;
+            for condition in condition.split(" and ") { //MAYBE TODO: doesn't take quotes into account yet!
+                let condition = condition.trim();
+                if let Some(pos) = condition.find("!=") {
+                    let var = &condition[..pos];
+                    let right = condition[pos..].trim_matches('"');
+                    if self.get_var(var, node, config) == Some(right) {
+                        return false;
+                    }
+                } else if let Some(pos) = condition.find("=") {
+                    let var = &condition[..pos];
+                    let right = condition[pos..].trim_matches('"');
+                    if self.get_var(var, node, config) != Some(right) {
+                        return false;
+                    }
+                } else {
+                    //whole condition is one variable
+                    let v = self.get_var(condition, node, config);
+                    if v.is_none() || v == Some("") {
+                        return false;
+                    }
                 }
             }
-
         }
         true
     }
@@ -766,8 +757,8 @@ impl Display for XmlConversionError {
         match self {
             Self::StamError(e) => e.fmt(f),
             Self::TemplateError(s, e) => {
-                f.write_str(s.as_str());
-                f.write_str(": ");
+                f.write_str(s.as_str())?;
+                f.write_str(": ")?;
                 if let Some(e) = e {
                     e.fmt(f)?;
                 }
@@ -791,14 +782,22 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("trim", |s: &str| s.trim().to_string() );
         template_engine.add_function("plus", |a: i64, b: i64| a + b);
         template_engine.add_function("minus", |a: i64, b: i64| a - b);
+        template_engine.add_function("multiply", |a: i64, b: i64| a * b);
+        template_engine.add_function("divide", |a: i64, b: i64| a / b);
         template_engine.add_function("eq", |a: &upon::Value, b: &upon::Value| a == b);
+        template_engine.add_function("ne", |a: &upon::Value, b: &upon::Value| a != b);
+        template_engine.add_function("gt", |a: i64, b: i64| a > b);
+        template_engine.add_function("lt", |a: i64, b: i64| a < b);
+        template_engine.add_function("gte", |a: i64, b: i64| a >= b);
+        template_engine.add_function("lte", |a: i64, b: i64| a <= b);
+        template_engine.add_function("as_range", |a: i64| upon::Value::List(std::ops::Range { start: 0, end: a }.into_iter().map(|x| upon::Value::Integer(x+1)).collect::<Vec<_>>()) );
         template_engine.add_function("last", |list: &[upon::Value]| list.last().map(Clone::clone));
         template_engine.add_function("first", |list: &[upon::Value]| {
             list.first().map(Clone::clone)
         });
         template_engine.add_function("tokenize", |s: &str| {
             upon::Value::List(
-                s.split(" \n").filter_map(|x|
+                s.split(|c| c == ' ' || c == '\n').filter_map(|x|
                     if !x.is_empty() { 
                         Some(upon::Value::String(x.to_string())) 
                     } else {
@@ -2140,7 +2139,6 @@ textsuffix = "\n"
         assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("color:green"));
         let key = store.key("urn:stam-fromhtml", "title").expect("key must exist");
         let annotation = res.annotations_as_metadata().next().expect("annotation");
-        assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("test"));
         assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("test"));
         Ok(())
     }
