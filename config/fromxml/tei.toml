@@ -17,7 +17,7 @@ rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 
 #Define some base elements that we reuse later for actual elements (prevents unnecessary repetition)
 [baseelements.common]
-id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
+id = "{% if ?.@xml:id %}{{resource}}/{{ @xml:id }}{% endif %}"
 
     [[baseelements.common.annotationdata]]
     set = "{{ namespaces.rdf }}"
@@ -29,16 +29,16 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
     #extra ID attribute in XML namespace
     set = "{{ namespaces.xml }}"
     key = "id"
-    value = "{{ @xml:id }}"
+    value = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     set = "{{ namespaces.xml }}"
     key = "lang"
     value = "{{ @xml:lang }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     set = "{{ namespaces.xml }}"
     key = "space"
     value = "{{ @xml:space }}"
@@ -46,93 +46,93 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
 
     # the rest here are common TEI attributes from att.global: https://tei-c.org/release/doc/tei-p5-doc/en/html/ref-att.global.html
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "n"
     value = "{{ @n }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     #tei:type attribute
     key = "type"
     value = "{{ @type }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "facs"
     value = "{{ @facs }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "rend"
     value = "{{ @rend }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "style"
     value = "{{ @style }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "rendition"
     value = "{{ @rendition }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "change"
     value = "{{ @change }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "ana"
     value = "{{ @ana }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "corresp"
     value = "{{ @corresp }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "synch"
     value = "{{ @synch }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "sameAs"
     value = "{{ @sameAs }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "copyOf"
     value = "{{ @copyOf }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "next"
     value = "{{ @next }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "prev"
     value = "{{ @prev }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "exclude"
     value = "{{ @exclude }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "select"
     value = "{{ @select }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "cert"
     value = "{{ @cert }}"
     skip_if_missing = true
 
-    [[baseelement.common.annotationdata]]
+    [[baseelements.common.annotationdata]]
     key = "resp"
     value = "{{ @resp }}"
     skip_if_missing = true
@@ -302,6 +302,7 @@ base = [ "common", "withtext" ]
 path = "//tei:p"
 textsuffix = "\n\n"
 
+
 [[elements]]
 base = [ "common", "withtext" ]
 path = "//tei:head"
@@ -368,6 +369,7 @@ annotation = "TextSelectorBetweenMarkers"
 text = true
 
     [[elements.annotationdata]]
+    set = "https://humanities.knaw.nl/def/team-text"
     key = "page"
     value = "{{ @n }}"
     skip_if_missing = true
@@ -432,3 +434,8 @@ textsuffix = "\n\n"
 base = [ "common", "withtext" ]
 path = "//tei:salute"
 textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "withtext" ]
+path = """//tei:space[@dim="vertical" and @unit="lines"]"""
+textsuffix = """\n{% for x in @quantity | int | as_range %}\n{% endfor %}"""
