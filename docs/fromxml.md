@@ -340,30 +340,31 @@ Peculiarities in our implementation:
 
 The following filters are implemented in the templating engine:
 
-* `capitalize` - Converts first letter to uppercase
-* `upper` - Converts everything to uppercase 
-* `lower` - Converts everything to lowercase 
-* `trim` - Strips whitespace (includes newlines)
-* `first` - Returns the first element 
-* `last` - Returns the last element 
-* `tokenize` - Split on whitespace and newlines (consecutive whitespace is squashed)
-* `eq: x` - equality testing
-* `ne: x` - inequality testing
-* `gt: x, y` - greater than for integers
-* `lt: x, y` - less than for integers
-* `gte: x, y` - greater than or equal for integers
-* `lte: x, y` - less than or equal for integers
-* `int: x` - Converts a value (string, float) to an integer
-* `as_range: x` - Converts an integer to a range of integers (starting with 1, ending with the number)
-* `plus: x, y` - addition (integers)
-* `minus: x, y` - subtraction (integers)
-* `multiply: x, y` - multiplication (integers)
-* `divide: x, y` - division (integers)
+* `s | capitalize` - Converts first letter to uppercase
+* `s | upper` - Converts everything to uppercase 
+* `s | lower` - Converts everything to lowercase 
+* `s | trim` - Strips whitespace (includes newlines)
+* `x | first` - Returns the first element 
+* `x | last` - Returns the last element 
+* `s | tokenize` - Split on whitespace and newlines (consecutive whitespace is squashed)
+* `x | eq: y` - equality testing
+* `x | ne: y` - inequality testing
+* `x | gt: y` - greater than for integers
+* `x | lt:  y` - less than for integers
+* `x | gte: y` - greater than or equal for integers
+* `x | lte: y` - less than or equal for integers
+* `x | int` - Converts a value (string, float) to an integer
+* `x | as_range` - Converts an integer to a range of integers (starting with 1, ending with the number)
+* `x | plus: y` - addition (integers)
+* `x | minus: y` - subtraction (integers)
+* `x | multiply: y` - multiplication (integers)
+* `x | divide: x, y` - division (integers)
+* `s | replace: from, to` - replace a subtring
 
 Usage example:
 
 ```
-{{ x | trim }}
+{{ my_variable | trim }}
 ```
 
 ## Markers

@@ -813,6 +813,9 @@ impl<'a> XmlToStamConverter<'a> {
                 )
                 .collect::<Vec<upon::Value>>())
         });
+        template_engine.add_function("replace", |s: &str, from: &str, to: &str| { 
+            upon::Value::String(s.replace(from,to))
+        });
         let mut converter = Self {
             cursor: 0,
             text: String::new(),
