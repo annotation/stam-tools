@@ -355,10 +355,10 @@ The following filters are implemented in the templating engine:
 * `x | lte: y` - less than or equal for integers
 * `x | int` - Converts a value (string, float) to an integer
 * `x | as_range` - Converts an integer to a range of integers (starting with 1, ending with the number)
-* `x | plus: y` - addition (integers)
-* `x | minus: y` - subtraction (integers)
-* `x | multiply: y` - multiplication (integers)
-* `x | divide: x, y` - division (integers)
+* `x | add: y` - addition (integers)
+* `x | sub: y` - subtraction (integers)
+* `x | mul: y` - multiplication (integers)
+* `x | div: y` - division (integers)
 * `s | replace: from, to` - replace a subtring
 
 Usage example:

@@ -781,10 +781,10 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("lower", str::to_lowercase);
         template_engine.add_function("upper", str::to_uppercase);
         template_engine.add_function("trim", |s: &str| s.trim().to_string() );
-        template_engine.add_function("plus", |a: i64, b: i64| a + b);
-        template_engine.add_function("minus", |a: i64, b: i64| a - b);
-        template_engine.add_function("multiply", |a: i64, b: i64| a * b);
-        template_engine.add_function("divide", |a: i64, b: i64| a / b);
+        template_engine.add_function("add", |a: i64, b: i64| a + b);
+        template_engine.add_function("sub", |a: i64, b: i64| a - b);
+        template_engine.add_function("mul", |a: i64, b: i64| a * b);
+        template_engine.add_function("div", |a: i64, b: i64| a / b);
         template_engine.add_function("eq", |a: &upon::Value, b: &upon::Value| a == b);
         template_engine.add_function("ne", |a: &upon::Value, b: &upon::Value| a != b);
         template_engine.add_function("gt", |a: i64, b: i64| a > b);
