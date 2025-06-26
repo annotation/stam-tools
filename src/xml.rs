@@ -2013,7 +2013,29 @@ base = [ "common" ]
 path = """//html:space[@dim="vertical" and @unit="lines"]"""
 text = true
 textsuffix = """\n{% for x in @quantity | int | as_range %}\n{% endfor %}"""
+
+[[elements]]
+base = [ "common", "text" ]
+path = "//html:example"
+annotation = "TextSelector"
+
+[[elements.annotationdata]]
+key = "requiredattrib"
+value = "{{ @requiredattrib }}"
+
+[[elements.annotationdata]]
+key = "optattrib"
+value = "{{ ?.@optattrib }}"
 "#;
+
+    const XMLREQATTRIBEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
+<body><example xml:id="ann1" requiredattrib="blah">test</example></body></html>"#;
+
+    const XMLREQATTRIBEXAMPLE2: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
+<body><example xml:id="ann1">test</example></body></html>"#;
+
+    const XMLREQATTRIBEXAMPLE3: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
+<body><example xml:id="ann1" requiredattrib="blah" optattrib="blah">test</example></body></html>"#;
 
     #[test]
     fn test_precompile_template_nochange() -> Result<(), String> {
@@ -2138,7 +2160,7 @@ textsuffix = """\n{% for x in @quantity | int | as_range %}\n{% endfor %}"""
         let mut conv = XmlToStamConverter::new(&config);
         conv.compile().map_err(|e| format!("{}",e))?;
         assert_eq!(conv.config.namespaces.len(),4 , "number of namespaces");
-        assert_eq!(conv.config.elements.len(), 13, "number of elements");
+        assert_eq!(conv.config.elements.len(), 14, "number of elements");
         assert_eq!(conv.config.baseelements.len(), 2, "number of baseelements");
         assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 6,"number of annotationdata under first element");
         assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 6,"number of annotationdata under baseelement common");
@@ -2179,6 +2201,45 @@ textsuffix = """\n{% for x in @quantity | int | as_range %}\n{% endfor %}"""
         from_xml_in_memory("test", XMLTEISPACE, &config, &mut store)?;
         let res = store.resource("test").expect("resource must have been created at this point");
         assert_eq!(res.text(), "\n\n\n\n", "resource text");
+        Ok(())
+    }
+
+
+    #[test]
+    fn test_reqattrib() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLREQATTRIBEXAMPLE, &config, &mut store)?;
+        let res = store.resource("test").expect("resource must have been created at this point");
+        assert_eq!(res.text(), "test", "resource text");
+        let key = store.key("urn:stam-fromhtml", "requiredattrib").expect("key must exist");
+        let annotation = store.annotation("ann1").expect("annotation");
+        assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("blah"));
+        assert!(store.key("urn:stam-fromhtml", "optattrib").is_none(), "optional attrib is unused");
+        Ok(())
+    }
+
+    #[test]
+    fn test_reqattrib2() -> Result<(), String> {
+        let mut config = XmlConversionConfig::from_toml_str(CONF)?;
+        config = config.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        assert!(from_xml_in_memory("test", XMLREQATTRIBEXAMPLE2, &config, &mut store).is_err(), "checking if error is returned");
+        Ok(())
+    }
+
+    #[test]
+    fn test_reqattrib3() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLREQATTRIBEXAMPLE3, &config, &mut store)?;
+        let res = store.resource("test").expect("resource must have been created at this point");
+        assert_eq!(res.text(), "test", "resource text");
+        let reqkey = store.key("urn:stam-fromhtml", "requiredattrib").expect("key must exist");
+        let optkey = store.key("urn:stam-fromhtml", "optattrib").expect("key optattrib must exist");
+        let annotation = store.annotation("ann1").expect("annotation");
+        assert_eq!(annotation.data().filter_key(&reqkey).value_as_str(), Some("blah"));
+        assert_eq!(annotation.data().filter_key(&optkey).value_as_str(), Some("blah"));
         Ok(())
     }
 
