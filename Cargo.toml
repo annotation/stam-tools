@@ -21,8 +21,7 @@ atty = "0.2.14"
 roxmltree = "0.20.0"
 serde = { version = "1.0.219", features = ["derive"] }
 toml = "0.8.22"
-# upon = "0.10.0" #TODO:wait for release
-upon = { git = "https://github.com/rossmacarthur/upon.git" }
+upon = "0.10.0"
 
 [lib]
 name = "stamtools"
