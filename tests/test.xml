@@ -1,0 +1,12 @@
+<text language="en" author="proycon">
+    <p xml:id="par1">
+        <s xml:id="sen1">This is a sentence.</s>
+        <s>This is the second&nbsp;sentence.</s>
+    </p>
+    <p>
+        <strong>This</strong> is    the <em>second</em> paragraph.
+    </p>
+    <p><![CDATA[This    third
+paragraph consists
+of CDATA.]]></p>
+</text>
