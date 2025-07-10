@@ -632,6 +632,106 @@ pub fn from_xml<'a>(
     Ok(())
 }
 
+/// Translate an XML file to STAM, given a particular configuration. This translates multiple XML files to a single output file.
+pub fn from_multi_xml<'a>(
+    filenames: &Vec<&Path>,
+    config: &XmlConversionConfig,
+    store: &'a mut AnnotationStore,
+) -> Result<(), String> {
+
+    let textoutfilename = format!(
+        "{}.txt",
+            filenames.iter().next().expect("1 or more filename need to be provided")
+            .file_stem()
+            .expect("invalid filename")
+            .to_str()
+            .expect("invalid utf-8 in filename")
+    );
+
+    // Read the raw XML data
+    let mut xmlstrings: Vec<String> = Vec::new();
+    let mut docs: Vec<Document> = Vec::new();
+    for filename in filenames.iter() {
+        if config.debug {
+            eprintln!("[STAM fromxml] parsing {} (one of multiple)", filename.display());
+        }
+        //patchy: remove HTML5 doctype and inject our own
+        let mut xmlstring = read_to_string(filename).map_err(|e| format!("Error opening XML file {}: {}", filename.display(), e))?;
+        if xmlstring[..100].find("<!DOCTYPE html>").is_some() && config.inject_dtd.is_some() {
+            xmlstring = xmlstring.replacen("<!DOCTYPE html>", "", 1);
+        }
+        // we can only inject a DTD if there is no doctype
+        if xmlstring[..100].find("<!DOCTYPE").is_none() {
+            if let Some(dtd) = config.inject_dtd.as_ref() {
+                xmlstring = dtd.to_string() + &xmlstring
+            };
+        } else if config.inject_dtd.is_some() {
+            eprintln!("[STAM fromxml] WARNING: Can not inject DTD because file already has a DOCTYPE");
+        }
+        xmlstrings.push(xmlstring);
+    }
+
+    for (filename, xmlstring) in filenames.iter().zip(xmlstrings.iter()) {
+        // parse the raw XML data into a DOM
+        let doc = Document::parse_with_options(
+            xmlstring,
+            ParsingOptions {
+                allow_dtd: true,
+                ..ParsingOptions::default()
+            },
+        )
+        .map_err(|e| format!("Error parsing XML file {}: {}", filename.display(), e))?;
+        docs.push(doc);
+    }
+
+    let mut converter = XmlToStamConverter::new(config);
+    converter
+        .compile()
+        .map_err(|e| format!("Error compiling templates: {}", e))?;
+
+    for (doc, filename) in docs.iter().zip(filenames.iter()) {
+        // extract text (first pass)
+        converter
+            .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()))
+            .map_err(|e| {
+                format!(
+                    "Error extracting element text from {}: {}",
+                    filename.display(),
+                    e
+                )
+            })?;
+        if config.debug {
+            eprintln!("[STAM fromxml] extracted full text: {}", &converter.text);
+        }
+    }
+
+    let resource = TextResourceBuilder::new()
+        .with_id(textoutfilename.clone())
+        .with_text(converter.text.clone())
+        .with_filename(&textoutfilename);
+
+    converter.resource_handle = Some(
+        store
+            .add_resource(resource)
+            .map_err(|e| format!("Failed to add resource {}: {}", &textoutfilename, e))?,
+    );
+
+    // extract annotations (second pass)
+    for (doc, filename) in docs.iter().zip(filenames.iter()) {
+        converter
+            .extract_element_annotation(doc.root_element(), store)
+            .map_err(|e| {
+                format!(
+                    "Error extracting element annotation from {}: {}",
+                    filename.display(),
+                    e
+                )
+            })?;
+    }
+
+    Ok(())
+}
+
 /// Translate an XML file to STAM, given a particular configuration. Not writing output files and keeping all in memory. Does not support DTD injection.
 pub fn from_xml_in_memory<'a>(
     resource_id: &str, 

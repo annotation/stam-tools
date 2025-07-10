@@ -642,7 +642,7 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("inputfile")
             .long("inputfile")
             .short('f')
-            .help("XML file to import. This option may be specified multiple times.")
+            .help("XML file to import. This option may be specified multiple times. Each input file will produce one output text.")
             .action(ArgAction::Append)
             .takes_value(true),
     );
@@ -650,7 +650,7 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("inputfilelist")
             .long("inputfilelist")
             .short('l')
-            .help("Filename containing a list of input files (alternative to specifying --inputfile multiple times)")
+            .help("Filename containing a list of input files (one per line, alternative to specifying --inputfile multiple times). You may also specify *multiple* files per line, seperated by tab characteers, these will then jointly produce a single text, named after the first file on the line.")
             .takes_value(true),
     );
     args.push(
@@ -1702,11 +1702,23 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             let filenames: Vec<&str> = listdata.split("\n").collect();
             for filename in filenames {
                 if !filename.is_empty() {
-                    if let Err(e) = from_xml(Path::new(filename), &config, store) {
-                        if args.is_present("ignore-errors") {
-                            eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
-                        } else {
-                            return Err(e);
+                    if filename.find('\t').is_some() {
+                        let filenames: Vec<&Path> = filename.split('\t').map(|s| Path::new(s)).collect();
+                        if let Err(e) = from_multi_xml(&filenames, &config, store) {
+                            if args.is_present("ignore-errors") {
+                                eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
+                            } else {
+                                return Err(e);
+                            }
+                        }
+                        has_input = true;
+                    } else {
+                        if let Err(e) = from_xml(Path::new(filename), &config, store) {
+                            if args.is_present("ignore-errors") {
+                                eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
+                            } else {
+                                return Err(e);
+                            }
                         }
                     }
                 }
