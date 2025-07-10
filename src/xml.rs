@@ -916,6 +916,18 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("replace", |s: &str, from: &str, to: &str| { 
             upon::Value::String(s.replace(from,to))
         });
+        template_engine.add_function("basename", |a: &upon::Value| match a {
+            upon::Value::String(s) => upon::Value::String(s.split(|c| c == '/' || c == '\\').last().expect("splitting must work").to_string()),
+            _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        });
+        template_engine.add_function("noext", |a: &upon::Value| match a {
+            upon::Value::String(s) => if let Some(pos) = s.rfind('.') {
+                s[..pos].to_string()
+            } else {
+                s.to_string()
+            },
+            _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        });
         let mut converter = Self {
             cursor: 0,
             text: String::new(),
