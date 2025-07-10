@@ -332,6 +332,7 @@ Peculiarities in our implementation:
 * Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
 * The following variables are available as well:
     * ``{{ resource }}`` -  the ID of the associated resource
+    * ``{{ inputfile }}`` -  the path + filename of the input file (exactly as passed) 
     * ``{{ localname }}`` -  the tag name of the current node (without namespace) 
     * ``{{ namespace }}`` -  the namespace name of the current node (without tag)
 

@@ -596,7 +596,7 @@ pub fn from_xml<'a>(
 
     // extract text (first pass)
     converter
-        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()))
+        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()))
         .map_err(|e| {
             format!(
                 "Error extracting element text from {}: {}",
@@ -620,7 +620,7 @@ pub fn from_xml<'a>(
 
     // extract annotations (second pass)
     converter
-        .extract_element_annotation(doc.root_element(), store)
+        .extract_element_annotation(doc.root_element(),  Some(&filename.to_string_lossy()), store)
         .map_err(|e| {
             format!(
                 "Error extracting element annotation from {}: {}",
@@ -692,7 +692,7 @@ pub fn from_multi_xml<'a>(
     for (doc, filename) in docs.iter().zip(filenames.iter()) {
         // extract text (first pass)
         converter
-            .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()))
+            .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()))
             .map_err(|e| {
                 format!(
                     "Error extracting element text from {}: {}",
@@ -719,7 +719,7 @@ pub fn from_multi_xml<'a>(
     // extract annotations (second pass)
     for (doc, filename) in docs.iter().zip(filenames.iter()) {
         converter
-            .extract_element_annotation(doc.root_element(), store)
+            .extract_element_annotation(doc.root_element(), Some(&filename.to_string_lossy()), store)
             .map_err(|e| {
                 format!(
                     "Error extracting element annotation from {}: {}",
@@ -760,7 +760,7 @@ pub fn from_xml_in_memory<'a>(
 
     // extract text (first pass)
     converter
-        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(resource_id))
+        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(resource_id), Some(resource_id))
         .map_err(|e| {
             format!(
                 "Error extracting element text from {}: {}",
@@ -783,7 +783,7 @@ pub fn from_xml_in_memory<'a>(
 
     // extract annotations (second pass)
     converter
-        .extract_element_annotation(doc.root_element(), store)
+        .extract_element_annotation(doc.root_element(), Some(resource_id), store)
         .map_err(|e| {
             format!(
                 "Error extracting element annotation from {}: {}",
@@ -1038,6 +1038,7 @@ impl<'a> XmlToStamConverter<'a> {
         node: Node,
         whitespace: XmlWhitespaceHandling,
         resource_id: Option<&str>,
+        inputfile: Option<&str>,
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
             let path: NodePath = node.into();
@@ -1082,7 +1083,7 @@ impl<'a> XmlToStamConverter<'a> {
                         eprintln!("[STAM fromxml]{} outputting textprefix: {:?}", self.debugindent, textprefix);
                     }
                     let result =
-                        self.render_template(textprefix, &node, Some(self.cursor), None, resource_id)
+                        self.render_template(textprefix, &node, Some(self.cursor), None, resource_id, inputfile)
                             .map_err(|e| match e {
                                 XmlConversionError::TemplateError(s, e) => {
                                     XmlConversionError::TemplateError(
@@ -1200,7 +1201,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                         self.debugindent.push_str("  ");
                         // recursion step, process child element, pass our whitespace handling mode since it may inherit it
-                        self.extract_element_text(child, whitespace, resource_id)?;
+                        self.extract_element_text(child, whitespace, resource_id, inputfile)?;
                         self.debugindent.pop();
                         self.debugindent.pop();
                     } else {
@@ -1222,7 +1223,8 @@ impl<'a> XmlToStamConverter<'a> {
                         &node,
                         Some(textbegin),
                         Some(self.cursor),
-                        resource_id
+                        resource_id,
+                        inputfile
                     ).map_err(|e| match e {
                             XmlConversionError::TemplateError(s, e) => {
                                 XmlConversionError::TemplateError(
@@ -1295,6 +1297,7 @@ impl<'a> XmlToStamConverter<'a> {
     fn extract_element_annotation(
         &mut self,
         node: Node,
+        inputfile: Option<&str>,
         store: &mut AnnotationStore,
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
@@ -1348,7 +1351,7 @@ impl<'a> XmlToStamConverter<'a> {
                 };
 
                 if let Some(template) = &element_config.id {
-                    let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id);
+                    let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
                     let compiled_template = self.template_engine.template(template.as_str());
                     let id = compiled_template.render(&context).to_string().map_err(|e| 
                             XmlConversionError::TemplateError(
@@ -1368,7 +1371,7 @@ impl<'a> XmlToStamConverter<'a> {
                 for annotationdata in element_config.annotationdata.iter() {
                     let mut databuilder = AnnotationDataBuilder::new();
                     if let Some(template) = &annotationdata.set {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id);
+                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
                         let compiled_template = self.template_engine.template(template.as_str());
                         let dataset = compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1388,7 +1391,7 @@ impl<'a> XmlToStamConverter<'a> {
                             databuilder.with_dataset(self.config.default_set.as_str().into());
                     }
                     if let Some(template) = &annotationdata.key {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id);
+                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
                         let compiled_template = self.template_engine.template(template.as_str());
                         match compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1422,7 +1425,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                     }
                     if let Some(template) = &annotationdata.value {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id);
+                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
                         let compiled_template = self.template_engine.template(template.as_str());
                         match compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1504,7 +1507,7 @@ impl<'a> XmlToStamConverter<'a> {
                 for child in node.children() {
                     if child.is_element() {
                         self.debugindent.push_str("  ");
-                        self.extract_element_annotation(child, store)?;
+                        self.extract_element_annotation(child,  inputfile, store)?;
                         self.debugindent.pop();
                         self.debugindent.pop();
                     }
@@ -1602,11 +1605,12 @@ impl<'a> XmlToStamConverter<'a> {
         begin: Option<usize>,
         end: Option<usize>,
         resource: Option<&str>,
+        inputfile: Option<&str>,
     ) -> Result<Cow<'t, str>, XmlConversionError> {
         if template.chars().any(|c| c == '{') {
             //value is a template, templating engine probably needed
             let compiled_template = self.template_engine.template(template);
-            let context = self.context_for_node(&node, begin, end, template, resource);
+            let context = self.context_for_node(&node, begin, end, template, resource, inputfile);
             let result = compiled_template.render(context).to_string()?;
             Ok(Cow::Owned(result))
         } else {
@@ -1622,6 +1626,7 @@ impl<'a> XmlToStamConverter<'a> {
         end: Option<usize>,
         template: &str, 
         resource: Option<&str>,
+        inputfile: Option<&str>,
     ) -> upon::Value {
         let mut context = self.global_context.clone();
         let length = if let (Some(begin), Some(end)) = (begin, end) {
@@ -1652,6 +1657,10 @@ impl<'a> XmlToStamConverter<'a> {
         if let Some(resource) = resource {
             //the resource ID
             context.insert("resource".into(), resource.into());
+        }
+        if let Some(inputfile) = inputfile {
+            //the input file
+            context.insert("inputfile".into(), inputfile.into());
         }
 
         if let Some(vars) = self.variables.get(template) {
