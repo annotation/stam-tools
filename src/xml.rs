@@ -596,7 +596,7 @@ pub fn from_xml<'a>(
 
     // extract text (first pass)
     converter
-        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()))
+        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()), 0)
         .map_err(|e| {
             format!(
                 "Error extracting element text from {}: {}",
@@ -620,7 +620,7 @@ pub fn from_xml<'a>(
 
     // extract annotations (second pass)
     converter
-        .extract_element_annotation(doc.root_element(),  Some(&filename.to_string_lossy()), store)
+        .extract_element_annotation(doc.root_element(),  Some(&filename.to_string_lossy()),0,  store)
         .map_err(|e| {
             format!(
                 "Error extracting element annotation from {}: {}",
@@ -689,10 +689,10 @@ pub fn from_multi_xml<'a>(
         .compile()
         .map_err(|e| format!("Error compiling templates: {}", e))?;
 
-    for (doc, filename) in docs.iter().zip(filenames.iter()) {
+    for (i, (doc, filename)) in docs.iter().zip(filenames.iter()).enumerate() {
         // extract text (first pass)
         converter
-            .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()))
+            .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()), i)
             .map_err(|e| {
                 format!(
                     "Error extracting element text from {}: {}",
@@ -717,9 +717,9 @@ pub fn from_multi_xml<'a>(
     );
 
     // extract annotations (second pass)
-    for (doc, filename) in docs.iter().zip(filenames.iter()) {
+    for (i,(doc, filename)) in docs.iter().zip(filenames.iter()).enumerate() {
         converter
-            .extract_element_annotation(doc.root_element(), Some(&filename.to_string_lossy()), store)
+            .extract_element_annotation(doc.root_element(), Some(&filename.to_string_lossy()),i,  store)
             .map_err(|e| {
                 format!(
                     "Error extracting element annotation from {}: {}",
@@ -760,7 +760,7 @@ pub fn from_xml_in_memory<'a>(
 
     // extract text (first pass)
     converter
-        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(resource_id), Some(resource_id))
+        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(resource_id), Some(resource_id), 0)
         .map_err(|e| {
             format!(
                 "Error extracting element text from {}: {}",
@@ -783,7 +783,7 @@ pub fn from_xml_in_memory<'a>(
 
     // extract annotations (second pass)
     converter
-        .extract_element_annotation(doc.root_element(), Some(resource_id), store)
+        .extract_element_annotation(doc.root_element(), Some(resource_id), 0, store)
         .map_err(|e| {
             format!(
                 "Error extracting element annotation from {}: {}",
@@ -805,14 +805,14 @@ struct XmlToStamConverter<'a> {
     /// The template engine
     template_engine: Engine<'a>,
 
-    /// Keep track of the new positions (unicode offset) where the node starts in the untangled document
-    positionmap: HashMap<NodeId, Offset>,
+    /// Keep track of the new positions (unicode offset) where the node starts in the untangled document. The key consist of a document sequence number and a node ID.
+    positionmap: HashMap<(usize,NodeId), Offset>,
 
-    /// Keep track of the new positions (bytes offset) where the node starts in the untangled document
-    bytepositionmap: HashMap<NodeId, (usize, usize)>,
+    /// Keep track of the new positions (bytes offset) where the node starts in the untangled document. The key consist of a document sequence number and a node ID.
+    bytepositionmap: HashMap<(usize,NodeId), (usize, usize)>,
 
     /// Keep track of markers (XML elements with `XmlAnnotationHandling::TextSelectorBetweenMarkers`), the key in this map is some hash of XmlElementConfig.
-    markers: HashMap<usize, Vec<NodeId>>,
+    markers: HashMap<usize, Vec<(usize,NodeId)>>,
 
     /// The resource
     resource_handle: Option<TextResourceHandle>,
@@ -1051,6 +1051,7 @@ impl<'a> XmlToStamConverter<'a> {
         whitespace: XmlWhitespaceHandling,
         resource_id: Option<&str>,
         inputfile: Option<&str>,
+        doc_num: usize,
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
             let path: NodePath = node.into();
@@ -1095,7 +1096,7 @@ impl<'a> XmlToStamConverter<'a> {
                         eprintln!("[STAM fromxml]{} outputting textprefix: {:?}", self.debugindent, textprefix);
                     }
                     let result =
-                        self.render_template(textprefix, &node, Some(self.cursor), None, resource_id, inputfile)
+                        self.render_template(textprefix, &node, Some(self.cursor), None, resource_id, inputfile, doc_num)
                             .map_err(|e| match e {
                                 XmlConversionError::TemplateError(s, e) => {
                                     XmlConversionError::TemplateError(
@@ -1213,7 +1214,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                         self.debugindent.push_str("  ");
                         // recursion step, process child element, pass our whitespace handling mode since it may inherit it
-                        self.extract_element_text(child, whitespace, resource_id, inputfile)?;
+                        self.extract_element_text(child, whitespace, resource_id, inputfile, doc_num)?;
                         self.debugindent.pop();
                         self.debugindent.pop();
                     } else {
@@ -1236,7 +1237,8 @@ impl<'a> XmlToStamConverter<'a> {
                         Some(textbegin),
                         Some(self.cursor),
                         resource_id,
-                        inputfile
+                        inputfile,
+                        doc_num
                     ).map_err(|e| match e {
                             XmlConversionError::TemplateError(s, e) => {
                                 XmlConversionError::TemplateError(
@@ -1269,8 +1271,8 @@ impl<'a> XmlToStamConverter<'a> {
                 }
                 self.markers
                     .entry(element_config.hash())
-                    .and_modify(|v| v.push(node.id()))
-                    .or_insert(vec![node.id()]);
+                    .and_modify(|v| v.push((doc_num, node.id())))
+                    .or_insert(vec![(doc_num, node.id())]);
             }
         } else if self.config.debug {
             eprintln!(
@@ -1295,9 +1297,9 @@ impl<'a> XmlToStamConverter<'a> {
                     &self.text[bytebegin..(self.text.len() - end_bytediscount)]
                 );
             }
-            self.positionmap.insert(node.id(), offset);
+            self.positionmap.insert((doc_num, node.id()), offset);
             self.bytepositionmap
-                .insert(node.id(), (bytebegin, self.text.len() - end_bytediscount));
+                .insert((doc_num, node.id()), (bytebegin, self.text.len() - end_bytediscount));
         }
         Ok(())
     }
@@ -1310,6 +1312,7 @@ impl<'a> XmlToStamConverter<'a> {
         &mut self,
         node: Node,
         inputfile: Option<&str>,
+        doc_num: usize,
         store: &mut AnnotationStore,
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
@@ -1327,9 +1330,9 @@ impl<'a> XmlToStamConverter<'a> {
                 let mut builder = AnnotationBuilder::new();
 
                 //prepare variables to pass to the template context
-                let offset = self.positionmap.get(&node.id());
+                let offset = self.positionmap.get(&(doc_num, node.id()));
                 if element_config.annotation == XmlAnnotationHandling::TextSelector {
-                    if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&node.id()) {
+                    if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&(doc_num, node.id())) {
                         if self.config.debug {
                             eprintln!("[STAM fromxml]{} annotation covers text {:?} (bytes {}-{})", self.debugindent, offset, beginbyte, endbyte);
                         }
@@ -1363,7 +1366,7 @@ impl<'a> XmlToStamConverter<'a> {
                 };
 
                 if let Some(template) = &element_config.id {
-                    let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
+                    let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
                     let compiled_template = self.template_engine.template(template.as_str());
                     let id = compiled_template.render(&context).to_string().map_err(|e| 
                             XmlConversionError::TemplateError(
@@ -1383,7 +1386,7 @@ impl<'a> XmlToStamConverter<'a> {
                 for annotationdata in element_config.annotationdata.iter() {
                     let mut databuilder = AnnotationDataBuilder::new();
                     if let Some(template) = &annotationdata.set {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
+                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
                         let compiled_template = self.template_engine.template(template.as_str());
                         let dataset = compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1403,7 +1406,7 @@ impl<'a> XmlToStamConverter<'a> {
                             databuilder.with_dataset(self.config.default_set.as_str().into());
                     }
                     if let Some(template) = &annotationdata.key {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
+                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
                         let compiled_template = self.template_engine.template(template.as_str());
                         match compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1437,7 +1440,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                     }
                     if let Some(template) = &annotationdata.value {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile);
+                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
                         let compiled_template = self.template_engine.template(template.as_str());
                         match compiled_template.render(&context).to_string().map_err(|e| 
                                 XmlConversionError::TemplateError(
@@ -1474,7 +1477,7 @@ impl<'a> XmlToStamConverter<'a> {
                 match element_config.annotation {
                     XmlAnnotationHandling::TextSelector => {
                         // Annotation is on text, translates to TextSelector
-                        if let Some(selector) = self.textselector(node) {
+                        if let Some(selector) = self.textselector(node, doc_num) {
                             builder = builder.with_target(selector);
                             if self.config.debug {
                                 eprintln!("[STAM fromxml]   builder AnnotateText: {:?}", builder);
@@ -1495,7 +1498,7 @@ impl<'a> XmlToStamConverter<'a> {
                     XmlAnnotationHandling::TextSelectorBetweenMarkers => {
                         // Annotation is on a text span *between* two marker elements
                         if let Some(selector) =
-                            self.textselector_for_markers(node, store, element_config)
+                            self.textselector_for_markers(node, doc_num, store, element_config)
                         {
                             builder = builder.with_target(selector);
                             if self.config.debug {
@@ -1519,7 +1522,7 @@ impl<'a> XmlToStamConverter<'a> {
                 for child in node.children() {
                     if child.is_element() {
                         self.debugindent.push_str("  ");
-                        self.extract_element_annotation(child,  inputfile, store)?;
+                        self.extract_element_annotation(child,  inputfile, doc_num, store)?;
                         self.debugindent.pop();
                         self.debugindent.pop();
                     }
@@ -1535,10 +1538,10 @@ impl<'a> XmlToStamConverter<'a> {
         Ok(())
     }
 
-    /// Select text corresponding to the element/node
-    fn textselector(&self, node: Node) -> Option<SelectorBuilder> {
+    /// Select text corresponding to the element/node and document number
+    fn textselector(&self, node: Node, doc_num: usize) -> Option<SelectorBuilder> {
         let res_handle = self.resource_handle.expect("resource must be associated");
-        if let Some(offset) = self.positionmap.get(&node.id()) {
+        if let Some(offset) = self.positionmap.get(&(doc_num, node.id())) {
             Some(SelectorBuilder::TextSelector(
                 BuildItem::Handle(res_handle),
                 offset.clone(),
@@ -1552,6 +1555,7 @@ impl<'a> XmlToStamConverter<'a> {
     fn textselector_for_markers<'b>(
         &self,
         node: Node,
+        doc_num: usize,
         store: &AnnotationStore,
         element_config: &'b XmlElementConfig,
     ) -> Option<SelectorBuilder<'b>> {
@@ -1564,10 +1568,10 @@ impl<'a> XmlToStamConverter<'a> {
         let mut end: Option<usize> = None;
         if let Some(markers) = self.markers.get(&element_config.hash()) {
             let mut grab = false;
-            for n_id in markers.iter() {
+            for (d_num, n_id) in markers.iter() {
                 if grab {
                     //this marker is the next one, it's begin position is our desired end position
-                    end = self.positionmap.get(n_id).map(|offset| {
+                    end = self.positionmap.get(&(*d_num, *n_id)).map(|offset| {
                         offset
                             .begin
                             .try_into()
@@ -1575,7 +1579,7 @@ impl<'a> XmlToStamConverter<'a> {
                     });
                     break;
                 }
-                if *n_id == node.id() {
+                if doc_num == *d_num && *n_id == node.id() {
                     //current node/marker found, signal grab for the next one
                     grab = true;
                 }
@@ -1585,7 +1589,7 @@ impl<'a> XmlToStamConverter<'a> {
             //no next marker found, use end of document instead
             end = Some(resource.textlen());
         }
-        if let (Some(offset), Some(end)) = (self.positionmap.get(&node.id()), end) {
+        if let (Some(offset), Some(end)) = (self.positionmap.get(&(doc_num, node.id())), end) {
             Some(SelectorBuilder::TextSelector(
                 BuildItem::Handle(self.resource_handle.unwrap()),
                 Offset::simple(
@@ -1618,11 +1622,12 @@ impl<'a> XmlToStamConverter<'a> {
         end: Option<usize>,
         resource: Option<&str>,
         inputfile: Option<&str>,
+        doc_num: usize,
     ) -> Result<Cow<'t, str>, XmlConversionError> {
         if template.chars().any(|c| c == '{') {
             //value is a template, templating engine probably needed
             let compiled_template = self.template_engine.template(template);
-            let context = self.context_for_node(&node, begin, end, template, resource, inputfile);
+            let context = self.context_for_node(&node, begin, end, template, resource, inputfile, doc_num);
             let result = compiled_template.render(context).to_string()?;
             Ok(Cow::Owned(result))
         } else {
@@ -1639,6 +1644,7 @@ impl<'a> XmlToStamConverter<'a> {
         template: &str, 
         resource: Option<&str>,
         inputfile: Option<&str>,
+        doc_num: usize,
     ) -> upon::Value {
         let mut context = self.global_context.clone();
         let length = if let (Some(begin), Some(end)) = (begin, end) {
@@ -1674,6 +1680,8 @@ impl<'a> XmlToStamConverter<'a> {
             //the input file
             context.insert("inputfile".into(), inputfile.into());
         }
+        //document number (0-indexed), useful in case multiple input documents are cast to a single output text
+        context.insert("doc_num".into(), upon::Value::Integer(doc_num as i64));
 
         if let Some(vars) = self.variables.get(template) {
             for var in vars {

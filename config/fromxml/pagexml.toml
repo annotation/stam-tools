@@ -18,7 +18,7 @@ rdf = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
 
 #Define some base elements that we reuse later for actual elements (prevents unnecessary repetition)
 [baseelements.common]
-id = "{% if ?.id %}{{inputfile | noext}}/{{ @id }}{% endif %}"
+id = "{% if ?.@id %}{{inputfile | noext}}/{{ @id }}{% endif %}"
 
     [[baseelements.common.annotationdata]]
     set = "{{ namespaces.rdf }}"
