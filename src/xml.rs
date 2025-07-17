@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, BTreeSet};
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -11,6 +11,7 @@ use toml;
 use upon::Engine;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
+const CONTEXT_ANNO: &str = "http://www.w3.org/ns/anno.jsonld";
 
 fn default_set() -> String {
     "urn:stam-fromxml".into()
@@ -50,6 +51,10 @@ pub struct XmlConversionConfig {
     /// A prefix to assign when setting annotation IDs, within this string you can use the special variable `{resource}` to use the resource ID.
     id_prefix: Option<String>,
 
+    #[serde(default)]
+    /// Add provenance information pointing each annotation to the appropriate node in the XML source files where it came from (translates into XPathSelector in Web Annotation output)
+    provenance: bool,
+
     #[serde(skip_deserializing)]
     debug: bool,
 
@@ -66,6 +71,7 @@ impl XmlConversionConfig {
             default_set: default_set(),
             inject_dtd: None,
             id_prefix: None,
+            provenance: false,
             debug: false,
         }
     }
@@ -111,6 +117,12 @@ impl XmlConversionConfig {
         self
     }
 
+    /// Add provenance information pointing each annotation to the appropriate node in the XML source files where it came from (translates into XPathSelector in Web Annotation output)
+    pub fn with_provenance(mut self, value: bool) -> Self {
+        self.provenance = value;
+        self
+    }
+
     /// Register an XML namespace with prefix
     pub fn with_prefix(mut self, prefix: impl Into<String>, namespace: impl Into<String>) -> Self {
         self.namespaces.insert(prefix.into(), namespace.into());
@@ -150,10 +162,9 @@ impl XmlConversionConfig {
     }
 
     /// How to handle this element?
-    fn element_config(&self, node: Node) -> Option<&XmlElementConfig> {
-        let nodepath: NodePath = node.into();
+    fn element_config(&self, node: Node, path: &NodePath) -> Option<&XmlElementConfig> {
         for elementconfig in self.elements.iter().rev() {
-            if elementconfig.path.test(&nodepath, &node, self) {
+            if elementconfig.path.test(path, &node, self) {
                 return Some(elementconfig);
             }
         }
@@ -421,9 +432,9 @@ impl XPathExpression {
     fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, node: &Node<'a,'b>, config: &XmlConversionConfig) -> bool {
         let mut pathiter = path.components.iter().rev();
         for (refns, pat) in self.iter(config).collect::<Vec<_>>().into_iter().rev() {
-            if let Some((ns, name)) = pathiter.next() {
+            if let Some(component) = pathiter.next() {
                 if pat != "*" && pat != "" {
-                    if refns.is_none() != ns.is_none() || ns != &refns || pat != *name {
+                    if refns.is_none() != component.namespace.is_none() || component.namespace != refns || pat != component.tagname {
                         return false;
                     }
                 }
@@ -433,7 +444,7 @@ impl XPathExpression {
                 }
             }
         }
-        //condition parsing (very basic language only)
+        //condition parsing (very basic language only), only supported on the leaf node
         if let Some(condition) = self.condition() {
             for condition in condition.split(" and ") { //MAYBE TODO: doesn't take quotes into account yet!
                 let condition = condition.trim();
@@ -494,7 +505,7 @@ impl XPathExpression {
         }
     }
 
-    /// Returns the conditional part of the expression
+    /// Returns the conditional part of the expression, only supported on the leaf node
     fn condition(&self) -> Option<&str> {
         if let (Some(begin), Some(end)) = (self.0.find("["), self.0.find("]")) {
             Some(&self.0[begin + 1..end])
@@ -511,36 +522,99 @@ impl Default for XPathExpression {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+struct NodePathComponent<'a,'b> {
+    namespace: Option<&'a str>,
+    tagname: &'b str,
+    /// Index sequence number, 1-indexed (as specified by XPath)
+    index: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 struct NodePath<'a, 'b> {
-    components: VecDeque<(Option<&'a str>, &'b str)>,
+    components: Vec<NodePathComponent<'a,'b>>,
 }
 
 impl<'a, 'b> Display for NodePath<'a, 'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (ns, name) in self.components.iter() {
+        for component in self.components.iter() {
             write!(f, "/")?;
-            if let Some(ns) = ns {
-                write!(f, "{{{}}}{}", ns, name)?;
+            if let Some(ns) = component.namespace {
+                if let Some(index) = component.index {
+                    write!(f, "{{{}}}{}[{}]", ns, component.tagname, index)?;
+                } else {
+                    write!(f, "{{{}}}{}", ns, component.tagname)?;
+                }
             } else {
-                write!(f, "{}", name)?;
+                if let Some(index) = component.index {
+                    write!(f, "{}[{}]", component.tagname, index)?;
+                } else {
+                    write!(f, "{}", component.tagname)?;
+                }
             }
         }
         Ok(())
     }
 }
 
-impl<'a, 'b> From<Node<'a, 'b>> for NodePath<'a, 'b> {
-    fn from(node: Node<'a, 'b>) -> Self {
-        let mut components = VecDeque::new();
-        for ancestor in node.ancestors() {
-            if ancestor.tag_name().name() != "" {
-                components
-                    .push_front((ancestor.tag_name().namespace(), ancestor.tag_name().name()));
+impl<'a,'b> NodePath<'a,'b> {
+    fn add(&mut self, node: &Node<'a,'b>, index: Option<usize>) {
+        if node.tag_name().name() != "" {
+            self.components.push(
+                NodePathComponent {
+                    namespace: node.tag_name().namespace(),
+                    tagname: node.tag_name().name(),
+                    index,
+                }
+            )
+        }
+    }
+
+    fn format_as_xpath(&self, prefixes: &HashMap<String, String>) -> String {
+        let mut out = String::new();
+        for component in self.components.iter() {
+            out.push('/');
+            if let Some(ns) = component.namespace {
+                if let Some(prefix) = prefixes.get(ns) {
+                    if let Some(index) = component.index {
+                        out += &format!("{}:{}[{}]", prefix, component.tagname, index);
+                    } else {
+                        out += &format!("{}:{}", prefix, component.tagname);
+                    }
+                } else {
+                    eprintln!("STAM fromxml WARNING: format_as_xpath: namespace {} not defined, no prefix found!", ns);
+                    if let Some(index) = component.index {
+                        out += &format!("{}[{}]", component.tagname, index);
+                    } else {
+                        out += &format!("{}", component.tagname);
+                    }
+                }
+            } else {
+                if let Some(index) = component.index {
+                    out += &format!("{}[{}]", component.tagname, index);
+                } else {
+                    out += &format!("{}", component.tagname);
+                }
             }
         }
-        Self { components }
+        out
     }
 }
+
+
+/// Counts elder siblings, used to determine index values
+#[derive(Default,Debug)]
+struct SiblingCounter {
+    map: HashMap<String,usize>,
+}
+
+impl SiblingCounter {
+    fn count<'a,'b>(&mut self, node: &Node<'a,'b>) -> usize {
+        let s = format!("{:?}", node.tag_name());
+        *self.map.entry(s).and_modify(|c| {*c += 1;}).or_insert(1)
+    }
+}
+
+
 
 /// Translate an XML file to STAM, given a particular configuration
 pub fn from_xml<'a>(
@@ -595,8 +669,10 @@ pub fn from_xml<'a>(
     );
 
     // extract text (first pass)
+    let mut path = NodePath::default();
+    path.add(&doc.root_element(), None);
     converter
-        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()), 0)
+        .extract_element_text(doc.root_element(), &path, converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()), 0)
         .map_err(|e| {
             format!(
                 "Error extracting element text from {}: {}",
@@ -620,7 +696,7 @@ pub fn from_xml<'a>(
 
     // extract annotations (second pass)
     converter
-        .extract_element_annotation(doc.root_element(),  Some(&filename.to_string_lossy()),0,  store)
+        .extract_element_annotation(doc.root_element(), &path,  Some(&filename.to_string_lossy()),0,  store)
         .map_err(|e| {
             format!(
                 "Error extracting element annotation from {}: {}",
@@ -690,9 +766,11 @@ pub fn from_multi_xml<'a>(
         .map_err(|e| format!("Error compiling templates: {}", e))?;
 
     for (i, (doc, filename)) in docs.iter().zip(filenames.iter()).enumerate() {
+        let mut path = NodePath::default();
+        path.add(&doc.root_element(), None);
         // extract text (first pass)
         converter
-            .extract_element_text(doc.root_element(), converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()), i)
+            .extract_element_text(doc.root_element(), &path, converter.config.whitespace, Some(textoutfilename.as_str()), Some(&filename.to_string_lossy()), i)
             .map_err(|e| {
                 format!(
                     "Error extracting element text from {}: {}",
@@ -718,8 +796,10 @@ pub fn from_multi_xml<'a>(
 
     // extract annotations (second pass)
     for (i,(doc, filename)) in docs.iter().zip(filenames.iter()).enumerate() {
+        let mut path = NodePath::default();
+        path.add(&doc.root_element(), None);
         converter
-            .extract_element_annotation(doc.root_element(), Some(&filename.to_string_lossy()),i,  store)
+            .extract_element_annotation(doc.root_element(), &path, Some(&filename.to_string_lossy()),i,  store)
             .map_err(|e| {
                 format!(
                     "Error extracting element annotation from {}: {}",
@@ -758,9 +838,11 @@ pub fn from_xml_in_memory<'a>(
         .compile()
         .map_err(|e| format!("Error compiling templates: {}", e))?;
 
+    let mut path = NodePath::default();
+    path.add(&doc.root_element(), None);
     // extract text (first pass)
     converter
-        .extract_element_text(doc.root_element(), converter.config.whitespace, Some(resource_id), Some(resource_id), 0)
+        .extract_element_text(doc.root_element(), &path, converter.config.whitespace, Some(resource_id), Some(resource_id), 0)
         .map_err(|e| {
             format!(
                 "Error extracting element text from {}: {}",
@@ -783,7 +865,7 @@ pub fn from_xml_in_memory<'a>(
 
     // extract annotations (second pass)
     converter
-        .extract_element_annotation(doc.root_element(), Some(resource_id), 0, store)
+        .extract_element_annotation(doc.root_element(), &path, Some(resource_id), 0, store)
         .map_err(|e| {
             format!(
                 "Error extracting element annotation from {}: {}",
@@ -1045,16 +1127,16 @@ impl<'a> XmlToStamConverter<'a> {
     /// from an XML document, according to the
     /// mapping configuration and creates a STAM TextResource for it.
     /// Records exact offsets per element/node for later use during annotation extraction.
-    fn extract_element_text(
+    fn extract_element_text<'b>(
         &mut self,
-        node: Node,
+        node: Node<'a,'b>,
+        path: &NodePath<'a,'b>,
         whitespace: XmlWhitespaceHandling,
         resource_id: Option<&str>,
         inputfile: Option<&str>,
         doc_num: usize,
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
-            let path: NodePath = node.into();
             eprintln!("[STAM fromxml]{} extracting text for element {}", self.debugindent, path);
         }
         let mut begin = self.cursor; //current character pos marks the begin
@@ -1063,8 +1145,10 @@ impl<'a> XmlToStamConverter<'a> {
         let mut end_bytediscount = 0;
         let mut firsttext = true; //tracks whether we have already outputted some text, needed for whitespace handling
 
+        let mut elder_siblings = SiblingCounter::default();
+
         // obtain the configuration that applies to this element
-        if let Some(element_config) = self.config.element_config(node) {
+        if let Some(element_config) = self.config.element_config(node, path) {
             if self.config.debug {
                 eprintln!("[STAM fromxml]{} matching config: {:?}", self.debugindent, element_config);
             }
@@ -1214,7 +1298,10 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                         self.debugindent.push_str("  ");
                         // recursion step, process child element, pass our whitespace handling mode since it may inherit it
-                        self.extract_element_text(child, whitespace, resource_id, inputfile, doc_num)?;
+                        let mut path = path.clone();
+                        let count = elder_siblings.count(&child);
+                        path.add(&child, Some(count));
+                        self.extract_element_text(child, &path, whitespace, resource_id, inputfile, doc_num)?;
                         self.debugindent.pop();
                         self.debugindent.pop();
                     } else {
@@ -1278,7 +1365,7 @@ impl<'a> XmlToStamConverter<'a> {
             eprintln!(
                 "[STAM fromxml]{} WARNING: no match, skipping text extraction for element {}",
                 self.debugindent,
-                NodePath::from(node)
+                path
             );
         }
 
@@ -1288,7 +1375,6 @@ impl<'a> XmlToStamConverter<'a> {
         if begin <= (self.cursor - end_discount) {
             let offset = Offset::simple(begin, self.cursor - end_discount);
             if self.config.debug {
-                let path: NodePath = node.into();
                 eprintln!(
                     "[STAM fromxml]{} extracted text for {} @{:?}: {:?}",
                     self.debugindent,
@@ -1308,19 +1394,22 @@ impl<'a> XmlToStamConverter<'a> {
     /// according to the mapping configuration and creates a STAM TextResource for it.
     /// The text, for the full document, must have already been extracted earlier with [`extract_element_text()`].
     /// This relies on the exact offsets per element/node computed earlier during text extraction (`positionmap`).
-    fn extract_element_annotation(
+    fn extract_element_annotation<'b>(
         &mut self,
-        node: Node,
+        node: Node<'a,'b>,
+        path: &NodePath<'a,'b>,
         inputfile: Option<&str>,
         doc_num: usize,
         store: &mut AnnotationStore,
     ) -> Result<(), XmlConversionError> {
         if self.config.debug {
-            let path: NodePath = node.into();
             eprintln!("[STAM fromxml]{} extracting annotation from {}", self.debugindent, path);
         }
+
+        let mut elder_siblings = SiblingCounter::default();
+
         // obtain the configuration that applies to this element
-        if let Some(element_config) = self.config.element_config(node) {
+        if let Some(element_config) = self.config.element_config(node, &path) {
             if self.config.debug {
                 eprintln!("[STAM fromxml]{} matching config: {:?}", self.debugindent, element_config);
             }
@@ -1473,6 +1562,29 @@ impl<'a> XmlToStamConverter<'a> {
                     builder = builder.with_data_builder(databuilder);
                 }
 
+                if self.config.provenance  && inputfile.is_some() {
+                    let path_string = if let Some(id) = node.attribute((NS_XML,"id")) {
+                        //node has an ID, use that
+                        format!("//{}[@xml:id=\"{}\"]", self.get_node_name_for_xpath(&node), id)
+                    } else {
+                        //no ID, use full XPath expression
+                        path.format_as_xpath(&self.prefixes)
+                    };
+                    let databuilder = AnnotationDataBuilder::new().with_dataset(CONTEXT_ANNO.into()).with_key("target".into()).with_value(
+                        BTreeMap::from([
+                            ("source".to_string(),inputfile.unwrap().into()),
+                            ("selector".to_string(), 
+                                    BTreeMap::from([
+                                        ("type".to_string(),"XPathSelector".into()),
+                                        ("value".to_string(),path_string.into())
+                                    ]).into()
+                            )
+                        ]).into()
+                    );
+                    builder = builder.with_data_builder(databuilder);
+                }
+
+
                 // Finish the builder and add the actual annotation to the store, according to its element handling
                 match element_config.annotation {
                     XmlAnnotationHandling::TextSelector => {
@@ -1522,7 +1634,11 @@ impl<'a> XmlToStamConverter<'a> {
                 for child in node.children() {
                     if child.is_element() {
                         self.debugindent.push_str("  ");
-                        self.extract_element_annotation(child,  inputfile, doc_num, store)?;
+                        let mut path = path.clone();
+                        let count = elder_siblings.count(&child);
+                        path.add(&child, Some(count));
+                        //eprintln!("DEBUG: count={}, child={:?}, parent={:?}, elder_siblings={:?}", count, child.tag_name(), node.tag_name(), elder_siblings);
+                        self.extract_element_annotation(child, &path, inputfile, doc_num, store)?;
                         self.debugindent.pop();
                         self.debugindent.pop();
                     }
@@ -1532,7 +1648,7 @@ impl<'a> XmlToStamConverter<'a> {
             eprintln!(
                 "[STAM fromxml]{} WARNING: no match, skipping annotation extraction for element {}",
                 self.debugindent,
-                NodePath::from(node)
+                path
             );
         }
         Ok(())
@@ -1653,10 +1769,8 @@ impl<'a> XmlToStamConverter<'a> {
             None
         };
         context.insert("localname".into(), node.tag_name().name().into());
-        if let Some(name) = self.get_node_name(node) {
-            //name with namespace prefix (if any)
-            context.insert("name".into(), name.into());
-        }
+        //name with name prefix (if any)
+        context.insert("name".into(), self.get_node_name_for_template(node).into());
         if let Some(namespace) = node.tag_name().namespace() {
             //the full namespace
             context.insert("namespace".into(), namespace.into());
@@ -1807,19 +1921,34 @@ impl<'a> XmlToStamConverter<'a> {
         return Some((path, recursive_text(node).into()));
     }
 
-    fn get_node_name<'b>(&self, node: &'b Node) -> Option<Cow<'b,str>> {
+    fn get_node_name_for_template<'b>(&self, node: &'b Node) -> Cow<'b,str> {
         let extended_name = node.tag_name();
         match (extended_name.namespace(), extended_name.name()) {
             (Some(namespace), tagname) => {
                 if let Some(prefix) = self.prefixes.get(namespace) {
-                    Some(Cow::Owned(format!("{}__{}", prefix, tagname)))
+                    Cow::Owned(format!("{}__{}", prefix, tagname))
                 } else {
-                    Some(Cow::Borrowed(tagname))
+                    Cow::Borrowed(tagname)
                 }
             }
-            (None, tagname) => Some(Cow::Borrowed(tagname)),
+            (None, tagname) => Cow::Borrowed(tagname),
         }
     }
+
+    fn get_node_name_for_xpath<'b>(&self, node: &'b Node) -> Cow<'b,str> {
+        let extended_name = node.tag_name();
+        match (extended_name.namespace(), extended_name.name()) {
+            (Some(namespace), tagname) => {
+                if let Some(prefix) = self.prefixes.get(namespace) {
+                    Cow::Owned(format!("{}:{}", prefix, tagname))
+                } else {
+                    Cow::Borrowed(tagname)
+                }
+            }
+            (None, tagname) => Cow::Borrowed(tagname),
+        }
+    }
+
 
     fn precompile(&mut self, template: &'a str) -> Cow<'a,str> {
         let mut replacement = String::new();

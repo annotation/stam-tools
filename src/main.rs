@@ -1,27 +1,29 @@
-use clap::{App, Arg, ArgAction, ArgMatches, SubCommand}; 
-use stam::{AnnotationStore, AssociatedFile, Config, WebAnnoConfig, TransposeConfig, TextResourceBuilder};
+use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
+use stam::{
+    AnnotationStore, AssociatedFile, Config, TextResourceBuilder, TransposeConfig, WebAnnoConfig,
+};
+use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fs;
+use std::io::{self, BufRead, Read, Write};
 use std::path::Path;
 use std::process::exit;
-use std::collections::VecDeque;
-use std::io::{self, BufRead, Read, Write};
-use std::borrow::Cow;
 
-use stamtools::*;
 use stamtools::align::*;
-use stamtools::view::*;
+use stamtools::annotate::*;
 use stamtools::grep::*;
-use stamtools::tsv::*;
+use stamtools::info::*;
+use stamtools::print::*;
 use stamtools::query::*;
+use stamtools::split::*;
 use stamtools::tag::*;
 use stamtools::to_text::*;
-use stamtools::validate::*;
-use stamtools::info::*;
-use stamtools::annotate::*;
 use stamtools::transpose::*;
+use stamtools::tsv::*;
+use stamtools::validate::*;
+use stamtools::view::*;
 use stamtools::xml::*;
-use stamtools::split::*;
-use stamtools::print::*;
+use stamtools::*;
 
 use stam::Offset;
 
@@ -44,11 +46,27 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
-
 const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. You may also provide *.txt files to be added to the store automatically.";
 const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set. You may also provide *.txt files to be added to the store automatically.";
 const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an annotation store in STAM JSON or STAM CSV. If the file exists, it will be loaded and augmented. Multiple store files are allowed but will only act as input and will be merged into one. (the *first* file mentioned).  If  --dry-run or --output is set, this will not be used for output.";
-const SUBCOMMANDS: [&'static str; 16] = ["batch","info","export","query","import","print","view","validate","init","annotate","tag","grep","align","transpose","fromxml","split"];
+const SUBCOMMANDS: [&'static str; 16] = [
+    "batch",
+    "info",
+    "export",
+    "query",
+    "import",
+    "print",
+    "view",
+    "validate",
+    "init",
+    "annotate",
+    "tag",
+    "grep",
+    "align",
+    "transpose",
+    "fromxml",
+    "split",
+];
 
 fn store_arguments<'a>(input_required: bool, outputs: bool, batchmode: bool) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -75,23 +93,20 @@ fn store_arguments<'a>(input_required: bool, outputs: bool, batchmode: bool) -> 
         }
         args.push(
             Arg::with_name("annotationstore")
-                .help(
-                    if !input_required && outputs {
-                        HELP_OUTPUT_OPTIONAL_INPUT
-                    } else if outputs {
-                        HELP_INPUT_OUTPUT
-                    } else {
-                        HELP_INPUT
-                    }
-                )
+                .help(if !input_required && outputs {
+                    HELP_OUTPUT_OPTIONAL_INPUT
+                } else if outputs {
+                    HELP_INPUT_OUTPUT
+                } else {
+                    HELP_INPUT
+                })
                 .takes_value(true)
                 .multiple(true)
-                .required(input_required)
+                .required(input_required),
         );
     }
     args
 }
-
 
 fn config_arguments<'a>() -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
@@ -169,7 +184,14 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("add-context")
             .long("add-context")
-            .help("(for Web Annotation output only) URL to a JSONLD context to include")
+            .help("(for Web Annotation output only) URL to a JSON-LD context to include. STAM Datasets with this ID will have their datakeys translated as-is (as aliases), leaving it up to the JSON-LD context to be interpreted.")
+            .takes_value(true)
+            .action(ArgAction::Append),
+    );
+    args.push(
+        Arg::with_name("no-auto-context")
+            .long("no-auto-context")
+            .help("(for Web Annotation output only) Do not automatically add STAM datasets ending in `.jsonld` or `.json` to the `--add-context` list")
             .takes_value(true)
             .action(ArgAction::Append),
     );
@@ -662,6 +684,11 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true),
     );
     args.push(
+        Arg::with_name("provenance")
+            .long("provenance")
+            .help("Add provenance information by pointing back to the XML source files using W3C Web Annotation's XPathSelector"),
+    );
+    args.push(
         Arg::with_name("id-prefix")
             .long("id-prefix")
             .takes_value(true)
@@ -685,7 +712,7 @@ fn validation_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("make")
             .long("make")
-            .help("Compute text validation information, allowing the model to be validated later.")
+            .help("Compute text validation information, allowing the model to be validated later."),
     );
     args.push(
         Arg::with_name("allow-incomplete")
@@ -700,12 +727,12 @@ fn split_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("keep")
             .long("keep")
-            .help("Queries will be interpreted as items to retain, others will be deleted")
+            .help("Queries will be interpreted as items to retain, others will be deleted"),
     );
     args.push(
         Arg::with_name("remove")
             .long("remove")
-            .help("Queries will be interpreted as items to delete, others will be retained")
+            .help("Queries will be interpreted as items to delete, others will be retained"),
     );
     args.push(
         Arg::with_name("resource")
@@ -726,9 +753,7 @@ fn split_arguments<'a>() -> Vec<clap::Arg<'a>> {
 
 fn store_exists(args: &ArgMatches) -> bool {
     if args.is_present("annotationstore") {
-        for filename in args
-            .values_of("annotationstore").unwrap()
-         {
+        for filename in args.values_of("annotationstore").unwrap() {
             return Path::new(filename).exists();
         }
         false
@@ -739,22 +764,28 @@ fn store_exists(args: &ArgMatches) -> bool {
 
 fn load_store(args: &ArgMatches) -> AnnotationStore {
     let mut store: AnnotationStore = AnnotationStore::new(config_from_args(args));
-    for (i,filename) in args
+    for (i, filename) in args
         .values_of("annotationstore")
-        .expect("an annotation store must be provided").into_iter().enumerate() {
+        .expect("an annotation store must be provided")
+        .into_iter()
+        .enumerate()
+    {
         if filename.to_lowercase().ends_with(".txt") || filename.to_lowercase().ends_with(".md") {
             //we got a plain text file, add it to the store
-            store.add_resource(TextResourceBuilder::new().with_filename(filename)).unwrap_or_else(|err| {
-                eprintln!("error loading text: {}", err);
-                exit(1);
-            });
-        } else if i == 0 {
-            //first file
-            store =
-                AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(|err| {
-                    eprintln!("error loading annotation store: {}", err);
+            store
+                .add_resource(TextResourceBuilder::new().with_filename(filename))
+                .unwrap_or_else(|err| {
+                    eprintln!("error loading text: {}", err);
                     exit(1);
                 });
+        } else if i == 0 {
+            //first file
+            store = AnnotationStore::from_file(filename, config_from_args(args)).unwrap_or_else(
+                |err| {
+                    eprintln!("error loading annotation store: {}", err);
+                    exit(1);
+                },
+            );
         } else if !filename.ends_with(".json") {
             eprintln!("When loading multiple annotation store, the other ones must be in STAM JSON format (CSV and CBOR not supported)");
             exit(1);
@@ -1067,9 +1098,12 @@ fn main() {
     }
     let args = args.unwrap();
 
-
-    let mut store = if rootargs.subcommand_matches("import").is_some() || rootargs.subcommand_matches("init").is_some() || rootargs.subcommand_matches("fromxml").is_some() {
-        let force_new = !args.is_present("outputstore") && (args.is_present("force-new") || rootargs.subcommand_matches("init").is_some());
+    let mut store = if rootargs.subcommand_matches("import").is_some()
+        || rootargs.subcommand_matches("init").is_some()
+        || rootargs.subcommand_matches("fromxml").is_some()
+    {
+        let force_new = !args.is_present("outputstore")
+            && (args.is_present("force-new") || rootargs.subcommand_matches("init").is_some());
         if !force_new && store_exists(args) {
             eprintln!("Existing annotation store found, loading");
             load_store(args)
@@ -1102,7 +1136,7 @@ fn main() {
             changed = newchanged;
         }
         Err(err) => {
-            eprintln!("[error] {}",&err);
+            eprintln!("[error] {}", &err);
             exit(1);
         }
     }
@@ -1122,7 +1156,7 @@ fn main() {
     }
 }
 
-#[derive(Clone,Copy,PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum BatchOutput<'a> {
     Stdout,
     WriteToFile(&'a str),
@@ -1143,7 +1177,8 @@ fn parse_batch_line(line: &str) -> (Vec<Cow<str>>, BatchOutput) {
                 begin = i + 1;
             } else {
                 if line[begin..i].find("\\\"").is_some() {
-                    fields.push(Cow::Owned(line[begin..i].replace("\\\"","\""))); //unescape embedded contents
+                    fields.push(Cow::Owned(line[begin..i].replace("\\\"", "\"")));
+                //unescape embedded contents
                 } else {
                     fields.push(Cow::Borrowed(&line[begin..i]));
                 }
@@ -1158,9 +1193,9 @@ fn parse_batch_line(line: &str) -> (Vec<Cow<str>>, BatchOutput) {
                 begin = i + 1;
             } else if c == '>' {
                 if line[i..].starts_with(">>") {
-                    output = BatchOutput::AppendToFile(&line[i+2..].trim());
+                    output = BatchOutput::AppendToFile(&line[i + 2..].trim());
                 } else {
-                    output = BatchOutput::WriteToFile(&line[i+1..].trim());
+                    output = BatchOutput::WriteToFile(&line[i + 1..].trim());
                 }
                 break;
             }
@@ -1170,7 +1205,12 @@ fn parse_batch_line(line: &str) -> (Vec<Cow<str>>, BatchOutput) {
     (fields, output)
 }
 
-fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMatches, batchmode: bool) -> Result<bool,String> {
+fn run<W: Write>(
+    store: &mut AnnotationStore,
+    writer: &mut W,
+    rootargs: &ArgMatches,
+    batchmode: bool,
+) -> Result<bool, String> {
     let mut args: Option<&ArgMatches> = None;
     let mut changed = false;
     for subcommand in SUBCOMMANDS.iter() {
@@ -1194,7 +1234,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         loop {
             seqnr += 1;
             //prompt
-            eprint!("stam[{}{}]> ", seqnr, if changed { "*" } else { ""} );
+            eprint!("stam[{}{}]> ", seqnr, if changed { "*" } else { "" });
             match io::stdin().lock().read_line(&mut line) {
                 Ok(0) => break,
                 Ok(_) => {
@@ -1212,15 +1252,21 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                     let (fields, output) = parse_batch_line(&line);
                     let batchapp = app(true);
                     match batchapp.try_get_matches_from(fields.iter().map(|s| s.as_ref())) {
-                        Ok(batchargs) =>{  
+                        Ok(batchargs) => {
                             let result = match output {
-                                BatchOutput::Stdout => run(store, &mut io::stdout(), &batchargs, true),
+                                BatchOutput::Stdout => {
+                                    run(store, &mut io::stdout(), &batchargs, true)
+                                }
                                 BatchOutput::WriteToFile(filename) => {
-                                    let mut f = fs::File::create(filename).map_err(|err| { format!("{}", err) })?;
+                                    let mut f = fs::File::create(filename)
+                                        .map_err(|err| format!("{}", err))?;
                                     run(store, &mut f, &batchargs, true)
                                 }
                                 BatchOutput::AppendToFile(filename) => {
-                                    let mut f = fs::File::options().append(true).open(filename).map_err(|err| { format!("{}", err) })?;
+                                    let mut f = fs::File::options()
+                                        .append(true)
+                                        .open(filename)
+                                        .map_err(|err| format!("{}", err))?;
                                     run(store, &mut f, &batchargs, true)
                                 }
                             };
@@ -1229,21 +1275,21 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                                     changed = changed || newchanged;
                                 }
                                 Err(err) => {
-                                    eprintln!("[error] {}",&err);
+                                    eprintln!("[error] {}", &err);
                                 }
                             }
                         }
                         Err(err) => {
-                            eprintln!("[syntax error] {}",&err);
+                            eprintln!("[syntax error] {}", &err);
                         }
                     }
                 }
                 Err(err) => {
                     if !is_tty {
                         //non-interactive: copy input
-                        eprintln!("{}",line);
+                        eprintln!("{}", line);
                     }
-                    eprintln!("{}",err);
+                    eprintln!("{}", err);
                 }
             }
             line.clear();
@@ -1258,9 +1304,10 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         let mut querystring_buffer = String::new();
         let querystring = if let Some(filename) = args.value_of("query-file") {
             if filename == "-" {
-                io::stdin().lock().read_to_string(&mut querystring_buffer).map_err(|err| {
-                    format!("Unable to read query from standard input: {}", err)
-                })?;
+                io::stdin()
+                    .lock()
+                    .read_to_string(&mut querystring_buffer)
+                    .map_err(|err| format!("Unable to read query from standard input: {}", err))?;
             } else {
                 querystring_buffer = fs::read_to_string(filename).map_err(|err| {
                     format!("Unable to read query from file {}: {}", filename, err)
@@ -1290,15 +1337,15 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                     }
                 }
             },
-        )};
-        let (query, _) = stam::Query::parse(querystring).map_err(|err| {
-            format!("{}", err)
-        })?;
+        )
+        };
+        let (query, _) = stam::Query::parse(querystring).map_err(|err| format!("{}", err))?;
 
         let resulttype = query.resulttype().expect("Query has no result type");
 
         if args.is_present("alignments") {
-            alignments_tsv_out(&store, query, args.value_of("use")).map_err(|err| format!("{}",err))?;
+            alignments_tsv_out(&store, query, args.value_of("use"))
+                .map_err(|err| format!("{}", err))?;
         } else if args.value_of("format") == Some("tsv") {
             let columns: Vec<&str> = if let Some(columns) = args.value_of("columns") {
                 columns.split(",").collect()
@@ -1343,12 +1390,48 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 !args.is_present("no-header"),
                 args.value_of("setdelimiter").unwrap(),
                 !args.is_present("strict-columns"),
-            ).map_err(|err| format!("{}",err))?;
+            )
+            .map_err(|err| format!("{}", err))?;
         } else if let Some("json") = args.value_of("format") {
-            to_json(&store, writer, query).map_err(|err| format!("{}",err))?;
+            to_json(&store, writer, query).map_err(|err| format!("{}", err))?;
         } else if let Some("txt") = args.value_of("format") {
-            to_text(&store, writer, query, args.value_of("use")).map_err(|err| format!("{}",err))?;
+            to_text(&store, writer, query, args.value_of("use"))
+                .map_err(|err| format!("{}", err))?;
         } else if let Some("webanno") | Some("w3anno") | Some("jsonl") = args.value_of("format") {
+            let mut w3annoconfig = WebAnnoConfig {
+                default_annotation_iri: args.value_of("annotation-prefix").unwrap().to_string(),
+                default_set_iri: args.value_of("dataset-prefix").unwrap().to_string(),
+                default_resource_iri: args.value_of("resource-prefix").unwrap().to_string(),
+                auto_generated: !args.is_present("no-generated"),
+                auto_generator: !args.is_present("no-generator"),
+                extra_context: args
+                    .values_of("add-context")
+                    .unwrap_or(clap::Values::default())
+                    .map(|x| x.to_string())
+                    .collect(),
+                extra_target_template: args
+                    .get_one("extra-target-template")
+                    .map(|s: &String| s.to_string()),
+                context_namespaces: {
+                    let mut namespaces = Vec::new();
+                    for assignment in args
+                        .values_of("namespaces")
+                        .unwrap_or(clap::Values::default())
+                    {
+                        let result: Vec<_> = assignment.splitn(2, ":").collect();
+                        if result.len() != 2 {
+                            return Err(format!("Syntax for --ns should be `ns: uri_prefix`"));
+                        }
+                        namespaces
+                            .push((result[1].trim().to_string(), result[0].trim().to_string()));
+                    }
+                    namespaces
+                },
+                ..WebAnnoConfig::default()
+            };
+            if !args.is_present("no-auto-context") {
+                w3annoconfig = w3annoconfig.auto_extra_context(store);
+            }
             to_w3anno(
                 &store,
                 writer,
@@ -1360,30 +1443,12 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                         return Err(format!("Web Annotation output only supports queries with result type ANNOTATION or TEXT"));
                     }
                 }),
-                WebAnnoConfig {
-                    default_annotation_iri: args.value_of("annotation-prefix").unwrap().to_string(),
-                    default_set_iri: args.value_of("dataset-prefix").unwrap().to_string(),
-                    default_resource_iri: args.value_of("resource-prefix").unwrap().to_string(),
-                    auto_generated: !args.is_present("no-generated"),
-                    auto_generator: !args.is_present("no-generator"),
-                    extra_context: args.values_of("add-context").unwrap_or(clap::Values::default()).map(|x| x.to_string()).collect(),
-                    extra_target_template: args.get_one("extra-target-template").map(|s: &String| s.to_string()),
-                    context_namespaces: { 
-                        let mut namespaces = Vec::new(); 
-                        for assignment in args.values_of("namespaces").unwrap_or(clap::Values::default()) {
-                            let result: Vec<_> = assignment.splitn(2,":").collect();
-                            if result.len() != 2 {
-                                return Err(format!("Syntax for --ns should be `ns: uri_prefix`"));
-                            }
-                            namespaces.push((result[1].trim().to_string(), result[0].trim().to_string()));
-                        }
-                        namespaces
-                    },
-                    ..WebAnnoConfig::default()
-                },
+                w3annoconfig
             );
         } else {
-            return Err(format!("Invalid output format, specify 'tsv', 'json', 'txt' or 'w3anno'"));
+            return Err(format!(
+                "Invalid output format, specify 'tsv', 'json', 'txt' or 'w3anno'"
+            ));
         }
     } else if rootargs.subcommand_matches("import").is_some() {
         let inputfiles = args.values_of("inputfile").unwrap().collect::<Vec<&str>>();
@@ -1420,11 +1485,8 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 args.value_of("outputdelimiter").unwrap(),
                 args.value_of("outputdelimiter2").unwrap(),
                 Some(!args.is_present("no-header")),
-                ValidationMode::try_from(args.value_of("validate").unwrap()).map_err(
-                    |err| {
-                        format!("{}", err)
-                    },
-                )?,
+                ValidationMode::try_from(args.value_of("validate").unwrap())
+                    .map_err(|err| format!("{}", err))?,
                 args.is_present("verbose"),
             )?;
         }
@@ -1435,9 +1497,10 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         let mut querystring_buffer = String::new();
         if let Some(queryfile) = args.value_of("query-file") {
             if queryfile == "-" {
-                io::stdin().lock().read_to_string(&mut querystring_buffer).map_err(|err| {
-                    format!("Unable to read query from standard input: {}", err)
-                })?;
+                io::stdin()
+                    .lock()
+                    .read_to_string(&mut querystring_buffer)
+                    .map_err(|err| format!("Unable to read query from standard input: {}", err))?;
             } else {
                 querystring_buffer = fs::read_to_string(queryfile).map_err(|err| {
                     format!("Unable to read query from file {}: {}", queryfile, err)
@@ -1449,10 +1512,10 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             querystring = querystring_buffer.as_str();
         } else if querystring.trim().ends_with("}") {
             if queries_iter.next().is_some() {
-                return Err(format!("You can't supply multiple --query parameters on the command line if the first query already contains subqueries (use either one or the other)"))
+                return Err(format!("You can't supply multiple --query parameters on the command line if the first query already contains subqueries (use either one or the other)"));
             }
         } else {
-            for (i, subquerystring) in queries_iter.enumerate(){
+            for (i, subquerystring) in queries_iter.enumerate() {
                 if i == 0 {
                     querystring_buffer += " { ";
                 } else {
@@ -1467,14 +1530,18 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             }
         }
 
-        let (query, _) = stam::Query::parse(querystring).map_err(|err| {
-            format!("Query syntax error in first query: {}", err)
-        })?;
+        let (query, _) = stam::Query::parse(querystring)
+            .map_err(|err| format!("Query syntax error in first query: {}", err))?;
 
         match args.value_of("format") {
             Some("html") => {
-                let htmlwriter = HtmlWriter::new(&store, query, args.value_of("use"))?.with_autocollapse(args.is_present("collapse")).with_legend(!args.is_present("no-legend")).with_titles(!args.is_present("no-titles")).with_annotation_ids(args.is_present("verbose"));
-                write!(writer, "{}", htmlwriter).map_err(|e| format!("Failed to write HTML output: {}", e))?;
+                let htmlwriter = HtmlWriter::new(&store, query, args.value_of("use"))?
+                    .with_autocollapse(args.is_present("collapse"))
+                    .with_legend(!args.is_present("no-legend"))
+                    .with_titles(!args.is_present("no-titles"))
+                    .with_annotation_ids(args.is_present("verbose"));
+                write!(writer, "{}", htmlwriter)
+                    .map_err(|e| format!("Failed to write HTML output: {}", e))?;
             }
             Some("ansi") => {
                 let mut ansiwriter = AnsiWriter::new(&store, query, args.value_of("use"))?;
@@ -1484,7 +1551,9 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 if args.is_present("no-titles") {
                     ansiwriter = ansiwriter.with_titles(false)
                 }
-                ansiwriter.write(writer).map_err(|e| format!("Failed to write ANSI output: {}", e))?;
+                ansiwriter
+                    .write(writer)
+                    .map_err(|e| format!("Failed to write ANSI output: {}", e))?;
             }
             Some(s) => {
                 eprintln!("[error] Unknown output format: {}", s);
@@ -1493,10 +1562,16 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         }
     } else if rootargs.subcommand_matches("validate").is_some() {
         if args.is_present("make") {
-            store.protect_text(stam::TextValidationMode::Auto).map_err(|e| format!("Failed to generate validation information: {}", e))?;
+            store
+                .protect_text(stam::TextValidationMode::Auto)
+                .map_err(|e| format!("Failed to generate validation information: {}", e))?;
             changed = true;
         } else {
-            validate(&store, args.is_present("verbose"), args.is_present("allow-incomplete"))?;
+            validate(
+                &store,
+                args.is_present("verbose"),
+                args.is_present("allow-incomplete"),
+            )?;
         }
     } else if rootargs.subcommand_matches("init").is_some()
         || rootargs.subcommand_matches("annotate").is_some()
@@ -1519,30 +1594,26 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 "Adding to"
             } else {
                 "Initializing"
-            }, 
+            },
             annotationfiles.len(),
             resourcefiles.len(),
             setfiles.len(),
         );
-        annotate(
-            store,
-            &resourcefiles,
-            &setfiles,
-            &annotationfiles,
-        )?;
+        annotate(store, &resourcefiles, &setfiles, &annotationfiles)?;
         changed = true;
 
         if args.is_present("query") {
             let querystring = args.value_of("query").into_iter().next().unwrap();
-            let (query, _) = stam::Query::parse(querystring).map_err(|err| {
-                format!("{}", err)
-            })?;
-            store.query_mut(query).map_err(|err| {
-                format!("{}", err)
-            })?;
+            let (query, _) = stam::Query::parse(querystring).map_err(|err| format!("{}", err))?;
+            store.query_mut(query).map_err(|err| format!("{}", err))?;
         }
 
-        eprintln!("  total: {} annotation(s), {} resource(s), {} annotationset(s)", store.annotations_len(), store.resources_len(), store.datasets_len());
+        eprintln!(
+            "  total: {} annotation(s), {} resource(s), {} annotationset(s)",
+            store.annotations_len(),
+            store.resources_len(),
+            store.datasets_len()
+        );
     } else if rootargs.subcommand_matches("tag").is_some() {
         //load the store
         tag(
@@ -1562,17 +1633,29 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         )?;
     } else if rootargs.subcommand_matches("align").is_some() {
         //load the store
-        let mut querystrings: Vec<_> = args.values_of("query").unwrap_or_default().map(|x| x.to_string()).collect();
-        querystrings.extend( args.values_of("resource").unwrap_or_default().map(|x| format!("SELECT RESOURCE WHERE ID \"{}\"",x)) );
+        let mut querystrings: Vec<_> = args
+            .values_of("query")
+            .unwrap_or_default()
+            .map(|x| x.to_string())
+            .collect();
+        querystrings.extend(
+            args.values_of("resource")
+                .unwrap_or_default()
+                .map(|x| format!("SELECT RESOURCE WHERE ID \"{}\"", x)),
+        );
 
         let mut queries = VecDeque::new();
         for (i, querystring) in querystrings.iter().enumerate() {
-            queries.push_back(stam::Query::parse(querystring.as_str()).map_err(|err| {
-                format!("Query syntax error query {}: {}", i+1, err)
-            })?.0);
+            queries.push_back(
+                stam::Query::parse(querystring.as_str())
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
         }
         if queries.len() < 2 {
-            return Err(format!("Expected at least two --query (or --resource) parameters"));
+            return Err(format!(
+                "Expected at least two --query (or --resource) parameters"
+            ));
         }
 
         if let Err(err) = align(
@@ -1584,61 +1667,106 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             &AlignmentConfig {
                 case_sensitive: !args.is_present("ignore-case"),
                 algorithm: match args.value_of("algorithm") {
-                    Some("smith_waterman") | Some("local") => AlignmentAlgorithm::SmithWaterman { 
-                        equal: args.value_of("match-score").unwrap().parse().expect("score must be integer"),
-                        align: args.value_of("mismatch-score").unwrap().parse().expect("score must be integer"),
-                        insert: args.value_of("insertion-score").unwrap().parse().expect("score must be integer"),
-                        delete: args.value_of("deletion-score").unwrap().parse().expect("score must be integer")
+                    Some("smith_waterman") | Some("local") => AlignmentAlgorithm::SmithWaterman {
+                        equal: args
+                            .value_of("match-score")
+                            .unwrap()
+                            .parse()
+                            .expect("score must be integer"),
+                        align: args
+                            .value_of("mismatch-score")
+                            .unwrap()
+                            .parse()
+                            .expect("score must be integer"),
+                        insert: args
+                            .value_of("insertion-score")
+                            .unwrap()
+                            .parse()
+                            .expect("score must be integer"),
+                        delete: args
+                            .value_of("deletion-score")
+                            .unwrap()
+                            .parse()
+                            .expect("score must be integer"),
                     },
-                    Some("needleman_wunsch") | Some("global") => AlignmentAlgorithm::NeedlemanWunsch  {
-                        equal: args.value_of("match-score").unwrap().parse().expect("score must be integer"),
-                        align: args.value_of("mismatch-score").unwrap().parse().expect("score must be integer"),
-                        insert: args.value_of("insertion-score").unwrap().parse().expect("score must be integer"),
-                        delete: args.value_of("deletion-score").unwrap().parse().expect("score must be integer")
-                    },
+                    Some("needleman_wunsch") | Some("global") => {
+                        AlignmentAlgorithm::NeedlemanWunsch {
+                            equal: args
+                                .value_of("match-score")
+                                .unwrap()
+                                .parse()
+                                .expect("score must be integer"),
+                            align: args
+                                .value_of("mismatch-score")
+                                .unwrap()
+                                .parse()
+                                .expect("score must be integer"),
+                            insert: args
+                                .value_of("insertion-score")
+                                .unwrap()
+                                .parse()
+                                .expect("score must be integer"),
+                            delete: args
+                                .value_of("deletion-score")
+                                .unwrap()
+                                .parse()
+                                .expect("score must be integer"),
+                        }
+                    }
                     Some(x) => {
                         return Err(format!("[error] Not a valid alignment algorithm: {}, set smith_waterman or needleman_wunsch", x));
                     }
-                    None => unreachable!("No alignment algorithm set")
+                    None => unreachable!("No alignment algorithm set"),
                 },
                 annotation_id_prefix: args.value_of("id-prefix").map(|x| x.to_string()),
                 simple_only: args.is_present("simple-only"),
                 trim: args.is_present("trim"),
                 max_errors: if args.is_present("max-errors") {
-                    Some(args.value_of("max-errors").unwrap().parse().expect("value for --max-errors must be integer (absolute) or float (relative)"))
+                    Some(args.value_of("max-errors").unwrap().parse().expect(
+                        "value for --max-errors must be integer (absolute) or float (relative)",
+                    ))
                 } else {
-                   None
+                    None
                 },
                 minimal_align_length: if args.is_present("minimal-align-length") {
-                   args.value_of("minimal-align-length").unwrap().parse().expect("value for --minimal-align-length must be integer")
+                    args.value_of("minimal-align-length")
+                        .unwrap()
+                        .parse()
+                        .expect("value for --minimal-align-length must be integer")
                 } else {
-                   0
+                    0
                 },
                 grow: args.is_present("grow"),
-                verbose: args.is_present("verbose")
-            }
+                verbose: args.is_present("verbose"),
+            },
         ) {
             return Err(format!("[error] Alignment failed: {:?}", err));
         }
         changed = true;
     } else if rootargs.subcommand_matches("transpose").is_some() {
-        let transposition_querystrings: Vec<_> = args.values_of("transposition").unwrap_or_default().map(|q|
-            if q.find(" ").is_some() {
-                //already a query
-                q.to_string()
-            } else {
-                //probably an ID, transform to query
-                format!("SELECT ANNOTATION WHERE ID \"{}\";", q)
-            }
-        ).collect();
+        let transposition_querystrings: Vec<_> = args
+            .values_of("transposition")
+            .unwrap_or_default()
+            .map(|q| {
+                if q.find(" ").is_some() {
+                    //already a query
+                    q.to_string()
+                } else {
+                    //probably an ID, transform to query
+                    format!("SELECT ANNOTATION WHERE ID \"{}\";", q)
+                }
+            })
+            .collect();
 
         let querystrings: Vec<_> = args.values_of("query").unwrap_or_default().collect();
 
         let mut transposition_queries = Vec::new();
         for (i, querystring) in transposition_querystrings.iter().enumerate() {
-            transposition_queries.push(stam::Query::parse(querystring).map_err(|err| {
-                format!("Query syntax error query {}: {}", i+1, err)
-            })?.0);
+            transposition_queries.push(
+                stam::Query::parse(querystring)
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
         }
         if transposition_queries.len() < 1 {
             return Err(format!("Expected at least one --transposition parameter"));
@@ -1646,9 +1774,11 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
 
         let mut queries = Vec::new();
         for (i, querystring) in querystrings.into_iter().enumerate() {
-            queries.push(stam::Query::parse(querystring).map_err(|err| {
-                format!("Query syntax error query {}: {}", i+1, err)
-            })?.0);
+            queries.push(
+                stam::Query::parse(querystring)
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
         }
         if queries.len() < 1 {
             return Err(format!("Expected at least one --query parameter"));
@@ -1658,7 +1788,7 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             transposition_queries,
             queries,
             args.value_of("use-transposition"),
-            args.value_of("use"), 
+            args.value_of("use"),
             args.value_of("id-prefix").map(|x| x.to_string()),
             stam::IdStrategy::default(),
             args.is_present("ignore-errors"),
@@ -1669,17 +1799,31 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 no_resegmentation: args.is_present("no-resegmentations"),
                 debug: args.is_present("debug") || args.is_present("debug-transpose"),
                 ..Default::default()
-            }) {
+            },
+        ) {
             return Err(format!("Transposition failed: {:?}", err));
         }
         changed = true;
     } else if rootargs.subcommand_matches("fromxml").is_some() {
         let configdata = if let Some(filename) = args.value_of("config") {
-            fs::read_to_string(filename).map_err(|e| format!("Failure reading XML->STAM config file {}: {} ",filename, e))?
+            fs::read_to_string(filename).map_err(|e| {
+                format!("Failure reading XML->STAM config file {}: {} ", filename, e)
+            })?
         } else {
-            return Err(format!("A configuration file that defines the XML->STAM mapping is required"));
+            return Err(format!(
+                "A configuration file that defines the XML->STAM mapping is required"
+            ));
         };
-        let mut config = XmlConversionConfig::from_toml_str(&configdata).map_err(|e| format!("Syntax error in XML->STAM config file {}: {}", args.value_of("config").unwrap(), e))?.with_debug(args.is_present("debug") || args.is_present("debug-xml"));
+        let mut config = XmlConversionConfig::from_toml_str(&configdata)
+            .map_err(|e| {
+                format!(
+                    "Syntax error in XML->STAM config file {}: {}",
+                    args.value_of("config").unwrap(),
+                    e
+                )
+            })?
+            .with_debug(args.is_present("debug") || args.is_present("debug-xml"))
+            .with_provenance(args.is_present("provenance"));
         if let Some(prefix) = args.value_of("id-prefix") {
             config = config.with_id_prefix(prefix);
         }
@@ -1688,7 +1832,10 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
             for filename in args.values_of("inputfile").unwrap().into_iter() {
                 if let Err(e) = from_xml(Path::new(filename), &config, store) {
                     if args.is_present("ignore-errors") {
-                        eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
+                        eprintln!(
+                            "WARNING: Skipped {} (or part thereof) due to errors: {}",
+                            filename, e
+                        )
                     } else {
                         return Err(e);
                     }
@@ -1696,17 +1843,22 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                 has_input = true;
             }
         }
-        if let Some(listfilename) = args.value_of("inputfilelist")  {
+        if let Some(listfilename) = args.value_of("inputfilelist") {
             has_input = true;
-            let listdata = fs::read_to_string(listfilename).map_err(|e| format!("Failure reading file list from {}: {}",listfilename, e))?;
+            let listdata = fs::read_to_string(listfilename)
+                .map_err(|e| format!("Failure reading file list from {}: {}", listfilename, e))?;
             let filenames: Vec<&str> = listdata.split("\n").collect();
             for filename in filenames {
                 if !filename.is_empty() {
                     if filename.find('\t').is_some() {
-                        let filenames: Vec<&Path> = filename.split('\t').map(|s| Path::new(s)).collect();
+                        let filenames: Vec<&Path> =
+                            filename.split('\t').map(|s| Path::new(s)).collect();
                         if let Err(e) = from_multi_xml(&filenames, &config, store) {
                             if args.is_present("ignore-errors") {
-                                eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
+                                eprintln!(
+                                    "WARNING: Skipped {} (or part thereof) due to errors: {}",
+                                    filename, e
+                                )
                             } else {
                                 return Err(e);
                             }
@@ -1715,7 +1867,10 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
                     } else {
                         if let Err(e) = from_xml(Path::new(filename), &config, store) {
                             if args.is_present("ignore-errors") {
-                                eprintln!("WARNING: Skipped {} (or part thereof) due to errors: {}", filename, e)
+                                eprintln!(
+                                    "WARNING: Skipped {} (or part thereof) due to errors: {}",
+                                    filename, e
+                                )
                             } else {
                                 return Err(e);
                             }
@@ -1732,27 +1887,30 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         let querystrings: Vec<_> = args.values_of("query").unwrap_or_default().collect();
         let mut queries = Vec::new();
 
-
         for (i, querystring) in querystrings.into_iter().enumerate() {
-            queries.push(stam::Query::parse(querystring).map_err(|err| {
-                format!("Query syntax error query {}: {}", i+1, err)
-            })?.0);
+            queries.push(
+                stam::Query::parse(querystring)
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
         }
 
         let resources: Vec<_> = args.values_of("resource").unwrap_or_default().collect();
         let mut extraquerystrings: Vec<String> = Vec::new();
         for resource in resources.iter() {
-            extraquerystrings.push(format!("SELECT RESOURCE ?split WHERE ID \"{}\";",resource));
+            extraquerystrings.push(format!("SELECT RESOURCE ?split WHERE ID \"{}\";", resource));
         }
         let datasets: Vec<_> = args.values_of("dataset").unwrap_or_default().collect();
         for dataset in datasets.iter() {
-            extraquerystrings.push(format!("SELECT DATASET ?split WHERE ID \"{}\";",dataset));
+            extraquerystrings.push(format!("SELECT DATASET ?split WHERE ID \"{}\";", dataset));
         }
 
         for (i, querystring) in extraquerystrings.iter().enumerate() {
-            queries.push(stam::Query::parse(querystring.as_str()).map_err(|err| {
-                format!("Query syntax error query {}: {}", i+1, err)
-            })?.0);
+            queries.push(
+                stam::Query::parse(querystring.as_str())
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
         }
 
         if queries.len() < 1 {
@@ -1771,13 +1929,19 @@ fn run<W: Write>(store:  &mut AnnotationStore, writer: &mut W, rootargs: &ArgMat
         changed = true;
     } else if rootargs.subcommand_matches("print").is_some() {
         let offset: Offset = if let Some(offset) = args.value_of("offset") {
-            offset.trim().try_into().map_err(|err| {
-                format!("{}", err)
-            })?
+            offset.trim().try_into().map_err(|err| format!("{}", err))?
         } else {
-            let begin: isize = args.value_of("begin").unwrap().parse().expect("begin offset must be an integer");
-            let end: isize = args.value_of("end").unwrap().parse().expect("end offset must be an integer");
-            (begin,end).into()
+            let begin: isize = args
+                .value_of("begin")
+                .unwrap()
+                .parse()
+                .expect("begin offset must be an integer");
+            let end: isize = args
+                .value_of("end")
+                .unwrap()
+                .parse()
+                .expect("end offset must be an integer");
+            (begin, end).into()
         };
         let resource: Option<&str> = args.value_of("resource");
         if let Err(e) = print(store, writer, resource, offset) {
