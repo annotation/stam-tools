@@ -361,8 +361,8 @@ pub struct XmlAnnotationDataConfig {
     set: Option<String>,
     /// Template
     key: Option<String>,
-    /// Template
-    value: Option<String>,
+    /// Any string values are interpreted as templates
+    value: Option<toml::Value>,
 
     /// Allow value templates that yield an empty string?
     #[serde(default)]
@@ -389,8 +389,8 @@ impl XmlAnnotationDataConfig {
         self
     }
 
-    pub fn with_value(mut self, value: impl Into<String>) -> Self {
-        self.key = Some(value.into());
+    pub fn with_value(mut self, value: impl Into<toml::Value>) -> Self {
+        self.value = Some(value.into());
         self
     }
 }
@@ -1108,17 +1108,38 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
                 if let Some(value) = annotationdata.value.as_ref() {
-                    if self.template_engine.get_template(value.as_str()).is_none() {
-                        let template = self.precompile(value.as_str());
-                        self.template_engine.add_template(value.clone(), template).map_err(|e| {
-                            XmlConversionError::TemplateError(
-                                format!("annotationdata/value template {}", value.clone()),
-                                Some(e),
-                            )
-                        })?;
-                    }
+                    self.compile_value(value)?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Compile templates from a value, all strings are considered templates
+    fn compile_value(&mut self, value: &'a toml::Value) -> Result<(), XmlConversionError> {
+        match value {
+            toml::Value::String(value) => {
+                if self.template_engine.get_template(value.as_str()).is_none() {
+                    let template = self.precompile(value.as_str());
+                    self.template_engine.add_template(value.clone(), template).map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("annotationdata/value template {}", value.clone()),
+                            Some(e),
+                        )
+                    })?;
+                }
+            }
+            toml::Value::Table(map) => {
+                for (_key, value) in map.iter() {
+                    self.compile_value(value)?;
+                }
+            },
+            toml::Value::Array(list) => {
+                for value in list.iter() {
+                    self.compile_value(value)?;
+                }
+            }
+            _ => {} //no templates in other types
         }
         Ok(())
     }
@@ -1528,32 +1549,12 @@ impl<'a> XmlToStamConverter<'a> {
                             }
                         }
                     }
-                    if let Some(template) = &annotationdata.value {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
-                        let compiled_template = self.template_engine.template(template.as_str());
-                        match compiled_template.render(&context).to_string().map_err(|e| 
-                                XmlConversionError::TemplateError(
-                                    format!(
-                                        "whilst rendering annotationdata/value template '{}' for node '{}'",
-                                        template,
-                                        node.tag_name().name(),
-                                    ),
-                                    Some(e),
-                                )
-                            )  {
-                            Ok(value) =>
-                                if !value.is_empty() || annotationdata.allow_empty_value {
-                                    databuilder = databuilder.with_value(value.into());
-                                } else {
-                                    continue;
-                                },
-                            Err(e) if !annotationdata.skip_if_missing => {
-                                return Err(e)
+                    if let Some(value) = &annotationdata.value {
+                        match self.extract_value(value,  node, annotationdata.allow_empty_value, annotationdata.skip_if_missing, begin, end, resource_id, inputfile, doc_num)? {
+                            Some(value) => {
+                                databuilder = databuilder.with_value(value);
                             },
-                            Err(_) if annotationdata.allow_empty_value => {
-                                    databuilder = databuilder.with_value("".into());
-                                },
-                            Err(_) => {
+                            None =>  {
                                 //skip whole databuilder if missing
                                 continue
                             }
@@ -1652,6 +1653,69 @@ impl<'a> XmlToStamConverter<'a> {
             );
         }
         Ok(())
+    }
+
+    /// Extract values, running the templating engine in case of string values
+    fn extract_value<'b>(&self, value: &'a toml::Value, node: Node<'a,'b>, allow_empty_value: bool, skip_if_missing: bool, begin: Option<usize>, end: Option<usize>, resource_id: Option<&str>, inputfile: Option<&str>, doc_num: usize) -> Result<Option<DataValue>, XmlConversionError>{
+        match value {
+            toml::Value::String(template) => {  
+                let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
+                let compiled_template = self.template_engine.template(template.as_str()); //panics if doesn't exist, but that can't happen
+                match compiled_template.render(&context).to_string().map_err(|e| 
+                        XmlConversionError::TemplateError(
+                            format!(
+                                "whilst rendering annotationdata/map template '{}' for node '{}'",
+                                template,
+                                node.tag_name().name(),
+                            ),
+                            Some(e),
+                        )
+                    )  {
+                    Ok(value) => {
+                        if !value.is_empty() || allow_empty_value {
+                            Ok(Some(value.into()))
+                        } else {
+                            //skip
+                            Ok(None)
+                        }
+                    },
+                    Err(e) if !skip_if_missing => {
+                        Err(e)
+                    },
+                    Err(_) if allow_empty_value => {
+                        Ok(Some("".into()))
+                    },
+                    Err(_) => {
+                        //skip whole databuilder if missing
+                        Ok(None)
+                    }
+                }
+            },
+            toml::Value::Table(map) => {  
+                let mut resultmap: BTreeMap<String,DataValue> = BTreeMap::new();
+                for (key, value) in map.iter() {
+                    if let Some(value) = self.extract_value(value,  node, false, true, begin, end, resource_id, inputfile, doc_num)? {
+                        resultmap.insert(key.clone(), value);
+                    }
+                }
+                Ok(Some(resultmap.into()))
+            },
+            toml::Value::Array(list) => {  
+                let mut resultlist: Vec<DataValue> = Vec::new();
+                for value in list.iter() {
+                    if let Some(value) = self.extract_value(value, node, false, true, begin, end, resource_id, inputfile, doc_num)? {
+                        resultlist.push(value);
+                    }
+                }
+                Ok(Some(resultlist.into()))
+            }
+            toml::Value::Boolean(v) => Ok(Some(DataValue::Bool(*v))),
+            toml::Value::Float(v) => Ok(Some(DataValue::Float(*v))),
+            toml::Value::Integer(v) => Ok(Some(DataValue::Int(*v as isize))),
+            toml::Value::Datetime(_v) => {
+                todo!("fromxml: Datetime conversion not implemented yet");
+            }
+        }
     }
 
     /// Select text corresponding to the element/node and document number
