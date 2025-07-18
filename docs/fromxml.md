@@ -256,7 +256,7 @@ how it relates to annotations. If not, read up on it [here](https://github.com/a
 
 * `set` (template) - The STAM dataset for the annotationdata. Use an URI if exporting to W3C Web Annotations later. If not set, the global `default_set` will be used.
 * `key` (template) - The STAM key, e.g. some property name as you want it to appear in the output.
-* `value` (template) - The value for the annotationdata.
+* `value` (any type) - The value for the annotationdata. You can use any type here, including tables/maps/lists, note that all strings (at any depth) are interpreted as templates. 
 * `skip_if_missing` (boolean) - If undefined variables are used in the template, silently skip this annotation data. Do not raise an error.
 * `allow_empty_value` (boolean) - Even if the value if an empty string, allow that as a valid value.
 
