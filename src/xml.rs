@@ -2156,6 +2156,7 @@ fn filter_capitalize(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    //use crate::info::info;
 
     const XMLSMALLEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
 <body><head><title>test</title></head><h1>TEST</h1><p xml:id="p1">This  is a <em xml:id="emphasis" style="color:green">test</em>.</p></body></html>"#;
@@ -2348,6 +2349,20 @@ value = "{{ @requiredattrib }}"
 [[elements.annotationdata]]
 key = "optattrib"
 value = "{{ ?.@optattrib }}"
+
+[[elements]]
+base = [ "common","text" ]
+path = "//html:marquee"
+annotation = "TextSelector"
+
+#map value, some bogus data to test parsing
+[[elements.annotationdata]]
+key = "map"
+
+[elements.annotationdata.value]
+text = "{{ $. }}"
+number = 42
+bogus = true
 "#;
 
     const XMLREQATTRIBEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
@@ -2358,6 +2373,9 @@ value = "{{ ?.@optattrib }}"
 
     const XMLREQATTRIBEXAMPLE3: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
 <body><example xml:id="ann1" requiredattrib="blah" optattrib="blah">test</example></body></html>"#;
+
+    const XMLMAPEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
+<body><marquee xml:id="ann1">test</marquee></body></html>"#;
 
     #[test]
     fn test_precompile_template_nochange() -> Result<(), String> {
@@ -2482,7 +2500,7 @@ value = "{{ ?.@optattrib }}"
         let mut conv = XmlToStamConverter::new(&config);
         conv.compile().map_err(|e| format!("{}",e))?;
         assert_eq!(conv.config.namespaces.len(),4 , "number of namespaces");
-        assert_eq!(conv.config.elements.len(), 14, "number of elements");
+        assert_eq!(conv.config.elements.len(), 15, "number of elements");
         assert_eq!(conv.config.baseelements.len(), 2, "number of baseelements");
         assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 6,"number of annotationdata under first element");
         assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 6,"number of annotationdata under baseelement common");
@@ -2565,4 +2583,24 @@ value = "{{ ?.@optattrib }}"
         Ok(())
     }
 
+    #[test]
+    fn test_map() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLMAPEXAMPLE, &config, &mut store)?;
+        let res = store.resource("test").expect("resource must have been created at this point");
+        assert_eq!(res.text(), "test", "resource text");
+        let key = store.key("urn:stam-fromhtml", "map").expect("key must exist");
+        let annotation = store.annotation("ann1").expect("annotation");
+        let data = annotation.data().filter_key(&key).value().expect("data must exist");
+        if let DataValue::Map(data) = data {
+            assert_eq!(data.get("text"), Some(&DataValue::String("test".into())));
+            assert_eq!(data.get("number"), Some(&DataValue::Int(42)));
+            assert_eq!(data.get("bogus"), Some(&DataValue::Bool(true)));
+            assert_eq!(data.len(), 3);
+        } else {
+            assert!(false, "Data is supposed to be a map");
+        }
+        Ok(())
+    }
 }
