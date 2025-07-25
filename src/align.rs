@@ -296,7 +296,7 @@ pub fn align_texts<'store>(
             let algorithm = SmithWaterman::new(equal, align, insert, delete);
             AlignmentSet::new(seq1.len(), seq2.len(), algorithm, |x, y| {
                 if seq1[x] != seq2[y] {
-                    if config.case_sensitive {
+                    if !config.case_sensitive {
                         return seq1[x].to_lowercase().to_string()
                             == seq2[y].to_lowercase().to_string();
                     } else {
@@ -315,7 +315,7 @@ pub fn align_texts<'store>(
             let algorithm = NeedlemanWunsch::new(equal, align, insert, delete);
             AlignmentSet::new(seq1.len(), seq2.len(), algorithm, |x, y| {
                 if seq1[x] != seq2[y] {
-                    if config.case_sensitive {
+                    if !config.case_sensitive {
                         return seq1[x].to_lowercase().to_string()
                             == seq2[y].to_lowercase().to_string();
                     } else {
