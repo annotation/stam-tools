@@ -360,7 +360,7 @@ The following filters are implemented in the templating engine:
 * `x | sub: y` - subtraction (integers)
 * `x | mul: y` - multiplication (integers)
 * `x | div: y` - division (integers)
-* `s | replace: from, to` - replace a subtring
+* `s | replace: from, to` - replace a substring
 * `s | basename` - Returns the base name of a file path
 * `s | noext` - Strips the extension off a filename
 
