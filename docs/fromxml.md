@@ -258,7 +258,7 @@ how it relates to annotations. If not, read up on it [here](https://github.com/a
 * `key` (template) - The STAM key, e.g. some property name as you want it to appear in the output.
 * `value` (any type) - The value for the annotationdata. You can use any type here, including tables/maps/lists, note that all strings (at any depth) are interpreted as templates. 
 * `skip_if_missing` (boolean) - If undefined variables are used in the template, silently skip this annotation data. Do not raise an error.
-* `allow_empty_value` (boolean) - Even if the value if an empty string, allow that as a valid value.
+* `allow_empty_value` (boolean) - Even if the value is an empty string, allow that as a valid value.
 
 A common situation is to copy from an XML attribute to STAM annotationdata, for example:
 
