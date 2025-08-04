@@ -210,7 +210,7 @@ When you set `text = true` and `stop = true`, only the immediate text under the 
 
 ### whitespace
 
-This determines the whitespace handling for this match, allowed values are:
+This determines the whitespace handling for this match, permitted values are:
 
 * `Preserve` - Whitespace is kept exactly as it is in the XML.
 * `Inherit` - Use the same setting as the parent node (this is the default)
