@@ -155,7 +155,7 @@ path = """//tei:item[text()="foobar"]"""
 
 ### text
 
-Once an attribute is matched, this boolean specified whether the text under it
+Once an attribute is matched, this boolean specifies whether the text under it
 should be extracted to the plain text representation. This defaults to `false`, 
 effectively skipping the text directly under a node.
 
@@ -169,7 +169,7 @@ text = true
 
 ### textprefix  & textsuffix
 
-Whereas the `text` boolean extracts text from the XML text. The `textprefix` and `textsuffix` fields are used
+Whereas the `text` boolean extracts text from the XML text, the `textprefix` and `textsuffix` fields are used
 to insert text *before* respectively *after* the extracted text. Consider the following example:
 
 ```toml
@@ -183,7 +183,7 @@ textsuffix = "\n"
 This rule extracts bulleted lists and inserts a bullet marker (`*` in this case) in the plain text variant. It also
 ensures the extracted text ends with a newline. The latter is especially relevant if your whitespace handling is set to collapse. You'll often find yourself setting `textsuffix` to one or more newlines for different elements.
 
-`textprefix` and `textsuffix` take not just a string literals, but take *templates*. See [the templating section](#Templating_language). This allows for complex expressions like:
+`textprefix` and `textsuffix` take not just string literals, but take *templates*. See [the templating section](#Templating_language). This allows for complex expressions like:
 
 ```toml
 [[elements]]
@@ -210,11 +210,11 @@ When you set `text = true` and `stop = true`, only the immediate text under the 
 
 ### whitespace
 
-This determines the whitespace handling for this match, values are:
+This determines the whitespace handling for this match, permitted values are:
 
 * `Preserve` - Whitespace is kept exactly as it is in the XML.
 * `Inherit` - Use the same setting as the parent node (this is the default)
-* `Collapse` - All whitespace is converted to a space, and consecutive whitespace is squashed. 
+* `Collapse` - All whitespace is converted to a single space, and consecutive whitespace is squashed. 
 
 
 ```toml
@@ -225,7 +225,7 @@ whitespace = "Preserve"
 
 ### annotation
 
-This field specifies whether you want to create an annotation and if so, of what type. It specified the *target* of the annotation. The following values are implemented:
+This field specifies whether you want to create an annotation and if so, of what type. It specifies the *target* of the annotation. The following values are implemented:
 
 * `None` - No annotation (this is the default). 
 * `TextSelector` - Create an annotation that points to the text that was extracted (this assumes `text = true`), using a `TextSelector`.
@@ -249,16 +249,16 @@ an error on elements that have no `xml:id` attribute.
 
 ### annotationdata
 
-This is a list of tables that specifies the actual data or body for the annotation. These are the key/value pairs of which we can have an arbitrary number per annotation. We assume you're familiar with the STAM's concept of *AnnotationData* concept and
+This is a list of tables that specifies the actual data or body for the annotation. These are the key/value pairs of which we can have an arbitrary number per annotation. We assume you're familiar with the STAM's concept of *AnnotationData*  and
 how it relates to annotations. If not, read up on it [here](https://github.com/annotation/stam#class-annotationdata).
 
 `annotationdata` takes the following fields, most of them are [templates](#Templating_language) and allow you to refer to XML attributes and other nodes in the XML input document:
 
-* `set` (template) - The STAM dataset for the annotationdata. Use an URI if exporting to W3C Web Annotations later. If not set, the global `default_set` will be used.
+* `set` (template) - The STAM dataset for the annotationdata. Use a URI if exporting to W3C Web Annotations later. If not set, the global `default_set` will be used.
 * `key` (template) - The STAM key, e.g. some property name as you want it to appear in the output.
 * `value` (any type) - The value for the annotationdata. You can use any type here, including tables/maps/lists, note that all strings (at any depth) are interpreted as templates. 
 * `skip_if_missing` (boolean) - If undefined variables are used in the template, silently skip this annotation data. Do not raise an error.
-* `allow_empty_value` (boolean) - Even if the value if an empty string, allow that as a valid value.
+* `allow_empty_value` (boolean) - Even if the value is an empty string, allow that as a valid value.
 
 A common situation is to copy from an XML attribute to STAM annotationdata, for example:
 
@@ -308,8 +308,8 @@ Multiple are allowed.
 ## Templating language
 
 The underlying templating syntax we use is as implemented in
-[upon](https://docs.rs/upon/latest/upon/syntax/index.html). The syntax is
-shares many similarities with well-known templating systems such as jinja2.
+[upon](https://docs.rs/upon/latest/upon/syntax/index.html). The syntax
+shares many similarities with well-known templating systems such as [jinja2](https://jinja.palletsprojects.com/en/stable/):
 
 * Value lookup and output is done using an expression in a double set of curly braces: `{{ x }}`.
 * Blocks are available wrapped in `{%` and `%}`. For example: `{% if expression %}{% else %}{% endif %}` and
@@ -323,13 +323,13 @@ Peculiarities in our implementation:
     * XML namespaces are supported: `{{ $prefix:child }}`
     * Only immediate text of the first match, no mixed content.
 * The text of the current element is returned with: `{{ $. }}`.
-    * It will contain the text of this node and all nodes under it recursively
+    * It will contain the text of this node and all nodes under it recursively.
 * If you want to return the attribute of a child element instead, combine `$` with `@`: 
     * Refer to the immediate text of a child element: `{{ $child@attrib }}` or `{{ $prefix:child@attrib }}`.
 * Parent elements are denoted with `$..` and return the text:
     * It will contain the text of the parent node and all nodes under it recursively
     * Refer to an attribute: `{{ $../@attrib }}`.
-* Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
+* Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error, which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
 * The following variables are available as well:
     * ``{{ resource }}`` -  the ID of the associated resource
     * ``{{ inputfile }}`` -  the path + filename of the input file (exactly as passed) 
@@ -360,7 +360,7 @@ The following filters are implemented in the templating engine:
 * `x | sub: y` - subtraction (integers)
 * `x | mul: y` - multiplication (integers)
 * `x | div: y` - division (integers)
-* `s | replace: from, to` - replace a subtring
+* `s | replace: from, to` - replace a substring
 * `s | basename` - Returns the base name of a file path
 * `s | noext` - Strips the extension off a filename
 
@@ -385,11 +385,11 @@ line breaks in HTML. What if you want to annotate the text *between two
 instances of the same marker element*? What if you want to mark *pages* or
 *lines* respectively with such a XML input?
 
-This conversion can be be specified as follows:
+This conversion can be specified as follows:
 
 ```toml
 [[elements]]
-path == "//tei:pb"
+path = "//tei:pb"
 annotation = "TextSelectorBetweenMarkers"
 text = true
 ```
@@ -405,11 +405,11 @@ of rules that may share a lot of aspects, such as common annotationdata specific
 In order to prevent unnecessary duplication, you can specify *base elements* at
 the global configuration level. These are effectively abstract elements or
 templates (not to be confused with the templating syntax) upon which you can
-base your element rules. By itself they do nothing, but you can use `base` the
+base your element rules. By itself they do nothing, but you can use `base` on the
 field in your element configuration to specify what base elements to derive
 from.
 
-Base elements are map, here we define a base element called `withtype` that sets a type key corresponding to the element type and also converts some common XML attributes like `xml:id` and `xml:lang`:
+Base elements are maps, here we define a base element called `withtype` that sets a type key corresponding to the element type and also converts some common XML attributes like `xml:id` and `xml:lang`:
 
 ```toml
 [baseelements.withtype]
