@@ -308,8 +308,8 @@ Multiple are allowed.
 ## Templating language
 
 The underlying templating syntax we use is as implemented in
-[upon](https://docs.rs/upon/latest/upon/syntax/index.html). The syntax is
-shares many similarities with well-known templating systems such as jinja2.
+[upon](https://docs.rs/upon/latest/upon/syntax/index.html). The syntax
+shares many similarities with well-known templating systems such as [jinja2](https://jinja.palletsprojects.com/en/stable/).
 
 * Value lookup and output is done using an expression in a double set of curly braces: `{{ x }}`.
 * Blocks are available wrapped in `{%` and `%}`. For example: `{% if expression %}{% else %}{% endif %}` and
