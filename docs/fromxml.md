@@ -405,7 +405,7 @@ of rules that may share a lot of aspects, such as common annotationdata specific
 In order to prevent unnecessary duplication, you can specify *base elements* at
 the global configuration level. These are effectively abstract elements or
 templates (not to be confused with the templating syntax) upon which you can
-base your element rules. By itself they do nothing, but you can use `base` the
+base your element rules. By itself they do nothing, but you can use `base` on the
 field in your element configuration to specify what base elements to derive
 from.
 
