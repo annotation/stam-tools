@@ -118,7 +118,7 @@ Use `//` to match anywhere in the document hierarchy. Example, this matches all 
 path = "//tei:p"
 ```
 
-You can also use-this mid-path, this is a more generic form of the expression we saw before:
+You can also use this mid-path, this is a more generic form of the expression we saw before:
 
 ```toml
 [[elements]]
