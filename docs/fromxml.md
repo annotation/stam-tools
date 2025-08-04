@@ -214,7 +214,7 @@ This determines the whitespace handling for this match, allowed values are:
 
 * `Preserve` - Whitespace is kept exactly as it is in the XML.
 * `Inherit` - Use the same setting as the parent node (this is the default)
-* `Collapse` - All whitespace is converted to a space, and consecutive whitespace is squashed. 
+* `Collapse` - All whitespace is converted to a single space, and consecutive whitespace is squashed. 
 
 
 ```toml
