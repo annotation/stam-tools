@@ -169,7 +169,7 @@ text = true
 
 ### textprefix  & textsuffix
 
-Whereas the `text` boolean extracts text from the XML text. The `textprefix` and `textsuffix` fields are used
+Whereas the `text` boolean extracts text from the XML text, the `textprefix` and `textsuffix` fields are used
 to insert text *before* respectively *after* the extracted text. Consider the following example:
 
 ```toml
