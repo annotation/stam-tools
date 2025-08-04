@@ -254,7 +254,7 @@ how it relates to annotations. If not, read up on it [here](https://github.com/a
 
 `annotationdata` takes the following fields, most of them are [templates](#Templating_language) and allow you to refer to XML attributes and other nodes in the XML input document:
 
-* `set` (template) - The STAM dataset for the annotationdata. Use an URI if exporting to W3C Web Annotations later. If not set, the global `default_set` will be used.
+* `set` (template) - The STAM dataset for the annotationdata. Use a URI if exporting to W3C Web Annotations later. If not set, the global `default_set` will be used.
 * `key` (template) - The STAM key, e.g. some property name as you want it to appear in the output.
 * `value` (any type) - The value for the annotationdata. You can use any type here, including tables/maps/lists, note that all strings (at any depth) are interpreted as templates. 
 * `skip_if_missing` (boolean) - If undefined variables are used in the template, silently skip this annotation data. Do not raise an error.
