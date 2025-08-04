@@ -13,7 +13,7 @@ document.
 
 ## Modelling choices
 
-A mapping between XML and STAM depends on various of choices you as a modeller need to make:
+A mapping between XML and STAM depends on a variety of choices you as a modeller need to make:
 
 * What parts of the XML go to the plain text and what parts go to annotations? For instance, is a `<title>` field something
   you want to explicitly render in the text or is it considered metadata (an annotation) on the text as a whole?
