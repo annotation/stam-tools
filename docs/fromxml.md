@@ -225,7 +225,7 @@ whitespace = "Preserve"
 
 ### annotation
 
-This field specifies whether you want to create an annotation and if so, of what type. It specified the *target* of the annotation. The following values are implemented:
+This field specifies whether you want to create an annotation and if so, of what type. It specifies the *target* of the annotation. The following values are implemented:
 
 * `None` - No annotation (this is the default). 
 * `TextSelector` - Create an annotation that points to the text that was extracted (this assumes `text = true`), using a `TextSelector`.
