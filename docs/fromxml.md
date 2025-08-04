@@ -409,7 +409,7 @@ base your element rules. By itself they do nothing, but you can use `base` on th
 field in your element configuration to specify what base elements to derive
 from.
 
-Base elements are map, here we define a base element called `withtype` that sets a type key corresponding to the element type and also converts some common XML attributes like `xml:id` and `xml:lang`:
+Base elements are maps, here we define a base element called `withtype` that sets a type key corresponding to the element type and also converts some common XML attributes like `xml:id` and `xml:lang`:
 
 ```toml
 [baseelements.withtype]
