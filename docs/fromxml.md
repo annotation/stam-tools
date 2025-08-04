@@ -309,7 +309,7 @@ Multiple are allowed.
 
 The underlying templating syntax we use is as implemented in
 [upon](https://docs.rs/upon/latest/upon/syntax/index.html). The syntax
-shares many similarities with well-known templating systems such as [jinja2](https://jinja.palletsprojects.com/en/stable/).
+shares many similarities with well-known templating systems such as [jinja2](https://jinja.palletsprojects.com/en/stable/):
 
 * Value lookup and output is done using an expression in a double set of curly braces: `{{ x }}`.
 * Blocks are available wrapped in `{%` and `%}`. For example: `{% if expression %}{% else %}{% endif %}` and
@@ -323,13 +323,13 @@ Peculiarities in our implementation:
     * XML namespaces are supported: `{{ $prefix:child }}`
     * Only immediate text of the first match, no mixed content.
 * The text of the current element is returned with: `{{ $. }}`.
-    * It will contain the text of this node and all nodes under it recursively
+    * It will contain the text of this node and all nodes under it recursively.
 * If you want to return the attribute of a child element instead, combine `$` with `@`: 
     * Refer to the immediate text of a child element: `{{ $child@attrib }}` or `{{ $prefix:child@attrib }}`.
 * Parent elements are denoted with `$..` and return the text:
     * It will contain the text of the parent node and all nodes under it recursively
     * Refer to an attribute: `{{ $../@attrib }}`.
-* Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
+* Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error, which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
 * The following variables are available as well:
     * ``{{ resource }}`` -  the ID of the associated resource
     * ``{{ inputfile }}`` -  the path + filename of the input file (exactly as passed) 
