@@ -183,7 +183,7 @@ textsuffix = "\n"
 This rule extracts bulleted lists and inserts a bullet marker (`*` in this case) in the plain text variant. It also
 ensures the extracted text ends with a newline. The latter is especially relevant if your whitespace handling is set to collapse. You'll often find yourself setting `textsuffix` to one or more newlines for different elements.
 
-`textprefix` and `textsuffix` take not just a string literals, but take *templates*. See [the templating section](#Templating_language). This allows for complex expressions like:
+`textprefix` and `textsuffix` take not just string literals, but take *templates*. See [the templating section](#Templating_language). This allows for complex expressions like:
 
 ```toml
 [[elements]]
