@@ -389,7 +389,7 @@ This conversion can be specified as follows:
 
 ```toml
 [[elements]]
-path == "//tei:pb"
+path = "//tei:pb"
 annotation = "TextSelectorBetweenMarkers"
 text = true
 ```
