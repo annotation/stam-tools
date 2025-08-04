@@ -385,7 +385,7 @@ line breaks in HTML. What if you want to annotate the text *between two
 instances of the same marker element*? What if you want to mark *pages* or
 *lines* respectively with such a XML input?
 
-This conversion can be be specified as follows:
+This conversion can be specified as follows:
 
 ```toml
 [[elements]]
