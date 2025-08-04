@@ -249,7 +249,7 @@ an error on elements that have no `xml:id` attribute.
 
 ### annotationdata
 
-This is a list of tables that specifies the actual data or body for the annotation. These are the key/value pairs of which we can have an arbitrary number per annotation. We assume you're familiar with the STAM's concept of *AnnotationData* concept and
+This is a list of tables that specifies the actual data or body for the annotation. These are the key/value pairs of which we can have an arbitrary number per annotation. We assume you're familiar with the STAM's concept of *AnnotationData*  and
 how it relates to annotations. If not, read up on it [here](https://github.com/annotation/stam#class-annotationdata).
 
 `annotationdata` takes the following fields, most of them are [templates](#Templating_language) and allow you to refer to XML attributes and other nodes in the XML input document:
