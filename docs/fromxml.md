@@ -139,7 +139,7 @@ Or all nodes under a particular element:
 path = "//tei:note/*"
 ```
 
-Limited conditional syntax is supported by between square brackets. It can match an attribute:
+Limited conditional syntax is supported between square brackets. It can match an attribute:
 
 ```toml
 [[elements]]
