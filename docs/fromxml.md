@@ -3,7 +3,7 @@
 The `stam fromxml` tool allows to map XML files with *inline annotations* to
 STAM. It will effectively *untangle* the inline annotations and produce plain
 text on the one hand, and stand-off STAM annotations on that plain text on the
-other hand. From STAM, you can easily carry on conversion to W3C Web Annotations.
+other hand. From STAM, you can easily carry on with conversion to W3C Web Annotations.
 
 The mapping is provided in an external configuration file which is passed to
 `stam fromxml` via the `--config` parameter. The basic syntax for this configuration
@@ -35,7 +35,7 @@ This key is used to inject a DTD (Document Type Definition) to the underlying XM
 inject_dtd = """<!DOCTYPE entities[<!ENTITY Tab "&#x9;"><!ENTITY NewLine "&#xA;"><!ENTITY excl "&#x21;"><!ENTITY quot "&#x22;">]>"""
 ```
 
-If your XML document has any unknown entities that do not appear in the DTD, then an error will be raised an conversion will fail. 
+If your XML document has any unknown entities that do not appear in the DTD, then an error will be raised and conversion will fail. 
 
 ### whitespace
 
@@ -44,7 +44,7 @@ the default for the entire document, it can be overridden at element level.
 Values are:
 
 * `Preserve` - Whitespace is kept exactly as it is in the XML.
-* `Collapse` - All whitespace is converted to a space, and consecutive whitespace is squashed. You usually want to set this for the global option.
+* `Collapse` - All whitespace is converted to a single space, and consecutive whitespace is squashed. You usually want to set this for the global option.
 
 Example:
 
@@ -54,7 +54,7 @@ whitespace = "Collapse"
 
 ### default_set
 
-This is the default STAM set to fall back to if not set is provided on a higher
+This is the default STAM set to fall back to if no set is provided at a higher
 level. It prevents unnecessary duplication and verbosity in your configuration
 if you rely on the same set. If you need compatibility with W3C Web Annotation
 export, this needs to be a URI.
@@ -73,7 +73,7 @@ This is a toml table mapping namespace prefixes to XML namespaces. Example:
 
 ```toml
 xml = "http://www.w3.org/XML/1998/namespace"
-xsd =  "http://www.w3.org/2001/XMLSchema"
+xsd = "http://www.w3.org/2001/XMLSchema"
 xlink = "http://www.w3.org/1999/xlink"
 tei = "http://www.tei-c.org/ns/1.0"
 ```
@@ -82,12 +82,12 @@ These prefixes can subsequently be used in path selectors and templates.
 
 ### elements
 
-Elements is a list of tables, each entry defines a how to map a certain XML
+Elements is a list of tables, each entry defines how to map a certain XML
 element, identified by an XPath-like path expression, to plain text and
 annotations. This is the backbone of the conversion process. Elements should be
 defined in order from generic to specific. So elements that are defined later
 take precedence over those defined earlier (and therefore should be more
-specific). An particular XML node is only matches once with its most appropriate configuration. 
+specific). A particular XML node is only matched once with its most appropriate configuration. 
 
 The syntax for element configuration is explain in [its own section](#Element_configuration)
 
@@ -111,7 +111,7 @@ A deeper path can look like this:
 [[elements]]
 path = "/tei:TEI/tei:teiHeader/tei:fileDesc/tei:titleStmt/tei:title"
 ```
-Use `//` to match anywhere in the document hierarchy. Example, this matches all TEI paragraph regardless where they occur:
+Use `//` to match anywhere in the document hierarchy. Example, this matches all TEI paragraphs regardless where they occur:
 
 ```toml
 [[elements]]
