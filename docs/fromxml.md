@@ -155,7 +155,7 @@ path = """//tei:item[text()="foobar"]"""
 
 ### text
 
-Once an attribute is matched, this boolean specified whether the text under it
+Once an attribute is matched, this boolean specifies whether the text under it
 should be extracted to the plain text representation. This defaults to `false`, 
 effectively skipping the text directly under a node.
 
