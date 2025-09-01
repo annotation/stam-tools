@@ -1,6 +1,7 @@
 use clap::{App, Arg, ArgAction, ArgMatches, SubCommand};
 use stam::{
-    AnnotationStore, AssociatedFile, Config, TextResourceBuilder, TransposeConfig, WebAnnoConfig,
+    AnnotationStore, AssociatedFile, Config, TextResourceBuilder, TranslateConfig, TransposeConfig,
+    WebAnnoConfig,
 };
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -18,6 +19,7 @@ use stamtools::query::*;
 use stamtools::split::*;
 use stamtools::tag::*;
 use stamtools::to_text::*;
+use stamtools::translate::*;
 use stamtools::transpose::*;
 use stamtools::tsv::*;
 use stamtools::validate::*;
@@ -49,7 +51,7 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
 const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. You may also provide *.txt files to be added to the store automatically.";
 const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set. You may also provide *.txt files to be added to the store automatically.";
 const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an annotation store in STAM JSON or STAM CSV. If the file exists, it will be loaded and augmented. Multiple store files are allowed but will only act as input and will be merged into one. (the *first* file mentioned).  If  --dry-run or --output is set, this will not be used for output.";
-const SUBCOMMANDS: [&'static str; 16] = [
+const SUBCOMMANDS: [&'static str; 17] = [
     "batch",
     "info",
     "export",
@@ -64,6 +66,7 @@ const SUBCOMMANDS: [&'static str; 16] = [
     "grep",
     "align",
     "transpose",
+    "translate",
     "fromxml",
     "split",
 ];
@@ -596,6 +599,57 @@ fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn translate_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("translation")
+            .long("translation")
+            .short('T')
+            .help("A query in STAMQL to retrieve the translation annotation, or the exact translation ID. See
+                https://github.com/annotation/stam/tree/master/extensions/stam-query for an
+                explanation of the query language's syntax. The query should produce only one result (if
+                not only the first is taken). If you have the exact ID of the translation already, then
+                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --translation parameter for each --query parameter (in the same order).")
+            .action(ArgAction::Append)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("use-translation")
+            .long("use-translation")
+            .help(
+                "Name of the variable from the  --translation queries to use (must be the same for all). If not set, the last defined subquery will be used"
+            )
+            .takes_value(true)
+    );
+    args.push(
+        Arg::with_name("id-prefix")
+            .long("id-prefix")
+            .takes_value(true)
+            .help("Prefix to use when assigning annotation IDs."),
+    );
+    args.push(
+        Arg::with_name("no-translations")
+            .long("no-translations")
+            .help("Do not produce translations. Only the translated annotations will be produced. This essentially throws away provenance information."),
+    );
+    args.push(
+        Arg::with_name("no-resegmentations")
+            .long("no-resegmentations")
+            .help("Do not produce resegmentations. Only the resegmented annotations will be produced if needed. This essentially throws away provenance information."),
+    );
+    args.push(
+        Arg::with_name("ignore-errors")
+            .long("ignore-errors")
+            .help("Skip annotations that can not be translated successfully and output a warning, this would produce a hard failure otherwise"),
+    );
+    args.push(
+        Arg::with_name("debug-translate")
+            .long("debug-translate")
+            .help("Debug the translate function only (more narrow than doing --debug in general)"),
+    );
+    args
+}
+
 fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
@@ -1063,13 +1117,23 @@ You need to specify this parameter twice, the text of first query will be aligne
             )
         .subcommand(
             SubCommand::with_name("transpose")
-                .about("Transpose annotations over a transposition, effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). The first query corresponds to the transposition, further queries correspond to the annotations to transpose via that transposition. The new transposed annotations (and the transpositions that produced them) will be added to the store.")
+                .about("Transpose annotations over a transposition pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). The first query corresponds to the transposition, further queries correspond to the annotations to transpose via that transposition. The new transposed annotations (and the transpositions that produced them) will be added to the store.")
                 .args(&common_arguments())
                 .args(&store_arguments(true,true, batchmode))
                 .args(&config_arguments())
                 .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
 The first query should retrieve the transposition annotation to transpose over, it should produce only one result. Subsequent queries are the annotations to transpose."))
                 .args(&transpose_arguments())
+            )
+        .subcommand(
+            SubCommand::with_name("translate")
+                .about("Translate annotations over a translation pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-translate). The first query corresponds to the translation, further queries correspond to the annotations to translate via that translation. The new translated annotations (and the translations that produced them) will be added to the store.")
+                .args(&common_arguments())
+                .args(&store_arguments(true,true, batchmode))
+                .args(&config_arguments())
+                .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
+The first query should retrieve the translation annotation to translate over, it should produce only one result. Subsequent queries are the annotations to translate."))
+                .args(&translate_arguments())
             )
         .subcommand(
             SubCommand::with_name("split")
@@ -1802,6 +1866,67 @@ fn run<W: Write>(
             },
         ) {
             return Err(format!("Transposition failed: {:?}", err));
+        }
+        changed = true;
+    } else if rootargs.subcommand_matches("translate").is_some() {
+        let translation_querystrings: Vec<_> = args
+            .values_of("translation")
+            .unwrap_or_default()
+            .map(|q| {
+                if q.find(" ").is_some() {
+                    //already a query
+                    q.to_string()
+                } else {
+                    //probably an ID, transform to query
+                    format!("SELECT ANNOTATION WHERE ID \"{}\";", q)
+                }
+            })
+            .collect();
+
+        let querystrings: Vec<_> = args.values_of("query").unwrap_or_default().collect();
+
+        let mut translation_queries = Vec::new();
+        for (i, querystring) in translation_querystrings.iter().enumerate() {
+            translation_queries.push(
+                stam::Query::parse(querystring)
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
+        }
+        if translation_queries.len() < 1 {
+            return Err(format!("Expected at least one --translation parameter"));
+        }
+
+        let mut queries = Vec::new();
+        for (i, querystring) in querystrings.into_iter().enumerate() {
+            queries.push(
+                stam::Query::parse(querystring)
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
+        }
+        if queries.len() < 1 {
+            return Err(format!("Expected at least one --query parameter"));
+        }
+        if let Err(err) = translate(
+            store,
+            translation_queries,
+            queries,
+            args.value_of("use-translation"),
+            args.value_of("use"),
+            args.value_of("id-prefix").map(|x| x.to_string()),
+            stam::IdStrategy::default(),
+            args.is_present("ignore-errors"),
+            args.is_present("verbose"),
+            TranslateConfig {
+                existing_source_side: true,
+                no_translation: args.is_present("no-translations"),
+                no_resegmentation: args.is_present("no-resegmentations"),
+                debug: args.is_present("debug") || args.is_present("debug-translate"),
+                ..Default::default()
+            },
+        ) {
+            return Err(format!("translation failed: {:?}", err));
         }
         changed = true;
     } else if rootargs.subcommand_matches("fromxml").is_some() {

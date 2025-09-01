@@ -19,6 +19,7 @@ pub mod query;
 pub mod split;
 pub mod tag;
 pub mod to_text;
+pub mod translate;
 pub mod transpose;
 pub mod tsv;
 pub mod validate;
