@@ -51,7 +51,7 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
 const HELP_INPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. You may also provide *.txt files to be added to the store automatically.";
 const HELP_INPUT_OUTPUT: &'static str = "Input file containing an annotation store in STAM JSON or STAM CSV. Set value to - for standard input. Multiple are allowed and will be merged into one. The *first* file mentioned also serves as output file unless --dry-run or --output is set. You may also provide *.txt files to be added to the store automatically.";
 const HELP_OUTPUT_OPTIONAL_INPUT: &'static str = "Output file containing an annotation store in STAM JSON or STAM CSV. If the file exists, it will be loaded and augmented. Multiple store files are allowed but will only act as input and will be merged into one. (the *first* file mentioned).  If  --dry-run or --output is set, this will not be used for output.";
-const SUBCOMMANDS: [&'static str; 17] = [
+const SUBCOMMANDS: [&'static str; 18] = [
     "batch",
     "info",
     "export",
@@ -67,6 +67,7 @@ const SUBCOMMANDS: [&'static str; 17] = [
     "align",
     "transpose",
     "translate",
+    "translatetext",
     "fromxml",
     "split",
 ];
@@ -650,6 +651,39 @@ fn translate_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args
 }
 
+fn translatetext_arguments<'a>() -> Vec<clap::Arg<'a>> {
+    let mut args: Vec<Arg> = Vec::new();
+    args.push(
+        Arg::with_name("rules")
+            .long("rules")
+            .short('R')
+            .help("Filename of the configuration file (toml) that holds the translation rules")
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("resource")
+            .long("resource")
+            .short('r')
+            .help("A query in STAMQL to select text resources to translate. See
+                https://github.com/annotation/stam/tree/master/extensions/stam-query for an
+                explanation of the query language's syntax. The query may produce multiple results. If no resource arguments are specified at all, then all text resources will be taken for text translation.")
+            .action(ArgAction::Append)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("id-suffix")
+            .long("id-suffix")
+            .takes_value(true)
+            .help("The ID suffix to use when minting new IDs for resources and annotations (overrides the one in the --rules configuration, if any)"),
+    );
+    args.push(
+        Arg::with_name("no-translations")
+            .long("no-translations")
+            .help("Do not produce translations. Only produce the translated texts. This essentially throws away all provenance information and prevents being able to translate annotations between texts later on."),
+    );
+    args
+}
+
 fn query_arguments<'a>(help: &'static str) -> Vec<clap::Arg<'a>> {
     let mut args: Vec<Arg> = Vec::new();
     args.push(
@@ -1136,6 +1170,15 @@ The first query should retrieve the translation annotation to translate over, it
                 .args(&translate_arguments())
             )
         .subcommand(
+            SubCommand::with_name("translatetext")
+                .about("Translates one text to another by following translation rules from a configuration file. This will produce Translation annotations that relate the two texts and enables translation of further/future annotations.")
+                .visible_alias("tr")
+                .args(&common_arguments())
+                .args(&store_arguments(true,true, batchmode))
+                .args(&config_arguments())
+                .args(&translatetext_arguments())
+            )
+        .subcommand(
             SubCommand::with_name("split")
                 .about("Load an annotation model and split one part off into a new one")
                 .args(&common_arguments())
@@ -1227,7 +1270,7 @@ enum BatchOutput<'a> {
     AppendToFile(&'a str),
 }
 
-fn parse_batch_line(line: &str) -> (Vec<Cow<str>>, BatchOutput) {
+fn parse_batch_line<'a>(line: &'a str) -> (Vec<Cow<'a, str>>, BatchOutput<'a>) {
     let mut fields: Vec<Cow<str>> = Vec::new();
     fields.push(Cow::Borrowed("stam")); //binary name
     let mut quote = false;
@@ -1929,6 +1972,42 @@ fn run<W: Write>(
             return Err(format!("translation failed: {:?}", err));
         }
         changed = true;
+    } else if rootargs.subcommand_matches("translatetext").is_some() {
+        let resource_querystrings: Vec<_> = args
+            .values_of("resource")
+            .unwrap_or_default()
+            .map(|q| {
+                if q.find(" ").is_some() {
+                    //already a query
+                    q.to_string()
+                } else {
+                    //probably an ID, transform to query
+                    format!("SELECT RESOURCE WHERE ID \"{}\";", q)
+                }
+            })
+            .collect();
+        let configdata = if let Some(filename) = args.value_of("rules") {
+            fs::read_to_string(filename).map_err(|e| {
+                format!(
+                    "Failure reading translation rules configuration file {}: {} ",
+                    filename, e
+                )
+            })?
+        } else {
+            return Err(format!(
+                "A configuration file that defines translation rules is required"
+            ));
+        };
+        let mut config = TranslateTextConfig::from_toml_str(&configdata).map_err(|e| {
+            format!(
+                "Syntax error in translation rules configuration file {}: {}",
+                args.value_of("config").unwrap(),
+                e
+            )
+        })?;
+        if let Some(prefix) = args.value_of("id-suffix") {
+            config = config.with_id_suffix(prefix);
+        }
     } else if rootargs.subcommand_matches("fromxml").is_some() {
         let configdata = if let Some(filename) = args.value_of("config") {
             fs::read_to_string(filename).map_err(|e| {

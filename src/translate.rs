@@ -1,0 +1,551 @@
+use crate::align::print_transposition as print_translation;
+use serde::Deserialize;
+use stam::*;
+use std::borrow::Cow;
+use toml;
+
+pub fn translate<'store>(
+    store: &'store mut AnnotationStore,
+    mut translation_queries: Vec<Query<'store>>,
+    queries: Vec<Query<'store>>,
+    use_translation_var: Option<&str>,
+    use_var: Option<&str>,
+    id_prefix: Option<String>,
+    idstrategy: IdStrategy,
+    ignore_errors: bool,
+    verbose: bool,
+    config: TranslateConfig,
+) -> Result<Vec<AnnotationHandle>, StamError> {
+    let mut builders = Vec::new();
+    while translation_queries.len() < queries.len() {
+        let query = translation_queries
+            .get(translation_queries.len() - 1)
+            .expect("there must be translation queries");
+        translation_queries.push(query.clone());
+    }
+    for (translation_query, query) in translation_queries.into_iter().zip(queries.into_iter()) {
+        let iter = store.query(translation_query)?;
+        let mut translation: Option<ResultItem<Annotation>> = None;
+        let translationdata = store
+            .find_data(
+                "https://w3id.org/stam/extensions/stam-translate/",
+                "Translation",
+                DataOperator::Null,
+            )
+            .next()
+            .ok_or_else(|| {
+                StamError::OtherError(
+                    "No translations at all were found in the annotation store (the STAM translate vocabulary is not present in the store)",
+                )
+            })?;
+        for resultrow in iter {
+            if let Ok(QueryResultItem::Annotation(annotation)) =
+                resultrow.get_by_name_or_last(use_translation_var)
+            {
+                if !annotation.has_data(&translationdata) {
+                    return Err(StamError::OtherError(
+                        "The retrieved annotation is not explicitly marked as a translation, refusing to use",
+                    ));
+                }
+                translation = Some(annotation.clone());
+                break;
+            }
+        }
+        if let Some(translation) = translation {
+            let iter = store.query(query)?;
+            for resultrow in iter {
+                if let Ok(QueryResultItem::Annotation(annotation)) =
+                    resultrow.get_by_name_or_last(use_var)
+                {
+                    let mut config = config.clone();
+                    if let Some(id) = annotation.id() {
+                        let randomid = generate_id("", "");
+                        config.translation_id = if let Some(id_prefix) = &id_prefix {
+                            Some(format!("{}{}-translation-{}", id_prefix, id, randomid))
+                        } else {
+                            Some(format!("{}-translation-{}", id, randomid))
+                        };
+                        config.resegmentation_id = if let Some(id_prefix) = &id_prefix {
+                            Some(format!("{}{}-resegmentation-{}", id_prefix, id, randomid))
+                        } else {
+                            Some(format!("{}-resegmentation-{}", id, randomid))
+                        };
+                        config.source_side_id = Some(id.to_string());
+                        config.existing_source_side = true;
+                        config.target_side_ids = vec![if let Some(id_prefix) = &id_prefix {
+                            format!("{}{}", id_prefix, regenerate_id(id, &idstrategy))
+                        } else {
+                            regenerate_id(id, &idstrategy)
+                        }];
+                    } else {
+                        config.existing_source_side = false;
+                    }
+                    match annotation.translate(&translation, config) {
+                        Ok(results) => builders.extend(results),
+                        Err(err) => {
+                            eprintln!(
+                                "WARNING: Failed to translate annotation {}: {}",
+                                annotation.id().unwrap_or("(no id)"),
+                                err
+                            );
+                            if !ignore_errors {
+                                return Err(StamError::OtherError(
+                                    "Failed to translate annotation",
+                                ));
+                            }
+                        }
+                    }
+                } else {
+                    return Err(StamError::OtherError(
+                            "Query should return instances of ANNOTATION to translate, got something else instead",
+                        ));
+                }
+            }
+        } else {
+            return Err(StamError::OtherError(
+                "First query should return an ANNOTATION that is a translation, none found",
+            ));
+        }
+    }
+    let mut annotations = Vec::with_capacity(builders.len());
+    for builder in builders {
+        let annotation_handle = store.annotate(builder)?;
+        annotations.push(annotation_handle);
+        if verbose {
+            let annotation = store
+                .annotation(annotation_handle)
+                .expect("annotation was just added");
+            let translationdata = store
+                .find_data(
+                    "https://w3id.org/stam/extensions/stam-translate/",
+                    "Translation",
+                    DataOperator::Null,
+                )
+                .next()
+                .ok_or_else(|| {
+                    StamError::OtherError(
+                        "No translations at all were found in the annotation store (the STAM translate vocabulary is not present in the store)",
+                    )
+                })?;
+            if annotation.has_data(&translationdata) {
+                print_translation(&annotation);
+            } else {
+                eprintln!(
+                    "# added annotation {}",
+                    annotation.id().expect("annotation must have ID")
+                );
+            }
+        }
+    }
+    eprintln!("{} annotations(s) created", annotations.len());
+    Ok(annotations)
+}
+
+#[derive(Clone, Default, Deserialize, Debug)]
+pub struct TranslateTextRule {
+    source: Option<String>,
+    target: String,
+    left: Option<String>,
+    right: Option<String>,
+
+    #[serde(default = "f_true")]
+    case_sensitive: bool,
+
+    #[serde(skip)]
+    source_regex: Option<Regex>,
+    #[serde(skip)]
+    left_regex: Option<Regex>,
+    #[serde(skip)]
+    right_regex: Option<Regex>,
+}
+
+// well, this is a bit silly, used in macro above
+fn f_true() -> bool {
+    true
+}
+
+pub struct MatchedRule<'a> {
+    source: &'a str,
+    target: Cow<'a, str>,
+}
+
+impl TranslateTextRule {
+    /// Tests whether this rule matches the text at the specified cursor
+    pub fn test<'a>(&'a self, text: &'a str, bytecursor: usize) -> Option<MatchedRule<'a>> {
+        if let Some(source_regex) = self.source_regex.as_ref() {
+            //check if text under cursor matches (regular expression test)
+            if let Some(m) = source_regex.find(&text[bytecursor..]) {
+                if self.test_context(text, bytecursor) {
+                    return Some(MatchedRule {
+                        target: self.get_target(m.as_str()),
+                        source: m.as_str(),
+                    });
+                }
+            }
+        } else if let Some(source) = self.source.as_ref() {
+            //check if text under cursor matches (normal test)
+            if bytecursor + source.len() <= text.len()
+                && ((self.case_sensitive && text[bytecursor..bytecursor + source.len()] == *source)
+                    || (!self.case_sensitive
+                        && text[bytecursor..bytecursor + source.len()].to_lowercase() == *source))
+                && self.test_context(text, bytecursor)
+            {
+                return Some(MatchedRule {
+                    target: self.get_target(source.as_str()),
+                    source: source.as_str().into(),
+                });
+            }
+        }
+        None
+    }
+
+    /// See if context constaints match
+    fn test_context(&self, text: &str, bytecursor: usize) -> bool {
+        if let Some(left_regex) = self.left_regex.as_ref() {
+            //match left context using regular expressiong
+            let leftcontext = &text[..bytecursor];
+            if !left_regex.is_match(leftcontext) {
+                return false;
+            }
+        } else if let Some(left_pattern) = self.left.as_ref() {
+            //match left context normally
+            let leftcontext = &text[..bytecursor];
+            if (self.case_sensitive && !leftcontext.ends_with(left_pattern))
+                || (!self.case_sensitive
+                    && leftcontext[std::cmp::min(0, bytecursor - left_pattern.len())..]
+                        .to_lowercase()
+                        != left_pattern.to_lowercase())
+            {
+                return false;
+            }
+        }
+        if let Some(right_regex) = self.right_regex.as_ref() {
+            //match right context using regular expressiong
+            let rightcontext = &text[bytecursor..];
+            if !right_regex.is_match(rightcontext) {
+                return false;
+            }
+        } else if let Some(right_pattern) = self.right.as_ref() {
+            //match right context normally
+            let rightcontext = &text[bytecursor..];
+            if (self.case_sensitive && !rightcontext.ends_with(right_pattern))
+                || (!self.case_sensitive
+                    && rightcontext[..std::cmp::min(rightcontext.len(), right_pattern.len())]
+                        .to_lowercase()
+                        != right_pattern.to_lowercase())
+            {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn get_target<'a>(&'a self, source: &'a str) -> Cow<'a, str> {
+        match self.target.as_str() {
+            "$UPPER" => source.to_uppercase().into(),
+            "$LOWER" => source.to_lowercase().into(),
+            "$REVERSED" => Cow::Owned(source.chars().rev().collect::<String>()),
+            _ => source.into(),
+        }
+    }
+}
+
+#[derive(Clone, Default, Deserialize, Debug)]
+pub struct TranslateTextConfig {
+    rules: Vec<TranslateTextRule>,
+
+    /// ID Suffix for translated resource
+    id_suffix: Option<String>,
+
+    /// When no rules match, discard that part of the text entirely? By default it will just be copied and linked verbatim at character-level
+    discard_unmatched: bool,
+}
+
+impl TranslateTextConfig {
+    /// Parse the configuration from a TOML string (load the data from file yourself).
+    pub fn from_toml_str(tomlstr: &str) -> Result<Self, String> {
+        let mut config: Self = toml::from_str(tomlstr).map_err(|e| format!("{}", e))?;
+        config.compile()?;
+        Ok(config)
+    }
+
+    /// A suffix to assign when minting new IDs for resources and translations
+    pub fn with_id_suffix(mut self, suffix: impl Into<String>) -> Self {
+        self.id_suffix = Some(suffix.into());
+        self
+    }
+
+    pub fn compile(&mut self) -> Result<(), String> {
+        for rule in self.rules.iter_mut() {
+            if let Some(v) = rule.source.as_ref() {
+                if v.starts_with('/') && v.ends_with('/') && v.len() > 1 {
+                    let regex = format!("^{}$", &v[1..v.len() - 1]);
+                    rule.source_regex = Some(
+                        RegexBuilder::new(&regex)
+                            .case_insensitive(!rule.case_sensitive)
+                            .build()
+                            .map_err(|e| {
+                                format!("Invalid regular expression for source: {}: {}", regex, e)
+                            })?,
+                    );
+                }
+            }
+            if let Some(v) = rule.left.as_ref() {
+                if v.starts_with('/') && v.ends_with('/') && v.len() > 1 {
+                    let regex = format!("{}$", &v[1..v.len() - 1]);
+                    rule.left_regex = Some(
+                        RegexBuilder::new(&regex)
+                            .case_insensitive(!rule.case_sensitive)
+                            .build()
+                            .map_err(|e| {
+                                format!(
+                                    "Invalid regular expression for left context: {}: {}",
+                                    regex, e
+                                )
+                            })?,
+                    );
+                }
+            }
+            if let Some(v) = rule.right.as_ref() {
+                if v.starts_with('/') && v.ends_with('/') && v.len() > 1 {
+                    let regex = format!("^{}", &v[1..v.len() - 1]);
+                    rule.right_regex = Some(
+                        RegexBuilder::new(&regex)
+                            .case_insensitive(!rule.case_sensitive)
+                            .build()
+                            .map_err(|e| {
+                                format!(
+                                    "Invalid regular expression for right context: {}: {}",
+                                    regex, e
+                                )
+                            })?,
+                    );
+                }
+            }
+            if rule.source.is_none() {
+                return Err("Translation rules must have both a source".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Translates a text given a configuration containing translation rules, returns a vector of TextResourceBuilders and a vector of AnnotationBuilders which build a single annotation per resource that maps source to target.
+pub fn translate_text<'store>(
+    store: &'store AnnotationStore,
+    queries: Vec<Query<'store>>,
+    usevar: Option<&'store str>,
+    config: &TranslateTextConfig,
+) -> Result<(Vec<TextResourceBuilder>, Vec<AnnotationBuilder<'store>>), String> {
+    let mut annotations = Vec::new();
+    let mut resourcebuilders = Vec::new();
+
+    let mut seqnr = 0;
+    for query in queries.into_iter() {
+        let iter = store.query(query).map_err(|e| format!("{}", e))?;
+        for resultrow in iter {
+            if let Ok(result) = resultrow.get_by_name_or_last(usevar) {
+                match result {
+                    QueryResultItem::TextResource(resource) => {
+                        let new_resource_id = format!(
+                            "{}.{}",
+                            resource.id().expect("resource must have ID"),
+                            config
+                                .id_suffix
+                                .as_ref()
+                                .map(|s| s.as_str())
+                                .unwrap_or("translation")
+                        );
+                        let new_filename = if let Some(filename) = resource.as_ref().filename() {
+                            Some(format!(
+                                "{}.{}.txt",
+                                if filename.ends_with(".txt") {
+                                    &filename[..filename.len() - 4]
+                                } else if filename.ends_with(".md") {
+                                    &filename[..filename.len() - 3]
+                                } else {
+                                    filename
+                                },
+                                config
+                                    .id_suffix
+                                    .as_ref()
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("translation")
+                            ))
+                        } else {
+                            None
+                        };
+                        translate_text_helper(
+                            config,
+                            resource.text(),
+                            resource,
+                            0,
+                            new_resource_id,
+                            new_filename,
+                            &mut resourcebuilders,
+                            &mut annotations,
+                        )?;
+                    }
+                    QueryResultItem::TextSelection(textselection) => {
+                        seqnr += 1;
+                        let resource = textselection.resource();
+                        let new_resource_id = format!(
+                            "{}.{}.{}",
+                            resource.id().expect("resource must have ID"),
+                            config
+                                .id_suffix
+                                .as_ref()
+                                .map(|s| s.as_str())
+                                .unwrap_or("translation"),
+                            seqnr
+                        );
+                        let new_filename = if let Some(filename) = resource.as_ref().filename() {
+                            Some(format!(
+                                "{}.{}.{}.txt",
+                                if filename.ends_with(".txt") {
+                                    &filename[..filename.len() - 4]
+                                } else if filename.ends_with(".md") {
+                                    &filename[..filename.len() - 3]
+                                } else {
+                                    filename
+                                },
+                                config
+                                    .id_suffix
+                                    .as_ref()
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("translation"),
+                                seqnr
+                            ))
+                        } else {
+                            None
+                        };
+                        translate_text_helper(
+                            config,
+                            textselection.text(),
+                            &resource,
+                            textselection.begin(),
+                            new_resource_id,
+                            new_filename,
+                            &mut resourcebuilders,
+                            &mut annotations,
+                        )?;
+                    }
+                    _ => {
+                        return Err(
+                            "translatetext is only implemented for resources and text selections at the moment"
+                                .into(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    Ok((resourcebuilders, annotations))
+}
+
+fn translate_text_helper<'store>(
+    config: &TranslateTextConfig,
+    text: &'store str,
+    resource: &ResultItem<'store, TextResource>,
+    baseoffset: usize,
+    new_resource_id: String,
+    new_filename: Option<String>,
+    resourcebuilders: &mut Vec<TextResourceBuilder>,
+    annotations: &mut Vec<AnnotationBuilder<'store>>,
+) -> Result<(), String> {
+    let mut new_text =
+        String::with_capacity(text.len() + (0.1 * text.len() as f64).round() as usize); //reserve 10% extra capacity
+
+    let mut sourceselectors: Vec<SelectorBuilder<'store>> = Vec::new();
+    let mut targetselectors: Vec<SelectorBuilder<'store>> = Vec::new();
+
+    let mut skip = 0;
+    let mut targetcharpos = 0;
+    for (charpos, (bytepos, c)) in text.char_indices().enumerate() {
+        if skip > 0 {
+            skip -= c.len_utf8();
+            continue;
+        }
+        let mut foundrule = false;
+        for rule in config.rules.iter().rev() {
+            if let Some(m) = rule.test(text, bytepos) {
+                skip += m.source.len() - 1;
+
+                new_text += &m.target;
+
+                sourceselectors.push(SelectorBuilder::textselector(
+                    resource,
+                    Offset::simple(
+                        baseoffset + charpos,
+                        baseoffset + charpos + m.source.chars().count(),
+                    ),
+                ));
+                let targetlen = m.target.chars().count();
+                targetselectors.push(
+                    SelectorBuilder::TextSelector(
+                        new_resource_id.clone().into(),
+                        Offset::simple(targetcharpos, targetcharpos + targetlen),
+                    ), //                                                ^------------- not too happy about the clone here (MAYBE TODO)
+                );
+                targetcharpos += targetlen;
+
+                foundrule = true;
+                continue; //stop at first matching rule (last in config file as we reversed order)
+            }
+        }
+
+        if !foundrule && !config.discard_unmatched {
+            //no rule matches, translate character verbatim
+            new_text.push(c);
+            sourceselectors.push(SelectorBuilder::textselector(
+                resource,
+                Offset::simple(baseoffset + charpos, baseoffset + charpos + 1),
+            ));
+            targetselectors.push(SelectorBuilder::TextSelector(
+                new_resource_id.clone().into(),
+                Offset::simple(targetcharpos, targetcharpos + 1),
+            ));
+            targetcharpos += 1;
+        }
+    }
+
+    let mut resourcebuilder = TextResourceBuilder::new()
+        .with_text(new_text)
+        .with_id(new_resource_id.clone());
+    if let Some(new_filename) = new_filename {
+        resourcebuilder = resourcebuilder.with_filename(new_filename);
+    }
+    resourcebuilders.push(resourcebuilder);
+
+    annotations.push(
+        AnnotationBuilder::new()
+            .with_id(format!("{}.translation-source", new_resource_id.as_str()))
+            .with_target(SelectorBuilder::DirectionalSelector(sourceselectors)),
+    );
+    annotations.push(
+        AnnotationBuilder::new()
+            .with_id(format!("{}.translation-target", new_resource_id.as_str()))
+            .with_target(SelectorBuilder::DirectionalSelector(targetselectors)),
+    );
+    annotations.push(
+        AnnotationBuilder::new()
+            .with_id(format!("{}.translation", new_resource_id.as_str()))
+            .with_data(
+                "https://w3id.org/stam/extensions/stam-translate/",
+                "Translation",
+                DataValue::Null,
+            )
+            .with_target(SelectorBuilder::DirectionalSelector(vec![
+                SelectorBuilder::AnnotationSelector(
+                    format!("{}.translation-source", &new_resource_id).into(),
+                    None,
+                ),
+                SelectorBuilder::AnnotationSelector(
+                    format!("{}.translation-target", &new_resource_id).into(),
+                    None,
+                ),
+            ])),
+    );
+    Ok(())
+}

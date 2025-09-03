@@ -1,0 +1,5 @@
+id_suffix = "uppercase"
+
+[rules]
+source = "/\\p{Lowercase}/"
+target = "$UPPER"
