@@ -1719,7 +1719,7 @@ impl<'a> XmlToStamConverter<'a> {
     }
 
     /// Select text corresponding to the element/node and document number
-    fn textselector(&self, node: Node, doc_num: usize) -> Option<SelectorBuilder> {
+    fn textselector<'s>(&'s self, node: Node, doc_num: usize) -> Option<SelectorBuilder<'s>> {
         let res_handle = self.resource_handle.expect("resource must be associated");
         if let Some(offset) = self.positionmap.get(&(doc_num, node.id())) {
             Some(SelectorBuilder::TextSelector(

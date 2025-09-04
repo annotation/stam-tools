@@ -12,7 +12,7 @@ struct Rule<'a> {
     variable_value: bool,
 }
 
-fn load_tag_rules(filename: &str) -> Result<Vec<Rule>, String> {
+fn load_tag_rules<'a>(filename: &'a str) -> Result<Vec<Rule<'a>>, String> {
     let mut rules: Vec<Rule> = Vec::new();
     let f = File::open(filename).map_err(|e| format!("Error opening rules {}: {}", filename, e))?;
     let reader = BufReader::new(f);

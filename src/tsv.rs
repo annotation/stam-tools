@@ -525,7 +525,7 @@ impl Columns {
         self.0.len()
     }
 
-    fn iter(&self) -> std::slice::Iter<Column> {
+    fn iter<'a>(&'a self) -> std::slice::Iter<'a, Column> {
         self.0.iter()
     }
 
