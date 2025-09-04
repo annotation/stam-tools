@@ -255,19 +255,26 @@ pub struct TranslateTextConfig {
     rules: Vec<TranslateTextRule>,
 
     /// ID Suffix for translated resource
+    #[serde(default)]
     id_suffix: Option<String>,
 
     /// When no rules match, discard that part of the text entirely? By default it will just be copied and linked verbatim at character-level
+    #[serde(default)]
     discard_unmatched: bool,
 
     /// Do generate any annotations, use this if you just want the text copied and don't mind losing all ties with the original
+    #[serde(default)]
     no_annotations: bool,
+
+    #[serde(default)]
+    debug: bool,
 }
 
 impl TranslateTextConfig {
     /// Parse the configuration from a TOML string (load the data from file yourself).
-    pub fn from_toml_str(tomlstr: &str) -> Result<Self, String> {
+    pub fn from_toml_str(tomlstr: &str, debug: bool) -> Result<Self, String> {
         let mut config: Self = toml::from_str(tomlstr).map_err(|e| format!("{}", e))?;
+        config.debug = debug;
         config.compile()?;
         Ok(config)
     }
@@ -278,11 +285,17 @@ impl TranslateTextConfig {
         self
     }
 
-    pub fn compile(&mut self) -> Result<(), String> {
+    /// A suffix to assign when minting new IDs for resources and translations
+    pub fn with_debug(mut self, value: bool) -> Self {
+        self.debug = value;
+        self
+    }
+
+    fn compile(&mut self) -> Result<(), String> {
         for rule in self.rules.iter_mut() {
             if let Some(v) = rule.source.as_ref() {
                 if v.starts_with('/') && v.ends_with('/') && v.len() > 1 {
-                    let regex = format!("^{}$", &v[1..v.len() - 1]);
+                    let regex = format!("^{}", &v[1..v.len() - 1]);
                     rule.source_regex = Some(
                         RegexBuilder::new(&regex)
                             .case_insensitive(!rule.case_sensitive)
@@ -291,6 +304,12 @@ impl TranslateTextConfig {
                                 format!("Invalid regular expression for source: {}: {}", regex, e)
                             })?,
                     );
+                    if self.debug {
+                        eprintln!(
+                            "[stam translatetext] compiled source regex {:?}",
+                            rule.source_regex
+                        )
+                    }
                 }
             }
             if let Some(v) = rule.left.as_ref() {
@@ -307,6 +326,12 @@ impl TranslateTextConfig {
                                 )
                             })?,
                     );
+                    if self.debug {
+                        eprintln!(
+                            "[stam translatetext] compiled left context regex {:?}",
+                            rule.left_regex
+                        )
+                    }
                 }
             }
             if let Some(v) = rule.right.as_ref() {
@@ -323,11 +348,20 @@ impl TranslateTextConfig {
                                 )
                             })?,
                     );
+                    if self.debug {
+                        eprintln!(
+                            "[stam translatetext] compiled right context regex {:?}",
+                            rule.right_regex
+                        )
+                    }
                 }
             }
             if rule.source.is_none() {
                 return Err("Translation rules must have both a source".into());
             }
+        }
+        if self.debug {
+            eprintln!("[stam translatetext] {} rules read", self.rules.len())
         }
         Ok(())
     }
@@ -475,6 +509,13 @@ fn translate_text_helper<'store>(
             if let Some(m) = rule.test(text, bytepos) {
                 skip += m.source.len() - 1;
 
+                if config.debug {
+                    eprintln!(
+                        "[stam translatetext] @{} matched rule {:?} -> {:?}",
+                        charpos, m.source, m.target
+                    )
+                }
+
                 new_text += &m.target;
 
                 if !config.no_annotations {
@@ -499,6 +540,12 @@ fn translate_text_helper<'store>(
         }
 
         if !foundrule && !config.discard_unmatched {
+            if config.debug {
+                eprintln!(
+                    "[stam translatetext] @{} no rule matches {:?}, falling back",
+                    charpos, c
+                )
+            }
             //no rule matches, translate character verbatim
             new_text.push(c);
             if !config.no_annotations {

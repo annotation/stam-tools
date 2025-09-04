@@ -1,5 +1,5 @@
 id_suffix = "uppercase"
 
-[rules]
+[[rules]]
 source = "/\\p{Lowercase}/"
 target = "$UPPER"

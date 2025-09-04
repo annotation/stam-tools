@@ -661,13 +661,19 @@ fn translatetext_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true),
     );
     args.push(
-        Arg::with_name("resource")
-            .long("resource")
-            .short('r')
-            .help("A query in STAMQL to select text resources to translate. See
+        Arg::with_name("query")
+            .long("query")
+            .short('q')
+            .help("A query in STAMQL to select text resources or text selections to translate. See
                 https://github.com/annotation/stam/tree/master/extensions/stam-query for an
                 explanation of the query language's syntax. The query may produce multiple results. If no resource arguments are specified at all, then all text resources will be taken for text translation.")
             .action(ArgAction::Append)
+            .takes_value(true),
+    );
+    args.push(
+        Arg::with_name("use")
+            .long("use")
+            .help("Name of the variable from --query to use for the selection of resources")
             .takes_value(true),
     );
     args.push(
@@ -680,6 +686,13 @@ fn translatetext_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("no-translations")
             .long("no-translations")
             .help("Do not produce translations. Only produce the translated texts. This essentially throws away all provenance information and prevents being able to translate annotations between texts later on."),
+    );
+    args.push(
+        Arg::with_name("debug-translate")
+            .long("debug-translate")
+            .help(
+                "Debug the translatetext function only (more narrow than doing --debug in general)",
+            ),
     );
     args
 }
@@ -1973,8 +1986,8 @@ fn run<W: Write>(
         }
         changed = true;
     } else if rootargs.subcommand_matches("translatetext").is_some() {
-        let querystrings: Vec<_> = args
-            .values_of("resource")
+        let mut querystrings: Vec<_> = args
+            .values_of("query")
             .unwrap_or_default()
             .map(|q| {
                 if q.find(" ").is_some() {
@@ -1986,6 +1999,9 @@ fn run<W: Write>(
                 }
             })
             .collect();
+        if querystrings.is_empty() {
+            querystrings.push(format!("SELECT RESOURCE"))
+        }
         let mut queries = Vec::new();
         for (i, querystring) in querystrings.iter().enumerate() {
             queries.push(
@@ -2006,10 +2022,14 @@ fn run<W: Write>(
                 "A configuration file that defines translation rules is required"
             ));
         };
-        let mut config = TranslateTextConfig::from_toml_str(&configdata).map_err(|e| {
+        let mut config = TranslateTextConfig::from_toml_str(
+            &configdata,
+            args.is_present("debug-translate") || args.is_present("debug"),
+        )
+        .map_err(|e| {
             format!(
                 "Syntax error in translation rules configuration file {}: {}",
-                args.value_of("config").unwrap(),
+                args.value_of("rules").unwrap(),
                 e
             )
         })?;
