@@ -259,6 +259,9 @@ pub struct TranslateTextConfig {
 
     /// When no rules match, discard that part of the text entirely? By default it will just be copied and linked verbatim at character-level
     discard_unmatched: bool,
+
+    /// Do generate any annotations, use this if you just want the text copied and don't mind losing all ties with the original
+    no_annotations: bool,
 }
 
 impl TranslateTextConfig {
@@ -336,7 +339,7 @@ pub fn translate_text<'store>(
     queries: Vec<Query<'store>>,
     usevar: Option<&'store str>,
     config: &TranslateTextConfig,
-) -> Result<(Vec<TextResourceBuilder>, Vec<AnnotationBuilder<'store>>), String> {
+) -> Result<(Vec<TextResourceBuilder>, Vec<AnnotationBuilder<'static>>), String> {
     let mut annotations = Vec::new();
     let mut resourcebuilders = Vec::new();
 
@@ -452,13 +455,13 @@ fn translate_text_helper<'store>(
     new_resource_id: String,
     new_filename: Option<String>,
     resourcebuilders: &mut Vec<TextResourceBuilder>,
-    annotations: &mut Vec<AnnotationBuilder<'store>>,
+    annotations: &mut Vec<AnnotationBuilder<'static>>,
 ) -> Result<(), String> {
     let mut new_text =
         String::with_capacity(text.len() + (0.1 * text.len() as f64).round() as usize); //reserve 10% extra capacity
 
-    let mut sourceselectors: Vec<SelectorBuilder<'store>> = Vec::new();
-    let mut targetselectors: Vec<SelectorBuilder<'store>> = Vec::new();
+    let mut sourceselectors: Vec<SelectorBuilder<'static>> = Vec::new();
+    let mut targetselectors: Vec<SelectorBuilder<'static>> = Vec::new();
 
     let mut skip = 0;
     let mut targetcharpos = 0;
@@ -474,21 +477,21 @@ fn translate_text_helper<'store>(
 
                 new_text += &m.target;
 
-                sourceselectors.push(SelectorBuilder::textselector(
-                    resource,
-                    Offset::simple(
-                        baseoffset + charpos,
-                        baseoffset + charpos + m.source.chars().count(),
-                    ),
-                ));
-                let targetlen = m.target.chars().count();
-                targetselectors.push(
-                    SelectorBuilder::TextSelector(
+                if !config.no_annotations {
+                    sourceselectors.push(SelectorBuilder::TextSelector(
+                        resource.handle().into(),
+                        Offset::simple(
+                            baseoffset + charpos,
+                            baseoffset + charpos + m.source.chars().count(),
+                        ),
+                    ));
+                    let targetlen = m.target.chars().count();
+                    targetselectors.push(SelectorBuilder::TextSelector(
                         new_resource_id.clone().into(),
                         Offset::simple(targetcharpos, targetcharpos + targetlen),
-                    ), //                                                ^------------- not too happy about the clone here (MAYBE TODO)
-                );
-                targetcharpos += targetlen;
+                    ));
+                    targetcharpos += targetlen;
+                }
 
                 foundrule = true;
                 continue; //stop at first matching rule (last in config file as we reversed order)
@@ -498,14 +501,16 @@ fn translate_text_helper<'store>(
         if !foundrule && !config.discard_unmatched {
             //no rule matches, translate character verbatim
             new_text.push(c);
-            sourceselectors.push(SelectorBuilder::textselector(
-                resource,
-                Offset::simple(baseoffset + charpos, baseoffset + charpos + 1),
-            ));
-            targetselectors.push(SelectorBuilder::TextSelector(
-                new_resource_id.clone().into(),
-                Offset::simple(targetcharpos, targetcharpos + 1),
-            ));
+            if !config.no_annotations {
+                sourceselectors.push(SelectorBuilder::TextSelector(
+                    resource.handle().into(),
+                    Offset::simple(baseoffset + charpos, baseoffset + charpos + 1),
+                ));
+                targetselectors.push(SelectorBuilder::TextSelector(
+                    new_resource_id.clone().into(),
+                    Offset::simple(targetcharpos, targetcharpos + 1),
+                ));
+            }
             targetcharpos += 1;
         }
     }
@@ -518,34 +523,36 @@ fn translate_text_helper<'store>(
     }
     resourcebuilders.push(resourcebuilder);
 
-    annotations.push(
-        AnnotationBuilder::new()
-            .with_id(format!("{}.translation-source", new_resource_id.as_str()))
-            .with_target(SelectorBuilder::DirectionalSelector(sourceselectors)),
-    );
-    annotations.push(
-        AnnotationBuilder::new()
-            .with_id(format!("{}.translation-target", new_resource_id.as_str()))
-            .with_target(SelectorBuilder::DirectionalSelector(targetselectors)),
-    );
-    annotations.push(
-        AnnotationBuilder::new()
-            .with_id(format!("{}.translation", new_resource_id.as_str()))
-            .with_data(
-                "https://w3id.org/stam/extensions/stam-translate/",
-                "Translation",
-                DataValue::Null,
-            )
-            .with_target(SelectorBuilder::DirectionalSelector(vec![
-                SelectorBuilder::AnnotationSelector(
-                    format!("{}.translation-source", &new_resource_id).into(),
-                    None,
-                ),
-                SelectorBuilder::AnnotationSelector(
-                    format!("{}.translation-target", &new_resource_id).into(),
-                    None,
-                ),
-            ])),
-    );
+    if !config.no_annotations {
+        annotations.push(
+            AnnotationBuilder::new()
+                .with_id(format!("{}.translation-source", new_resource_id.as_str()))
+                .with_target(SelectorBuilder::DirectionalSelector(sourceselectors)),
+        );
+        annotations.push(
+            AnnotationBuilder::new()
+                .with_id(format!("{}.translation-target", new_resource_id.as_str()))
+                .with_target(SelectorBuilder::DirectionalSelector(targetselectors)),
+        );
+        annotations.push(
+            AnnotationBuilder::new()
+                .with_id(format!("{}.translation", new_resource_id.as_str()))
+                .with_data(
+                    "https://w3id.org/stam/extensions/stam-translate/",
+                    "Translation",
+                    DataValue::Null,
+                )
+                .with_target(SelectorBuilder::DirectionalSelector(vec![
+                    SelectorBuilder::AnnotationSelector(
+                        format!("{}.translation-source", &new_resource_id).into(),
+                        None,
+                    ),
+                    SelectorBuilder::AnnotationSelector(
+                        format!("{}.translation-target", &new_resource_id).into(),
+                        None,
+                    ),
+                ])),
+        );
+    }
     Ok(())
 }

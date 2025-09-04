@@ -1973,7 +1973,7 @@ fn run<W: Write>(
         }
         changed = true;
     } else if rootargs.subcommand_matches("translatetext").is_some() {
-        let resource_querystrings: Vec<_> = args
+        let querystrings: Vec<_> = args
             .values_of("resource")
             .unwrap_or_default()
             .map(|q| {
@@ -1981,11 +1981,19 @@ fn run<W: Write>(
                     //already a query
                     q.to_string()
                 } else {
-                    //probably an ID, transform to query
+                    //probably a resource ID, transform to query
                     format!("SELECT RESOURCE WHERE ID \"{}\";", q)
                 }
             })
             .collect();
+        let mut queries = Vec::new();
+        for (i, querystring) in querystrings.iter().enumerate() {
+            queries.push(
+                stam::Query::parse(querystring.as_str())
+                    .map_err(|err| format!("Query syntax error query {}: {}", i + 1, err))?
+                    .0,
+            );
+        }
         let configdata = if let Some(filename) = args.value_of("rules") {
             fs::read_to_string(filename).map_err(|e| {
                 format!(
@@ -2007,6 +2015,23 @@ fn run<W: Write>(
         })?;
         if let Some(prefix) = args.value_of("id-suffix") {
             config = config.with_id_suffix(prefix);
+        }
+        match translate_text(store, queries, args.value_of("use"), &config) {
+            Ok((resources, annotations)) => {
+                for resource in resources {
+                    if let Err(err) = store.add_resource(resource) {
+                        return Err(format!("translation failed (adding resource): {:?}", err));
+                    }
+                    changed = true;
+                }
+                for annotation in annotations {
+                    if let Err(err) = store.annotate(annotation) {
+                        return Err(format!("translation failed (adding resource): {:?}", err));
+                    }
+                    changed = true;
+                }
+            }
+            Err(err) => return Err(format!("translation failed: {:?}", err)),
         }
     } else if rootargs.subcommand_matches("fromxml").is_some() {
         let configdata = if let Some(filename) = args.value_of("config") {
