@@ -151,6 +151,9 @@ pub struct TranslateTextRule {
     #[serde(default = "f_true")]
     case_sensitive: bool,
 
+    #[serde(default)]
+    invert_context_match: bool,
+
     #[serde(skip)]
     source_regex: Option<Regex>,
     #[serde(skip)]
@@ -205,7 +208,11 @@ impl TranslateTextRule {
             //match left context using regular expressiong
             let leftcontext = &text[..bytecursor];
             if !left_regex.is_match(leftcontext) {
-                return false;
+                if self.invert_context_match {
+                    return true;
+                } else {
+                    return false;
+                }
             }
         } else if let Some(left_pattern) = self.left.as_ref() {
             //match left context normally
@@ -216,7 +223,11 @@ impl TranslateTextRule {
                         .to_lowercase()
                         != left_pattern.to_lowercase())
             {
-                return false;
+                if self.invert_context_match {
+                    return true;
+                } else {
+                    return false;
+                }
             }
         }
         if let Some(right_regex) = self.right_regex.as_ref() {
@@ -234,10 +245,18 @@ impl TranslateTextRule {
                         .to_lowercase()
                         != right_pattern.to_lowercase())
             {
-                return false;
+                if self.invert_context_match {
+                    return true;
+                } else {
+                    return false;
+                }
             }
         }
-        true
+        if self.invert_context_match {
+            return false;
+        } else {
+            return true;
+        }
     }
 
     fn get_target<'a>(&'a self, source: &'a str) -> Cow<'a, str> {
