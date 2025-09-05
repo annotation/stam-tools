@@ -492,7 +492,7 @@ With `stam split` you can split an annotation store by removing resources, data 
 
 Instead of passing full queries, you can also pass resources or datasets directly via respectively ``--resource`` and ``--dataset``.
 
-## stam transpose
+### stam transpose
 
 Transpose annotations over a transposition pivot (annotation), effectively
 mapping them from one coordinate system to another (See the [STAM
@@ -511,7 +511,7 @@ to transpose over, further queries correspond to input annotations to
 transpose. The new transposed annotations (and the transpositions that produced
 them) will be added to the store.")
 
-## stam translate
+### stam translate
 
 Translate annotations over a translation pivot (annotation), effectively
 mapping them from one coordinate system to another (See the [STAM
@@ -535,7 +535,7 @@ Notes:
 * To prevent misunderstanding, this is not a tool that does natural language translation / machine translation.
   The result of natural language translations however, could be represented using Translation annotations.
 
-## stam translatetext
+### stam translatetext
 
 Translates one text to another by following translation rules from a
 configuration file. This will produce [Translation
@@ -561,7 +561,7 @@ annotation store), you can run this from the `tests/` directory in this
 repository:
 
 ```bash
-$ stam translatetext  --rules ../config/translatetext/lowercase.toml --output translatetext2.stam.json translatetext2.txt
+$ stam translatetext  --rules ../config/translatetext/norm.toml --output translatetext2.stam.json translatetext2.txt
 Writing annotation store to translatetext2.stam.json
 $ stam print translatetext2.stam.json
 --------------------------- translatetext2.txt ---------------------------
