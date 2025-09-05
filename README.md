@@ -23,9 +23,12 @@ Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 * ``stam fromxml``   - Import data from XML-based formats (like xHTML, TEI) to STAM. Effectively 'untangling' text and annotations.
 * ``stam print``     - Print a text or text selection specified by an offset.
 * ``stam query`` or ``stam export``  -  Query the annotation store and export the output in tabular form to a simple TSV (Tab Separated Values) format. This is not lossless but provides a decent view on the data. It provides a lot of flexibility by allowing you to configure the output columns as you see fit.
-* ``stam validate``  - Validate a STAM model.  
 * ``stam tag``       - Regular-expression based tagger on plain text. 
+* ``stam transpose`` - Transfer annotations from one text to another (covered texts are the same)
+* ``stam translate`` - Transfer annotations from one text to another (covered texts may be different)
+* ``stam translatetext`` or ``stam tr`` - Copy a text using substitution rules. Produces translation annotations. Useful for text normalisation or transliteration.
 * ``stam split``     - Split an annotation store by removing specific resources, data sets or annotations.
+* ``stam validate``  - Validate a STAM model.  
 * ``stam view``      - View annotations as queried by outputting to HTML (or ANSI coloured text).
 
 For many of these, you can set `--verbose` for extra details in the output.
@@ -125,7 +128,7 @@ $ stam info my.store.stam.json
 
 ### stam print
 
-Extracts the specified text selection from the specified resource. If begin and end are omitted, the whole resouce is printed.
+Extracts the specified text selection from the specified resource. If begin and end are omitted, the whole resource is printed.
 
 ```
 $ stam print --resource document.txt --begin 23 --end 34 my.store.stam.json 
@@ -428,6 +431,14 @@ above, except for an extra first column with the annotation (transposition) ID,
 and an extra final column with all annotations ID underlying the transposition
 (separated by a pipe character).
 
+If you do not just want to align exact matches, you can specify ``--grow`` to
+grow the alignments into larger blocks by incorporating non-matching parts. The
+resulting alignments will then be
+[translations](https://github.com/annotation/stam/tree/master/extensions/stam-translate)
+rather than transpositions. The ``--max-errors`` parameter determines the
+maximum number of the number of characters in the search string that may be
+missed when matching in the larger text. 
+
 ### stam batch
 
 The `stam batch` tool is used when you want to execute multiple subcommands in
@@ -480,3 +491,102 @@ formulated in XML, such as are present for instance in
 With `stam split` you can split an annotation store by removing resources, data sets or annotations. The items to be removed are specified via the ``--query`` parameter (multiple allowed). The default behaviour is to remove the selected items, but you can reverse the behaviour by passing ``--keep``; then all non-matching items will be removed. Use with `--output` to set an output filename if you don't want to overwrite and truncate your input store.
 
 Instead of passing full queries, you can also pass resources or datasets directly via respectively ``--resource`` and ``--dataset``.
+
+## stam transpose
+
+Transpose annotations over a transposition pivot (annotation), effectively
+mapping them from one coordinate system to another (See the [STAM
+Transpose](https://github.com/annotation/stam/tree/master/extensions/stam-transpose)
+specification). The actual parts of the text that are covered by transpositions
+is the same in both/all text resources. (see `stam translate` if you want to
+relate parts of texts that are different).
+
+Transpositions can be initially computed with, for instance, `stam align`. The
+resulting transposion annotations can then be used as a pivot to transpose
+other annotations over from one text to another.
+
+This subcommand takes STAMQL queries via ``--query``, which can and should be
+issued multiple times. The first query corresponds to the transposition pivot
+to transpose over, further queries correspond to input annotations to
+transpose. The new transposed annotations (and the transpositions that produced
+them) will be added to the store.")
+
+## stam translate
+
+Translate annotations over a translation pivot (annotation), effectively
+mapping them from one coordinate system to another (See the [STAM
+Translate](https://github.com/annotation/stam/tree/master/extensions/stam-translate)
+specification). The actual parts of the text that are covered by translations
+can be different in both/all text resources. (see `stam transpose` if you only want to
+relate parts of texts that are the same).
+
+Translations can be initially computed with, for instance, `stam translatetext`
+or with `stam align --grow`. The resulting translation annotations can then be
+used as a pivot to translate other annotations over from one text to another.
+
+This subcommand takes STAMQL queries via ``--query``, which can and should be
+issued multiple times. The first query corresponds to the translation pivot
+to translation over, further queries correspond to input annotations to
+translate. The new translated annotations (and the translations that produced
+them) will be added to the store.")
+
+Notes:
+
+* To prevent misunderstanding, this is not a tool that does natural language translation / machine translation.
+  The result of natural language translations however, could be represented using Translation annotations.
+
+## stam translatetext
+
+Translates one text to another by following translation rules from a
+configuration file. This will produce [Translation
+annotations](https://github.com/annotation/stam/tree/master/extensions/stam-translate)
+that relate the two texts and enables translation of further/future
+annotations (via `stam translate`).
+
+The alias `stam tr` is available for this subcommand, because the functionality of this tool
+is similar to the classic `tr` tool in UNIX, albeit much more sophisticated and producing annotations.
+
+This tool relies on an external configuration file that defines *translation
+rules*, passed via the ``--rules`` parameter. The format is documented
+[here](docs/translatetext.md). See for example [this configuration for simple
+text normalisation](config/translatetext/norm.toml), [this one for lowercasing
+text](config/translatetext/lower.toml), and [this one for
+uppercase](config/translatetext/upper.toml).
+
+Specify the resources or text selections to translate using the ``--query``
+parameter, if you omit this, all text resources will be translated by default.
+
+Example (note we take a shortcut by loading a text file instead of an
+annotation store), you can run this from the `tests/` directory in this
+repository:
+
+```bash
+$ stam translatetext  --rules ../config/translatetext/lowercase.toml --output translatetext2.stam.json translatetext2.txt
+Writing annotation store to translatetext2.stam.json
+$ stam print translatetext2.stam.json
+--------------------------- translatetext2.txt ---------------------------
+This is a text which
+is split over mul-
+tiple lines and con-
+tains hyphenisation.
+
+We can imagine a nor-
+malized version that
+removes both.
+
+--------------------------- translatetext2.norm.txt ---------------------------
+This is a text which is split over multiple lines and contains hyphenisation.
+
+We can imagine a normalized version that removes both.
+```
+
+You can view the exact translation produced with: 
+
+```bash
+$ stam export --alignments translatetext1.stam.JSON
+```
+
+Notes:
+
+* To prevent misunderstanding, this is not a tool that does natural language translation / machine translation.
+  The translation rules are of a simpler and more mechanical nature.
