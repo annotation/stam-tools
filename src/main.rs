@@ -218,7 +218,11 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
 /// Translate command line arguments to stam library's configuration structure
 fn config_from_args(args: &ArgMatches) -> Config {
     Config::default()
-        .with_use_include(!args.is_present("no-include"))
+        .with_use_include(
+            args.get_one("no-include")
+                .map(|x: &bool| !x)
+                .unwrap_or(true),
+        )
         .with_debug(args.is_present("debug"))
 }
 
@@ -977,6 +981,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
         .subcommand(
             SubCommand::with_name("print")
                 .args(&common_arguments())
+                .args(&config_arguments())
                 .args(&store_arguments(true, false, batchmode))
                 .about("Extract an offset from a plain text file (no STAM model needed).")
                 .arg(

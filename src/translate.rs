@@ -178,7 +178,7 @@ impl TranslateTextRule {
         if let Some(source_regex) = self.source_regex.as_ref() {
             //check if text under cursor matches (regular expression test)
             if let Some(m) = source_regex.find(&text[bytecursor..]) {
-                if self.test_context(text, bytecursor) {
+                if self.test_context(text, bytecursor, m.len()) {
                     return Some(MatchedRule {
                         target: self.get_target(m.as_str()),
                         source: m.as_str(),
@@ -191,7 +191,7 @@ impl TranslateTextRule {
                 && ((self.case_sensitive && text[bytecursor..bytecursor + source.len()] == *source)
                     || (!self.case_sensitive
                         && text[bytecursor..bytecursor + source.len()].to_lowercase() == *source))
-                && self.test_context(text, bytecursor)
+                && self.test_context(text, bytecursor, source.len())
             {
                 return Some(MatchedRule {
                     target: self.get_target(source.as_str()),
@@ -203,7 +203,7 @@ impl TranslateTextRule {
     }
 
     /// See if context constaints match
-    fn test_context(&self, text: &str, bytecursor: usize) -> bool {
+    fn test_context(&self, text: &str, bytecursor: usize, matchbytelen: usize) -> bool {
         if let Some(left_regex) = self.left_regex.as_ref() {
             //match left context using regular expressiong
             let leftcontext = &text[..bytecursor];
@@ -231,15 +231,19 @@ impl TranslateTextRule {
             }
         }
         if let Some(right_regex) = self.right_regex.as_ref() {
-            //match right context using regular expressiong
-            let rightcontext = &text[bytecursor..];
+            //match right context using regular expression
+            let rightcontext = &text[bytecursor + matchbytelen..];
             if !right_regex.is_match(rightcontext) {
-                return false;
+                if self.invert_context_match {
+                    return true;
+                } else {
+                    return false;
+                }
             }
         } else if let Some(right_pattern) = self.right.as_ref() {
             //match right context normally
-            let rightcontext = &text[bytecursor..];
-            if (self.case_sensitive && !rightcontext.ends_with(right_pattern))
+            let rightcontext = &text[bytecursor + matchbytelen..];
+            if (self.case_sensitive && !rightcontext.starts_with(right_pattern))
                 || (!self.case_sensitive
                     && rightcontext[..std::cmp::min(rightcontext.len(), right_pattern.len())]
                         .to_lowercase()
@@ -264,7 +268,7 @@ impl TranslateTextRule {
             "$UPPER" => source.to_uppercase().into(),
             "$LOWER" => source.to_lowercase().into(),
             "$REVERSED" => Cow::Owned(source.chars().rev().collect::<String>()),
-            _ => source.into(),
+            _ => Cow::Borrowed(self.target.as_str()),
         }
     }
 }
@@ -333,7 +337,7 @@ impl TranslateTextConfig {
             }
             if let Some(v) = rule.left.as_ref() {
                 if v.starts_with('/') && v.ends_with('/') && v.len() > 1 {
-                    let regex = format!("{}$", &v[1..v.len() - 1]);
+                    let regex = format!(".*{}$", &v[1..v.len() - 1]);
                     rule.left_regex = Some(
                         RegexBuilder::new(&regex)
                             .case_insensitive(!rule.case_sensitive)
@@ -355,7 +359,7 @@ impl TranslateTextConfig {
             }
             if let Some(v) = rule.right.as_ref() {
                 if v.starts_with('/') && v.ends_with('/') && v.len() > 1 {
-                    let regex = format!("^{}", &v[1..v.len() - 1]);
+                    let regex = format!("^{}.*", &v[1..v.len() - 1]);
                     rule.right_regex = Some(
                         RegexBuilder::new(&regex)
                             .case_insensitive(!rule.case_sensitive)
@@ -403,14 +407,28 @@ pub fn translate_text<'store>(
             if let Ok(result) = resultrow.get_by_name_or_last(usevar) {
                 match result {
                     QueryResultItem::TextResource(resource) => {
+                        let resource_id = resource.id().expect("resource must have ID");
                         let new_resource_id = format!(
-                            "{}.{}",
-                            resource.id().expect("resource must have ID"),
+                            "{}.{}{}",
+                            if resource_id.ends_with(".txt") {
+                                &resource_id[..resource_id.len() - 4]
+                            } else if resource_id.ends_with(".md") {
+                                &resource_id[..resource_id.len() - 3]
+                            } else {
+                                resource_id
+                            },
                             config
                                 .id_suffix
                                 .as_ref()
                                 .map(|s| s.as_str())
-                                .unwrap_or("translation")
+                                .unwrap_or("translation"),
+                            if resource_id.ends_with(".txt") {
+                                ".txt"
+                            } else if resource_id.ends_with(".md") {
+                                ".md"
+                            } else {
+                                ""
+                            }
                         );
                         let new_filename = if let Some(filename) = resource.as_ref().filename() {
                             Some(format!(

@@ -9,6 +9,8 @@ import: importtest1 importtest2 importtest3 importtest4
 
 align: aligntest1 aligntest2 aligntest3 aligntest4
 
+translatetext: translatetext1.stam.json translatetext2.stam.json
+
 clean:
 	-rm *test*.annotationstore.stam.json
 
@@ -68,3 +70,14 @@ aligntest3.annotationstore.stam.json:
 	cargo run init --force-new --resource align2.txt --resource localalign2.txt $@
 	cargo run -r align --algorithm global -r localalign2.txt -r align2.txt $@
 	cargo run export --alignments $@
+
+translatetext1.stam.json: translatetext1.txt
+	@echo "------------- Translatetext - Test 1  - Lowercase --------------"
+	cargo run -- translatetext  --rules ../config/translatetext/lowercase.toml --output $@ $<
+	cargo run print $@
+
+
+translatetext2.stam.json: translatetext2.txt
+	@echo "------------- Translatetext - Test 2 - Normalisation --------------"
+	cargo run -- translatetext --debug-translate --rules ../config/translatetext/norm.toml --output $@ $<
+	cargo run print $@

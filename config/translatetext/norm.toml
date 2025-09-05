@@ -1,0 +1,21 @@
+# Normalizes text by removing hyphenation and linebreaks (assumes UNIX line endings)
+
+id_suffix = "norm"
+
+[[rules]]
+source = "\n"
+target = " "
+left = "/\\p{L}/"
+right = "/\\p{L}/"
+
+[[rules]]
+source = "-\n"
+target = ""
+left = "/\\p{L}/"
+right = "/\\p{L}/"
+
+[[rules]]
+source = "¬\n"
+target = ""
+left = "/\\p{L}/"
+right = "/\\p{L}/"
