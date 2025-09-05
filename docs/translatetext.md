@@ -90,3 +90,35 @@ Example of a rule for lowercasing:
 source = "/\\p{Uppercase}/"
 target = "$LOWER"
 ```
+
+## Translation Rule Contraints
+
+Translation rules can formulate constraints using
+[STAMQL](https://github.com/annotation/stam/tree/master/extensions/stam-query)
+queries, and in doing so you can make use of annotation information in your
+translation rules.
+
+Based on whether a query succeeds or not, the translation rule matches or not.
+We call these constraints. In your query you can use the variables `?source`,
+`?left` and `?right`, corresponding to the source under consideration and the
+left and right context, respectively.
+
+```
+[[rules.constraints]]
+query = "SELECT ANNOTATION ?a WHERE RELATION ?source EMBEDDED;"
+test = "a"
+```
+A rule may have multiple independent constraints, all must match.
+
+### query
+
+The query in STAMQL. You will almost always want to make sure to use either `?source`, and/or `?left` and/or `?right` in your query (otherwise it has no relation to the rule that invokes it).
+
+### test
+
+The variable to test, if not specified, the first variable/result will be used.
+If results are returned for this variable, the rule matches and the translation will be carried out. If it produces no results, the rule does not match and no translation will be done. If `invert` is set to true, this behaviour is inverted.
+
+### invert
+
+Boolean to invert the match.
