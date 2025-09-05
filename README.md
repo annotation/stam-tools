@@ -583,7 +583,7 @@ We can imagine a normalized version that removes both.
 You can view the exact translation produced with: 
 
 ```bash
-$ stam export --alignments translatetext1.stam.JSON
+$ stam export --alignments translatetext2.stam.json
 ```
 
 Notes:
