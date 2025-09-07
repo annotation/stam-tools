@@ -585,13 +585,34 @@ fn translate_text_helper<'store, 'a>(
             if let Some(m) = rule.test(text, bytepos) {
                 if !rule.constraints.is_empty() {
                     let mut constraints_match = true; //falsify
+                    let sourcecharlen = m.source.chars().count();
+                    let source = resource
+                        .textselection(&Offset::simple(charpos, sourcecharlen))
+                        .map_err(|e| format!("Failed to extract source: {}", e))?;
+                    let left = resource
+                        .textselection(&Offset::new(
+                            Cursor::BeginAligned(0),
+                            Cursor::BeginAligned(charpos),
+                        ))
+                        .map_err(|e| format!("Failed to extract left context: {}", e))?;
+                    let right = resource
+                        .textselection(&Offset::new(
+                            Cursor::BeginAligned(charpos + sourcecharlen), //MAYBE TODO: check if this holds for final char as well?
+                            Cursor::EndAligned(0),
+                        ))
+                        .map_err(|e| format!("Failed to extract right context: {}", e))?;
                     for constraint in rule.constraints.iter() {
                         //match constraint
-                        let query = constraint_queries
+                        let mut query = constraint_queries
                             .get(constraint.query.as_str())
-                            .expect("constraint query should have been compiled earlier");
+                            .expect("constraint query should have been compiled earlier")
+                            .clone();
+                        query.bind_resourcevar("resource", resource);
+                        query.bind_textvar("source", &source);
+                        query.bind_textvar("left", &left);
+                        query.bind_textvar("right", &right);
                         let mut iter = store
-                            .query(query.clone())
+                            .query(query)
                             .map_err(|e| format!("Constraint query failed: {}", e))?;
                         if let Some(result) = iter.next() {
                             //only one iteration suffices (for now)

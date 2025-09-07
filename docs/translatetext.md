@@ -100,8 +100,8 @@ translation rules.
 
 Based on whether a query succeeds or not, the translation rule matches or not.
 We call these constraints. In your query you can use the variables `?source`,
-`?left` and `?right`, corresponding to the source under consideration and the
-left and right context, respectively.
+`?left` and `?right`, corresponding to the source text selection under consideration and the
+left and right context, respectively. There is also the variable `?resource`, representing the resource as a whole.
 
 ```
 [[rules.constraints]]
