@@ -2,6 +2,7 @@ use crate::align::print_transposition as print_translation;
 use serde::Deserialize;
 use stam::*;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use toml;
 
 pub fn translate<'store>(
@@ -154,6 +155,9 @@ pub struct TranslateTextRule {
     #[serde(default)]
     invert_context_match: bool,
 
+    #[serde(default)]
+    constraints: Vec<TranslateTextConstraint>,
+
     #[serde(skip)]
     source_regex: Option<Regex>,
     #[serde(skip)]
@@ -165,6 +169,17 @@ pub struct TranslateTextRule {
 // well, this is a bit silly, used in macro above
 fn f_true() -> bool {
     true
+}
+
+#[derive(Clone, Default, Deserialize, Debug)]
+pub struct TranslateTextConstraint {
+    query: String,
+
+    #[serde(default)]
+    test: Option<String>,
+
+    #[serde(default)]
+    invert: bool,
 }
 
 pub struct MatchedRule<'a> {
@@ -298,7 +313,7 @@ impl TranslateTextConfig {
     pub fn from_toml_str(tomlstr: &str, debug: bool) -> Result<Self, String> {
         let mut config: Self = toml::from_str(tomlstr).map_err(|e| format!("{}", e))?;
         config.debug = debug;
-        config.compile()?;
+        config.compile_regexps()?;
         Ok(config)
     }
 
@@ -314,7 +329,7 @@ impl TranslateTextConfig {
         self
     }
 
-    fn compile(&mut self) -> Result<(), String> {
+    fn compile_regexps<'a>(&'a mut self) -> Result<(), String> {
         for rule in self.rules.iter_mut() {
             if let Some(v) = rule.source.as_ref() {
                 if v.starts_with('/') && v.ends_with('/') && v.len() > 1 {
@@ -388,6 +403,23 @@ impl TranslateTextConfig {
         }
         Ok(())
     }
+
+    pub fn compile_queries<'a>(&'a self) -> Result<HashMap<String, Query<'a>>, String> {
+        let mut compiled_queries = HashMap::new();
+        for rule in self.rules.iter() {
+            for constraint in rule.constraints.iter() {
+                if !compiled_queries.contains_key(constraint.query.as_str()) {
+                    compiled_queries.insert(
+                        constraint.query.clone(),
+                        stam::Query::parse(constraint.query.as_str())
+                            .map_err(|err| format!("{}", err))?
+                            .0,
+                    );
+                }
+            }
+        }
+        Ok(compiled_queries)
+    }
 }
 
 /// Translates a text given a configuration containing translation rules, returns a vector of TextResourceBuilders and a vector of AnnotationBuilders which build a single annotation per resource that maps source to target.
@@ -399,6 +431,7 @@ pub fn translate_text<'store>(
 ) -> Result<(Vec<TextResourceBuilder>, Vec<AnnotationBuilder<'static>>), String> {
     let mut annotations = Vec::new();
     let mut resourcebuilders = Vec::new();
+    let constraint_queries = config.compile_queries()?;
 
     let mut seqnr = 0;
     for query in queries.into_iter() {
@@ -451,6 +484,7 @@ pub fn translate_text<'store>(
                         };
                         translate_text_helper(
                             config,
+                            store,
                             resource.text(),
                             resource,
                             0,
@@ -458,6 +492,7 @@ pub fn translate_text<'store>(
                             new_filename,
                             &mut resourcebuilders,
                             &mut annotations,
+                            &constraint_queries,
                         )?;
                     }
                     QueryResultItem::TextSelection(textselection) => {
@@ -495,6 +530,7 @@ pub fn translate_text<'store>(
                         };
                         translate_text_helper(
                             config,
+                            store,
                             textselection.text(),
                             &resource,
                             textselection.begin(),
@@ -502,6 +538,7 @@ pub fn translate_text<'store>(
                             new_filename,
                             &mut resourcebuilders,
                             &mut annotations,
+                            &constraint_queries,
                         )?;
                     }
                     _ => {
@@ -518,8 +555,9 @@ pub fn translate_text<'store>(
     Ok((resourcebuilders, annotations))
 }
 
-fn translate_text_helper<'store>(
+fn translate_text_helper<'store, 'a>(
     config: &TranslateTextConfig,
+    store: &'store AnnotationStore,
     text: &'store str,
     resource: &ResultItem<'store, TextResource>,
     baseoffset: usize,
@@ -527,6 +565,7 @@ fn translate_text_helper<'store>(
     new_filename: Option<String>,
     resourcebuilders: &mut Vec<TextResourceBuilder>,
     annotations: &mut Vec<AnnotationBuilder<'static>>,
+    constraint_queries: &HashMap<String, Query<'a>>,
 ) -> Result<(), String> {
     let mut new_text =
         String::with_capacity(text.len() + (0.1 * text.len() as f64).round() as usize); //reserve 10% extra capacity
@@ -544,6 +583,50 @@ fn translate_text_helper<'store>(
         let mut foundrule = false;
         for rule in config.rules.iter().rev() {
             if let Some(m) = rule.test(text, bytepos) {
+                if !rule.constraints.is_empty() {
+                    let mut constraints_match = true; //falsify
+                    for constraint in rule.constraints.iter() {
+                        //match constraint
+                        let query = constraint_queries
+                            .get(constraint.query.as_str())
+                            .expect("constraint query should have been compiled earlier");
+                        let mut iter = store
+                            .query(query.clone())
+                            .map_err(|e| format!("Constraint query failed: {}", e))?;
+                        if let Some(result) = iter.next() {
+                            //only one iteration suffices (for now)
+                            if let Some(testvar) = constraint.test.as_ref() {
+                                if result.get_by_name(testvar.as_str()).is_ok() {
+                                    if constraint.invert {
+                                        constraints_match = false;
+                                        break;
+                                    }
+                                } else if !constraint.invert {
+                                    constraints_match = false;
+                                    break;
+                                }
+                            } else if constraint.invert {
+                                //results (no specific test variable)
+                                constraints_match = false;
+                                break;
+                            }
+                        } else if !constraint.invert {
+                            //no results
+                            constraints_match = false;
+                            break;
+                        }
+                    }
+                    if !constraints_match {
+                        if config.debug {
+                            eprintln!(
+                                "[stam translatetext] @{} failed to matched rule {:?} -> {:?} because of unmet constraints",
+                                charpos, m.source, m.target
+                            )
+                        }
+                        continue; //skip to next rule
+                    }
+                }
+
                 skip += m.source.len() - 1;
 
                 if config.debug {
