@@ -202,16 +202,18 @@ impl TranslateTextRule {
             }
         } else if let Some(source) = self.source.as_ref() {
             //check if text under cursor matches (normal test)
-            if bytecursor + source.len() <= text.len()
-                && ((self.case_sensitive && text[bytecursor..bytecursor + source.len()] == *source)
-                    || (!self.case_sensitive
-                        && text[bytecursor..bytecursor + source.len()].to_lowercase() == *source))
-                && self.test_context(text, bytecursor, source.len())
-            {
-                return Some(MatchedRule {
-                    target: self.get_target(source.as_str()),
-                    source: source.as_str().into(),
-                });
+            if bytecursor + source.len() <= text.len() {
+                if let Some(candidate) = text.get(bytecursor..bytecursor + source.len()) {
+                    if ((self.case_sensitive && candidate == *source)
+                        || (!self.case_sensitive && candidate.to_lowercase() == *source))
+                        && self.test_context(text, bytecursor, source.len())
+                    {
+                        return Some(MatchedRule {
+                            target: self.get_target(source.as_str()),
+                            source: source.as_str().into(),
+                        });
+                    }
+                }
             }
         }
         None
@@ -573,11 +575,11 @@ fn translate_text_helper<'store, 'a>(
     let mut sourceselectors: Vec<SelectorBuilder<'static>> = Vec::new();
     let mut targetselectors: Vec<SelectorBuilder<'static>> = Vec::new();
 
-    let mut skip = 0;
+    let mut skipbytes = 0;
     let mut targetcharpos = 0;
     for (charpos, (bytepos, c)) in text.char_indices().enumerate() {
-        if skip > 0 {
-            skip -= c.len_utf8();
+        if skipbytes > 0 {
+            skipbytes -= c.len_utf8();
             continue;
         }
         let mut foundrule = false;
@@ -648,12 +650,12 @@ fn translate_text_helper<'store, 'a>(
                     }
                 }
 
-                skip += m.source.len() - 1;
+                skipbytes += m.source.len() - c.len_utf8(); //skip the remainder (everything except the char we're already covering)
 
                 if config.debug {
                     eprintln!(
-                        "[stam translatetext] @{} matched rule {:?} -> {:?}",
-                        charpos, m.source, m.target
+                        "[stam translatetext] @{} (byte {}) matched rule {:?} -> {:?}",
+                        charpos, bytepos, m.source, m.target
                     )
                 }
 
@@ -683,8 +685,8 @@ fn translate_text_helper<'store, 'a>(
         if !foundrule && !config.discard_unmatched {
             if config.debug {
                 eprintln!(
-                    "[stam translatetext] @{} no rule matches {:?}, falling back",
-                    charpos, c
+                    "[stam translatetext] @{} (byte {}) no rule matches {:?}, falling back",
+                    charpos, bytepos, c
                 )
             }
             //no rule matches, translate character verbatim
