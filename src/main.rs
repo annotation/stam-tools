@@ -501,7 +501,7 @@ fn align_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("id-prefix")
             .long("id-prefix")
             .takes_value(true)
-            .help("Prefix to use when assigning annotation IDs. The actual ID will have a random component."),
+            .help("Prefix to use globally in assigning all annotation IDs. New IDs for transpositions and resegmentations will also have a random component."),
     );
     args.push(
         Arg::with_name("minimal-align-length")
@@ -579,17 +579,17 @@ fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("id-prefix")
             .long("id-prefix")
             .takes_value(true)
-            .help("Prefix to use when assigning annotation IDs."),
+            .help("Prefix to use globally in assigning all annotation IDs. New IDs for translations and resegmentations will also have a random component."),
     );
     args.push(
         Arg::with_name("no-transpositions")
             .long("no-transpositions")
-            .help("Do not produce transpositions. Only the transposed annotations will be produced. This essentially throws away provenance information."),
+            .help("Do not produce transposition annotations. Only the transposed annotations will be produced. This essentially throws away provenance information."),
     );
     args.push(
         Arg::with_name("no-resegmentations")
             .long("no-resegmentations")
-            .help("Do not produce resegmentations. Only the resegmented annotations will be produced if needed. This essentially throws away provenance information."),
+            .help("Do not produce resegmentation annotations. Only the resegmented annotations will be produced if needed. This essentially throws away provenance information."),
     );
     args.push(
         Arg::with_name("ignore-errors")
@@ -635,12 +635,12 @@ fn translate_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("no-translations")
             .long("no-translations")
-            .help("Do not produce translations. Only the translated annotations will be produced. This essentially throws away provenance information."),
+            .help("Do not produce translation annotations. Only the translated annotations will be produced. This essentially throws away provenance information."),
     );
     args.push(
         Arg::with_name("no-resegmentations")
             .long("no-resegmentations")
-            .help("Do not produce resegmentations. Only the resegmented annotations will be produced if needed. This essentially throws away provenance information."),
+            .help("Do not produce resegmentation annotations. Only the resegmented annotations will be produced if needed. This essentially throws away provenance information."),
     );
     args.push(
         Arg::with_name("ignore-errors")
