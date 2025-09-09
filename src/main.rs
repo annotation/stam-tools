@@ -559,11 +559,10 @@ fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("transposition")
             .long("transposition")
             .short('T')
-            .help("A query in STAMQL to retrieve the transposition annotation, or the exact transposition ID. See
+            .help("A query in STAMQL to retrieve the transposition pivot annotation, or just the exact transposition ID. See
                 https://github.com/annotation/stam/tree/master/extensions/stam-query for an
                 explanation of the query language's syntax. The query should produce only one result (if
-                not only the first is taken). If you have the exact ID of the transposition already, then
-                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --transposition parameter for each --query parameter (in the same order).
+                not only the first is taken). Use may use one --transposition parameter for each --query parameter (in the same order).
                 If this parameter is not specified at all, the first transposition that can be found in your model will be used by default.")
             .action(ArgAction::Append)
             .takes_value(true),
@@ -611,11 +610,10 @@ fn translate_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("translation")
             .long("translation")
             .short('T')
-            .help("A query in STAMQL to retrieve the translation annotation, or the exact translation ID. See
+            .help("A query in STAMQL to retrieve the translation pivot annotation, or just the exact translation ID. See
                 https://github.com/annotation/stam/tree/master/extensions/stam-query for an
                 explanation of the query language's syntax. The query should produce only one result (if
-                not only the first is taken). If you have the exact ID of the translation already, then
-                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --translation parameter for each --query parameter (in the same order).
+                not only the first is taken). Use may use one --translation parameter for each --query parameter (in the same order).
                 If this parameter is not specified at all, the first translation that can be found in your model will be used by default.
                 ")
             .action(ArgAction::Append)
@@ -692,7 +690,7 @@ fn translatetext_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("no-translations")
             .long("no-translations")
-            .help("Do not produce translations. Only produce the translated texts. This essentially throws away all provenance information and prevents being able to translate annotations between texts later on."),
+            .help("Do not produce translation annotations. Only produce the translated texts. This essentially throws away all provenance information and prevents being able to translate annotations between texts later on."),
     );
     args.push(
         Arg::with_name("debug-translate")
