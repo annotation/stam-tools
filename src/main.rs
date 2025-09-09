@@ -563,7 +563,8 @@ fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
                 https://github.com/annotation/stam/tree/master/extensions/stam-query for an
                 explanation of the query language's syntax. The query should produce only one result (if
                 not only the first is taken). If you have the exact ID of the transposition already, then
-                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --transposition parameter for each --query parameter (in the same order).")
+                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --transposition parameter for each --query parameter (in the same order).
+                If this parameter is not specified at all, the first transposition that can be found in your model will be used by default.")
             .action(ArgAction::Append)
             .takes_value(true),
     );
@@ -614,7 +615,9 @@ fn translate_arguments<'a>() -> Vec<clap::Arg<'a>> {
                 https://github.com/annotation/stam/tree/master/extensions/stam-query for an
                 explanation of the query language's syntax. The query should produce only one result (if
                 not only the first is taken). If you have the exact ID of the translation already, then
-                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --translation parameter for each --query parameter (in the same order).")
+                simply use `SELECT ANNOTATION WHERE ID \"your-id\";`. Use may use one --translation parameter for each --query parameter (in the same order).
+                If this parameter is not specified at all, the first translation that can be found in your model will be used by default.
+                ")
             .action(ArgAction::Append)
             .takes_value(true),
     );
@@ -1894,7 +1897,13 @@ fn run<W: Write>(
             );
         }
         if transposition_queries.len() < 1 {
-            return Err(format!("Expected at least one --transposition parameter"));
+            //grab the first transposition by default
+            let querystring = "SELECT ANNOTATION WHERE DATA \"https://w3id.org/stam/extensions/stam-transpose/\" \"Transposition\";";
+            transposition_queries.push(
+                stam::Query::parse(querystring)
+                    .map_err(|err| format!("Query syntax error query (INTERNAL!): {}", err))?
+                    .0,
+            );
         }
 
         let mut queries = Vec::new();
@@ -1955,7 +1964,13 @@ fn run<W: Write>(
             );
         }
         if translation_queries.len() < 1 {
-            return Err(format!("Expected at least one --translation parameter"));
+            //grab the first translation by default
+            let querystring = "SELECT ANNOTATION WHERE DATA \"https://w3id.org/stam/extensions/stam-translate/\" \"Translation\";";
+            translation_queries.push(
+                stam::Query::parse(querystring)
+                    .map_err(|err| format!("Query syntax error query (INTERNAL!): {}", err))?
+                    .0,
+            );
         }
 
         let mut queries = Vec::new();
