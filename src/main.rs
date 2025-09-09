@@ -1169,7 +1169,7 @@ You need to specify this parameter twice, the text of first query will be aligne
             )
         .subcommand(
             SubCommand::with_name("transpose")
-                .about("Transpose annotations over a transposition pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). The first query corresponds to the transposition, further queries correspond to the annotations to transpose via that transposition. The new transposed annotations (and the transpositions that produced them) will be added to the store.")
+                .about("Transpose annotations over a transposition pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). Queries correspond to the input annotations to transpose via the transposition pivot (--transposition). The new transposed annotations (and the transpositions that produced them) will be added to the store.")
                 .args(&common_arguments())
                 .args(&store_arguments(true,true, batchmode))
                 .args(&config_arguments())
@@ -1179,7 +1179,7 @@ The first query should retrieve the transposition annotation to transpose over, 
             )
         .subcommand(
             SubCommand::with_name("translate")
-                .about("Translate annotations over a translation pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-translate). The first query corresponds to the translation, further queries correspond to the annotations to translate via that translation. The new translated annotations (and the translations that produced them) will be added to the store.")
+                .about("Translate annotations over a translation pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-translate). Queries correspond to the input annotations to translate via that translation pivot (--translation). The new translated annotations (and the translations that produced them) will be added to the store.")
                 .args(&common_arguments())
                 .args(&store_arguments(true,true, batchmode))
                 .args(&config_arguments())
