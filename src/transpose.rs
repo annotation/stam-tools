@@ -79,6 +79,12 @@ pub fn transpose<'store>(
                     }
                     match annotation.transpose(&transposition, config) {
                         Ok(results) => builders.extend(results),
+                        Err(StamError::NoText(_)) => {
+                            eprintln!(
+                                "WARNING: Skipping transposition of annotation that references no text: {}",
+                                annotation.id().unwrap_or("(no id)"),
+                            );
+                        }
                         Err(err) => {
                             eprintln!(
                                 "WARNING: Failed to transpose annotation {}: {}",
