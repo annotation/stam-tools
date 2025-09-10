@@ -196,8 +196,7 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("no-auto-context")
             .long("no-auto-context")
             .help("(for Web Annotation output only) Do not automatically add STAM datasets ending in `.jsonld` or `.json` to the `--add-context` list")
-            .takes_value(true)
-            .action(ArgAction::Append),
+            .required(false)
     );
     args.push(
         Arg::with_name("extra-target-template")
