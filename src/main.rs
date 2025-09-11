@@ -581,6 +581,21 @@ fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Prefix to use globally in assigning all annotation IDs. New IDs for translations and resegmentations will also have a random component."),
     );
     args.push(
+        Arg::with_name("id-strategy")
+            .long("id-strategy")
+            .takes_value(true)
+            .default_value("updateversion")
+            .help("Defines how the IDs for the new output annotations are derived from the IDs from the input annotations. Valid strategies are (foo is a value to replace with a custom string): 
+    * addsuffix=foo      to add a suffix to the old ID to form the new ID
+    * addprefix=foo      to add a prefix to the old ID to form the new ID
+    * updateversion      adds or increments a version suffix (v1,v2,v3,etc)  (this is the default)
+    * randomsuffix       adds a random suffix (nanoid)
+    * replace=foo        replaces the entire ID with the new value (of limited use since you can only do this once)
+    * replacerandom=foo;foo       to set a prefix (first foo), random component
+                                  (nanoid) and suffix (second foo)
+"),
+    );
+    args.push(
         Arg::with_name("no-transpositions")
             .long("no-transpositions")
             .help("Do not produce transposition annotations. Only the transposed annotations will be produced. This essentially throws away provenance information."),
@@ -632,6 +647,20 @@ fn translate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true)
             .help("Prefix to use when assigning annotation IDs."),
     );
+    args.push(
+        Arg::with_name("id-strategy")
+            .long("id-strategy")
+            .takes_value(true)
+            .default_value("updateversion")
+            .help("Defines how the IDs for the new output annotations are derived from the IDs from the input annotations. Valid strategies are (foo is a value to replace with a custom string): 
+    * addsuffix=foo      to add a suffix to the old ID to form the new ID
+    * addprefix=foo      to add a prefix to the old ID to form the new ID
+    * updateversion      adds or increments a version suffix (v1,v2,v3,etc)  (this is the default)
+    * randomsuffix       adds a random suffix (nanoid)
+    * replace=foo        replaces the entire ID with the new value (of limited use since you can only do this once)
+    * replacerandom=foo;foo       to set a prefix (first foo), random component
+                                  (nanoid) and suffix (second foo)
+"));
     args.push(
         Arg::with_name("no-translations")
             .long("no-translations")
@@ -1921,7 +1950,9 @@ fn run<W: Write>(
             args.value_of("use-transposition"),
             args.value_of("use"),
             args.value_of("id-prefix").map(|x| x.to_string()),
-            stam::IdStrategy::default(),
+            args.value_of("id-strategy")
+                .map(|x| x.try_into().expect("invalid value for id-strategy"))
+                .unwrap(),
             args.is_present("ignore-errors"),
             args.is_present("verbose"),
             TransposeConfig {
@@ -1988,7 +2019,9 @@ fn run<W: Write>(
             args.value_of("use-translation"),
             args.value_of("use"),
             args.value_of("id-prefix").map(|x| x.to_string()),
-            stam::IdStrategy::default(),
+            args.value_of("id-strategy")
+                .map(|x| x.try_into().expect("invalid value for id-strategy"))
+                .unwrap(),
             args.is_present("ignore-errors"),
             args.is_present("verbose"),
             TranslateConfig {
