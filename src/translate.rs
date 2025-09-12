@@ -300,7 +300,7 @@ impl TranslateTextRule {
 pub struct TranslateTextConfig {
     rules: Vec<TranslateTextRule>,
 
-    /// ID Suffix for translated resource
+    /// ID Suffix for translated resources
     #[serde(default)]
     id_suffix: Option<String>,
 
