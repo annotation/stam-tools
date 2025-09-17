@@ -721,6 +721,11 @@ fn translatetext_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Do not produce translation annotations. Only produce the translated texts. This essentially throws away all provenance information and prevents being able to translate annotations between texts later on."),
     );
     args.push(
+        Arg::with_name("force")
+            .long("force")
+            .help("Force output of texts and translations even if there is no change whatsoever"),
+    );
+    args.push(
         Arg::with_name("debug-translate")
             .long("debug-translate")
             .help(
@@ -2085,6 +2090,9 @@ fn run<W: Write>(
         })?;
         if let Some(prefix) = args.value_of("id-suffix") {
             config = config.with_id_suffix(prefix);
+        }
+        if args.is_present("force") {
+            config = config.with_force_when_unchanged();
         }
         match translate_text(store, queries, args.value_of("use"), &config) {
             Ok((resources, annotations)) => {

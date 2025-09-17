@@ -312,6 +312,10 @@ pub struct TranslateTextConfig {
     #[serde(default)]
     no_annotations: bool,
 
+    /// Create any texts and annotations even if the translation turn out exactly the same as the original
+    #[serde(default)]
+    force_when_unchanged: bool,
+
     #[serde(default)]
     debug: bool,
 }
@@ -328,6 +332,12 @@ impl TranslateTextConfig {
     /// A suffix to assign when minting new IDs for resources and translations
     pub fn with_id_suffix(mut self, suffix: impl Into<String>) -> Self {
         self.id_suffix = Some(suffix.into());
+        self
+    }
+
+    /// Create any texts and annotations even if the translation turn out exactly the same as the original
+    pub fn with_force_when_unchanged(mut self) -> Self {
+        self.force_when_unchanged = true;
         self
     }
 
@@ -709,6 +719,14 @@ fn translate_text_helper<'store, 'a>(
             }
             targetcharpos += 1;
         }
+    }
+
+    if !config.force_when_unchanged && new_text.as_str() == text {
+        eprintln!(
+            "[stam translatetext] text for {} has not changed after translation, skipping..",
+            new_resource_id
+        );
+        return Ok(());
     }
 
     let mut resourcebuilder = TextResourceBuilder::new()
