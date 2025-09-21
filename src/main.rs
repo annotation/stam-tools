@@ -203,6 +203,7 @@ fn w3anno_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("extra-target-template")
             .help("Adds an extra target alongside the usual target with TextPositionSelector. This extra target can be used for provide a direct IRI/URI to fetch the exact textselection (if the backend system supports it). In the template, you should specify an IRI with the variables {resource} (which is the resource IRI), {begin}, and {end}, they will be substituted accordingly. A common value is: {resource}/{begin}/{end}")
             .takes_value(true)
+            .action(ArgAction::Append),
     );
     args.push(
         Arg::with_name("namespaces")
@@ -1568,9 +1569,11 @@ fn run<W: Write>(
                     .unwrap_or(clap::Values::default())
                     .map(|x| x.to_string())
                     .collect(),
-                extra_target_template: args
-                    .get_one("extra-target-template")
-                    .map(|s: &String| s.to_string()),
+                extra_target_templates: args
+                    .values_of("extra-target-template")
+                    .unwrap_or(clap::Values::default())
+                    .map(|x| x.to_string())
+                    .collect(),
                 context_namespaces: {
                     let mut namespaces = Vec::new();
                     for assignment in args

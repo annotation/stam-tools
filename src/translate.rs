@@ -110,14 +110,21 @@ pub fn translate<'store>(
             }
         } else {
             return Err(StamError::OtherError(
-                "First query should return an ANNOTATION that is a translation, none found",
+                "Translation queries should return an ANNOTATION that is a translation, none found",
             ));
         }
     }
     let mut annotations = Vec::with_capacity(builders.len());
     for builder in builders {
-        let annotation_handle = store.annotate(builder)?;
-        annotations.push(annotation_handle);
+        let annotation_handle = if !config.modify_existing {
+            //add new annotation
+            let annotation_handle = store.annotate(builder)?;
+            annotations.push(annotation_handle);
+            annotation_handle
+        } else {
+            //modify existing annotation
+            store.reannotate(builder, ReannotateMode::default())?
+        };
         if verbose {
             let annotation = store
                 .annotation(annotation_handle)
@@ -136,6 +143,11 @@ pub fn translate<'store>(
                 })?;
             if annotation.has_data(&translationdata) {
                 print_translation(&annotation);
+            } else if config.modify_existing {
+                eprintln!(
+                    "# updated annotation {}",
+                    annotation.id().expect("annotation must have ID")
+                );
             } else {
                 eprintln!(
                     "# added annotation {}",
@@ -144,7 +156,13 @@ pub fn translate<'store>(
             }
         }
     }
-    eprintln!("{} annotations(s) created", annotations.len());
+    if verbose {
+        if !config.modify_existing {
+            eprintln!("{} annotations(s) created", annotations.len());
+        } else {
+            eprintln!("{} annotations(s) updated", annotations.len());
+        }
+    }
     Ok(annotations)
 }
 
