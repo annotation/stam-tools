@@ -41,6 +41,10 @@ pub struct XmlConversionConfig {
     context: HashMap<String, String>,
 
     #[serde(default)]
+    /// Sets additional context variables that can be used in templates
+    metadata: Vec<MetadataConfig>,
+
+    #[serde(default)]
     /// Inject a DTD (for XML entity resolution)
     inject_dtd: Option<String>,
 
@@ -67,6 +71,7 @@ impl XmlConversionConfig {
             baseelements: HashMap::new(),
             namespaces: HashMap::new(),
             context: HashMap::new(),
+            metadata: Vec::new(),
             whitespace: XmlWhitespaceHandling::Collapse,
             default_set: default_set(),
             inject_dtd: None,
@@ -169,6 +174,10 @@ impl XmlConversionConfig {
             }
         }
         None
+    }
+
+    pub fn add_context(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.context.insert(key.into(), value.into());
     }
 }
 
@@ -615,6 +624,20 @@ impl SiblingCounter {
 }
 
 
+#[derive(Debug, Clone, Deserialize)]
+/// XML Element configuration, determines how to map an XML element (identified by an XPath expression) to STAM
+pub struct MetadataConfig {
+    /// This is XPath-like expression (just a small subset of XPath) to identify an element by its path
+    #[serde(default)]
+    annotation: XmlAnnotationHandling,
+
+    #[serde(default)]
+    annotationdata: Vec<XmlAnnotationDataConfig>,
+
+    /// Template or None for no ID extraction
+    #[serde(default)]
+    id: Option<String>,
+}
 
 /// Translate an XML file to STAM, given a particular configuration
 pub fn from_xml<'a>(
@@ -693,6 +716,8 @@ pub fn from_xml<'a>(
             .add_resource(resource)
             .map_err(|e| format!("Failed to add resource {}: {}", &textoutfilename, e))?,
     );
+
+    converter.add_metadata(store).map_err(|e| format!("Failed to add metadata {}: {}", &textoutfilename, e))?;
 
     // extract annotations (second pass)
     converter
@@ -794,6 +819,8 @@ pub fn from_multi_xml<'a>(
             .map_err(|e| format!("Failed to add resource {}: {}", &textoutfilename, e))?,
     );
 
+    converter.add_metadata(store).map_err(|e| format!("Failed to add metadata {}: {}", &textoutfilename, e))?;
+
     // extract annotations (second pass)
     for (i,(doc, filename)) in docs.iter().zip(filenames.iter()).enumerate() {
         let mut path = NodePath::default();
@@ -862,6 +889,8 @@ pub fn from_xml_in_memory<'a>(
             .add_resource(resource)
             .map_err(|e| format!("Failed to add resource {}: {}", &resource_id, e))?,
     );
+
+    converter.add_metadata(store).map_err(|e| format!("Failed to add metadata for {}: {}", &resource_id, e))?;
 
     // extract annotations (second pass)
     converter
@@ -1073,6 +1102,58 @@ impl<'a> XmlToStamConverter<'a> {
                 }
             }
             for annotationdata in element.annotationdata.iter() {
+                if let Some(id) = annotationdata.id.as_ref() {
+                    if self.template_engine.get_template(id.as_str()).is_none() {
+                        let template = self.precompile(id.as_str());
+                        self.template_engine.add_template(id.clone(), template).map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("annotationdata/id template {}", id.clone()),
+                                Some(e),
+                            )
+                        })?;
+                    }
+                }
+                if let Some(set) = annotationdata.set.as_ref() {
+                    if self.template_engine.get_template(set.as_str()).is_none() {
+                        let template = self.precompile(set.as_str());
+                        //eprintln!("------- DEBUG: {} -> {}", set.as_str(), template);
+                        self.template_engine.add_template(set.clone(), template).map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("annotationdata/set template {}", set.clone()),
+                                Some(e),
+                            )
+                        })?;
+                    }
+                }
+                if let Some(key) = annotationdata.key.as_ref() {
+                    if self.template_engine.get_template(key.as_str()).is_none() {
+                        let template = self.precompile(key.as_str());
+                        self.template_engine.add_template(key.clone(), template).map_err(|e| {
+                            XmlConversionError::TemplateError(
+                                format!("annotationdata/key template {}", key.clone()),
+                                Some(e),
+                            )
+                        })?;
+                    }
+                }
+                if let Some(value) = annotationdata.value.as_ref() {
+                    self.compile_value(value)?;
+                }
+            }
+        }
+        for metadata in self.config.metadata.iter() {
+            if let Some(id) = metadata.id.as_ref() {
+                if self.template_engine.get_template(id.as_str()).is_none() {
+                    let template = self.precompile(id.as_str());
+                    self.template_engine.add_template(id.clone(), template).map_err(|e| {
+                        XmlConversionError::TemplateError(
+                            format!("metadata/id template {}", id.clone()),
+                            Some(e),
+                        )
+                    })?;
+                }
+            }
+            for annotationdata in metadata.annotationdata.iter() {
                 if let Some(id) = annotationdata.id.as_ref() {
                     if self.template_engine.get_template(id.as_str()).is_none() {
                         let template = self.precompile(id.as_str());
@@ -1718,6 +1799,67 @@ impl<'a> XmlToStamConverter<'a> {
         }
     }
 
+    /// Extract values for metadata (no associated node), running the templating engine in case of string values
+    fn extract_value_metadata<'b>(&self, value: &'a toml::Value, context: &upon::Value, allow_empty_value: bool, skip_if_missing: bool, resource_id: Option<&str>) -> Result<Option<DataValue>, XmlConversionError>{
+        match value {
+            toml::Value::String(template) => {  
+                let compiled_template = self.template_engine.template(template.as_str()); //panics if doesn't exist, but that can't happen
+                match compiled_template.render(&context).to_string().map_err(|e| 
+                        XmlConversionError::TemplateError(
+                            format!(
+                                "whilst rendering annotationdata/map template '{}' for metadata",
+                                template,
+                            ),
+                            Some(e),
+                        )
+                    )  {
+                    Ok(value) => {
+                        if !value.is_empty() || allow_empty_value {
+                            Ok(Some(value.into()))
+                        } else {
+                            //skip
+                            Ok(None)
+                        }
+                    },
+                    Err(e) if !skip_if_missing => {
+                        Err(e)
+                    },
+                    Err(_) if allow_empty_value => {
+                        Ok(Some("".into()))
+                    },
+                    Err(_) => {
+                        //skip whole databuilder if missing
+                        Ok(None)
+                    }
+                }
+            },
+            toml::Value::Table(map) => {  
+                let mut resultmap: BTreeMap<String,DataValue> = BTreeMap::new();
+                for (key, value) in map.iter() {
+                    if let Some(value) = self.extract_value_metadata(value, context, false, true,  resource_id)? {
+                        resultmap.insert(key.clone(), value);
+                    }
+                }
+                Ok(Some(resultmap.into()))
+            },
+            toml::Value::Array(list) => {  
+                let mut resultlist: Vec<DataValue> = Vec::new();
+                for value in list.iter() {
+                    if let Some(value) = self.extract_value_metadata(value, context, false, true, resource_id)? {
+                        resultlist.push(value);
+                    }
+                }
+                Ok(Some(resultlist.into()))
+            }
+            toml::Value::Boolean(v) => Ok(Some(DataValue::Bool(*v))),
+            toml::Value::Float(v) => Ok(Some(DataValue::Float(*v))),
+            toml::Value::Integer(v) => Ok(Some(DataValue::Int(*v as isize))),
+            toml::Value::Datetime(_v) => {
+                todo!("fromxml: Datetime conversion not implemented yet");
+            }
+        }
+    }
+
     /// Select text corresponding to the element/node and document number
     fn textselector<'s>(&'s self, node: Node, doc_num: usize) -> Option<SelectorBuilder<'s>> {
         let res_handle = self.resource_handle.expect("resource must be associated");
@@ -2121,6 +2263,137 @@ impl<'a> XmlToStamConverter<'a> {
         }
         //eprintln!("DEBUG: precompile_name({}) -> {}", s, replacement);
         replacement
+    }
+
+    fn add_metadata(&self, store: &mut AnnotationStore) -> Result<(), XmlConversionError> {
+        for metadata in self.config.metadata.iter() {
+            let mut builder = AnnotationBuilder::new();
+
+            //prepare variables to pass to the template context
+            if metadata.annotation == XmlAnnotationHandling::TextSelector {
+
+            }
+            let resource_id = if let Some(resource_handle) = self.resource_handle {
+                store.resource(resource_handle).unwrap().id()
+            } else {
+                None
+            };
+
+            let mut context = self.global_context.clone();
+            if let Some(resource_id) = resource_id {
+                context.insert("resource".into(), resource_id.into());
+            }
+
+            if let Some(template) = &metadata.id {
+                let compiled_template = self.template_engine.template(template.as_str());
+                let id = compiled_template.render(&context).to_string().map_err(|e| 
+                        XmlConversionError::TemplateError(
+                            format!(
+                                "whilst rendering metadata id template '{}'",
+                                template,
+                            ),
+                            Some(e),
+                        )
+                    )?;
+                if !id.is_empty() {
+                    builder = builder.with_id(id);
+                }
+            }
+
+            for annotationdata in metadata.annotationdata.iter() {
+                let mut databuilder = AnnotationDataBuilder::new();
+                if let Some(template) = &annotationdata.set {
+                    let compiled_template = self.template_engine.template(template.as_str());
+                    let dataset = compiled_template.render(&context).to_string().map_err(|e| 
+                            XmlConversionError::TemplateError(
+                                format!(
+                                    "whilst rendering annotationdata/dataset template '{}' for metadata",
+                                    template,
+                                ),
+                                Some(e),
+                            )
+                        )?;
+                    if !dataset.is_empty() {
+                        databuilder = databuilder.with_dataset(dataset.into())
+                    }
+                } else {
+                    databuilder =
+                        databuilder.with_dataset(self.config.default_set.as_str().into());
+                }
+                if let Some(template) = &annotationdata.key {
+                    let compiled_template = self.template_engine.template(template.as_str());
+                    match compiled_template.render(&context).to_string().map_err(|e| 
+                            XmlConversionError::TemplateError(
+                                format!(
+                                    "whilst rendering annotationdata/key template '{}' for metadata",
+                                    template,
+                                ),
+                                Some(e),
+                            )
+                        )  {
+                        Ok(key) if !key.is_empty() =>
+                            databuilder = databuilder.with_key(key.into()) ,
+                        Ok(_) if !annotationdata.skip_if_missing => {
+                            return Err(XmlConversionError::TemplateError(
+                                format!(
+                                    "whilst rendering annotationdata/key template '{}' metadata",
+                                    template,
+                                ),
+                                None
+                            ));
+                        },
+                        Err(e) if !annotationdata.skip_if_missing => {
+                            return Err(e)
+                        },
+                        _ => {
+                            //skip whole databuilder if missing
+                            continue
+                        }
+                    }
+                }
+                if let Some(value) = &annotationdata.value {
+                    match self.extract_value_metadata(value, &upon::Value::Map(context.clone()), annotationdata.allow_empty_value, annotationdata.skip_if_missing,  resource_id.as_deref())? {
+                        Some(value) => {
+                            databuilder = databuilder.with_value(value);
+                        },
+                        None =>  {
+                            //skip whole databuilder if missing
+                            continue
+                        }
+                    }
+                }
+                builder = builder.with_data_builder(databuilder);
+            }
+
+
+
+            // Finish the builder and add the actual annotation to the store, according to its element handling
+            match metadata.annotation {
+                XmlAnnotationHandling::TextSelector => {
+                    // Annotation is on text, translates to TextSelector
+                    builder = builder.with_target(SelectorBuilder::TextSelector(BuildItem::Handle(self.resource_handle.expect("resource must have handle")), Offset::whole()));
+                    if self.config.debug {
+                        eprintln!("[STAM fromxml]   builder AnnotateText: {:?}", builder);
+                    }
+                    store.annotate(builder)?;
+                }
+                XmlAnnotationHandling::ResourceSelector  | XmlAnnotationHandling::None | XmlAnnotationHandling::Unspecified => {
+                    // Annotation is metadata (default), translates to ResourceSelector
+                    builder = builder.with_target(SelectorBuilder::ResourceSelector(
+                        self.resource_handle.into(),
+                    ));
+                    if self.config.debug {
+                        eprintln!("[STAM fromxml]   builder AnnotateResource: {:?}", builder);
+                    }
+                    store.annotate(builder)?;
+                }
+                _ => panic!(
+                    "Invalid annotationhandling for metadata: {:?}",
+                    metadata.annotation
+                ),
+            }
+        }
+        Ok(())
     }
 }
 

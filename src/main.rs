@@ -824,6 +824,13 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .takes_value(true),
     );
     args.push(
+        Arg::with_name("context-file")
+            .long("context-file")
+            .help("A TOML or JSON file containing context variables to make available to the templating engine")
+            .required(true)
+            .takes_value(true),
+    );
+    args.push(
         Arg::with_name("provenance")
             .long("provenance")
             .help("Add provenance information by pointing back to the XML source files using W3C Web Annotation's XPathSelector"),
@@ -2136,6 +2143,24 @@ fn run<W: Write>(
             .with_provenance(args.is_present("provenance"));
         if let Some(prefix) = args.value_of("id-prefix") {
             config = config.with_id_prefix(prefix);
+        }
+        if let Some(contextfile) = args.value_of("context-file") {
+            let rawdata = fs::read_to_string(contextfile).map_err(|e| {
+                format!(
+                    "Failure reading contextfile config file {}: {} ",
+                    contextfile, e
+                )
+            })?;
+            let table: toml::Table = if contextfile.ends_with(".toml") {
+                toml::from_str(rawdata.as_str()).map_err(|e| format!("{}", e))?
+            } else if contextfile.ends_with(".json") {
+                serde_json::from_str(rawdata.as_str()).map_err(|e| format!("{}", e))?
+            } else {
+                return Err("Context file must have extension .toml or .json".into());
+            };
+            for (key, value) in table.iter() {
+                config.add_context(key, value.to_string());
+            }
         }
         let mut has_input = false;
         if args.is_present("inputfile") {

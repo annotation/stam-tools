@@ -91,6 +91,22 @@ specific). A particular XML node is only matched once with its most appropriate 
 
 The syntax for element configuration is explain in [its own section](#Element_configuration)
 
+### context
+
+Makes extra variables available globally for the templating engine.
+
+Example:
+
+```toml
+[context]
+foo = "bar"
+x = 42
+```
+
+Additionally, you can load global variables from a file at run run time via
+``--context-file``, this is either a toml or json file, the contents of the
+former is the same as in the above example, but without `[context]`.
+
 ## Element configuration
 
 ### path
@@ -443,3 +459,24 @@ base = [ "withtype" ]
 You can derive from multiple base elements so you can mix and match, just take
 note that fields are assigned on a first-come-first-serve basis in case there are
 conflicting definitions.
+
+## Metadata
+
+Sometimes you want to place extra metadata annotations that are not directly
+informed by the underlying XML, but are, for example, using information
+injected via context variables (either from the configuration or using
+`--context-file`).
+
+This can be done in the `[[metadata]]` block. Underneath you can express
+`[[metadata.annotationdata]]` which works similar to the `annotationdata` block
+we have already seen.  You can also express `id` and `annotation` similar to
+how they are used in `[[elements]]`.
+
+Metadata annotations will by default be represented using a `ResourceSelector` on
+the entire text resource that is produced, but you can also opt for a
+`TextSelector` on the entire resource's text by setting `annotation =
+TextSelector`.
+
+
+
+
