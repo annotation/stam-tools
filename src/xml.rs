@@ -1809,7 +1809,7 @@ impl<'a> XmlToStamConverter<'a> {
                 match compiled_template.render(&context).to_string().map_err(|e| 
                         XmlConversionError::TemplateError(
                             format!(
-                                "whilst rendering annotationdata/map template '{}' for metadata",
+                                "whilst rendering annotationdata/metadata template '{}' for metadata",
                                 template,
                             ),
                             Some(e),
@@ -2007,7 +2007,8 @@ impl<'a> XmlToStamConverter<'a> {
 
         if let Some(vars) = self.variables.get(template) {
             for var in vars {
-                if let Some((encodedvar, value)) = self.context_for_var(node, var) {
+                let mut encodedvar = String::new();
+                if let Some(value) = self.context_for_var(node, var, &mut encodedvar) {
                     if value != upon::Value::None {
                         context.insert(encodedvar, value);
                     }
@@ -2017,121 +2018,116 @@ impl<'a> XmlToStamConverter<'a> {
         upon::Value::Map(context)
     }
 
-    /// Returns a variable to be set for the context, from the XML DOM
-    // returns the *encoded* variable name (safe to pass to template), and the value
+    /// Looks up a variable value (from the DOM XML) to be used in for template context
+    // returns value and stores full the *encoded* variable name in path (this is safe to pass to template)
     fn context_for_var<'input>(
         &self,
-        mut node: &Node<'a, 'input>,
+        node: &Node<'a, 'input>,
         var: &str, 
-    ) -> Option<(String, upon::Value)> {
-        let mut path = String::new();
+        path: &mut String,
+    ) -> Option<upon::Value> {
+
+        let first = path.is_empty();
         let var = 
         if var.starts_with("?.$") {
-            path.push_str("?.ELEMENT_");
+            if first {
+                path.push_str("?.ELEMENT_");
+            };
             &var[3..]
         } else if var.starts_with("$") {
-            path.push_str("ELEMENT_");
+            if first {
+                path.push_str("ELEMENT_");
+            };
             &var[1..]
         } else if var.starts_with("?.@") {
-            path.push_str("?.");
+            if first {
+                path.push_str("?.");
+            };
             &var[2..]
         } else {
             var
         };
-        for (i, component) in var.split("/").enumerate() {
-            if component.starts_with("@"){
-                if let Some(pos) = component.find(":") {
-                    let prefix = &component[1..pos];
-                    if let Some(ns) = self.config.namespaces.get(prefix) {
-                        let var = &component[pos+1..];
-                        return Some((
-                            format!("{}ATTRIB_{}__{}", path, prefix, var).into(),
-                            node.attribute((ns.as_str(),var)).into()
-                        ));
-                    } else {
-                        return None;
-                    }
+
+        if !first && !var.is_empty() {
+            path.push_str("_IN_");
+        }
+
+        //get the first component of the variable
+        let (component, remainder) = var.split_once("/").unwrap_or((var,""));
+        //eprintln!("DEBUG: component={}", component);
+        if component.is_empty() {
+            //an empty component is the stop condition , this function is called recursively, stripping one
+            //component at a time until nothing is left, we then take the text of that final node:
+            Some(recursive_text(node).into())
+        } else if component.starts_with("@"){
+            if let Some(pos) = component.find(":") {
+                let prefix = &component[1..pos];
+                if let Some(ns) = self.config.namespaces.get(prefix) {
+                    let var = &component[pos+1..];
+                    path.push_str("ATTRIB_");
+                    path.push_str(prefix);
+                    path.push_str("__");
+                    path.push_str(var);
+                    Some(
+                        node.attribute((ns.as_str(),var)).into()
+                    )
                 } else {
-                    let var = &component[1..];
-                    return Some((
-                        format!("{}ATTRIB_{}",  path, var).into(),
-                        node.attribute(var).into()
-                    ));
+                    None
                 }
-            } else if component == ".." {
-                if let Some(parentnode) = node.parent_element().as_ref() {
-                    let mut truncvar = String::new();
-                    for (j, component2) in var.split("/").enumerate() {
-                        if j>i {
-                            if truncvar.is_empty() {
-                                truncvar.push('$');
-                            } else {
-                                truncvar.push('/');
-                            }
-                            truncvar.push_str(component2);
-                        }
-                    }
-                    //recursion needed because of lifetime issues
-                    if let Some((newpath, value)) = self.context_for_var(parentnode, truncvar.as_str()) {
-                        if newpath.starts_with("ELEMENT_") && !path.is_empty() {
-                            path.push_str(&newpath[8..])
-                        } else {
-                            path.push_str(&newpath);
-                        }
-                        return Some((path, value));
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-            } else if component == "." {
-                path += "THIS";
             } else {
-                let mut newnode: Option<_> = None;
-                let (prefix, localname)  = if let Some(pos) = component.find(":") {
-                    (Some(&component[pos+1..]),  &component[1..pos])
-                } else {
-                    (None, component)
-                };
-                let localname_with_condition = localname;
-                let (localname, condition) = self.extract_condition(localname_with_condition); //extract X-Path like conditions [@attrib="value"]  (very limited!)
-                //eprintln!("DEBUG: extract condition {} -> {} + {:?}", localname_with_condition, localname, condition);
-                for child in node.children() {
-                    if child.is_element() {
-                        let namedata = child.tag_name();
-                        let mut child_matches = if let Some(namespace) = namedata.namespace() {
-                            if let Some(foundprefix) = self.prefixes.get(namespace) {
-                                Some(foundprefix.as_str()) == prefix && localname == namedata.name()
-                            } else {
-                                false
-                            }
+                let var = &component[1..];
+                path.push_str("ATTRIB_");
+                path.push_str(var);
+                Some(
+                    node.attribute(var).into()
+                )
+            }
+        } else if component == ".." {
+            if let Some(parentnode) = node.parent_element().as_ref() {
+                //recurse with parent node
+                path.push_str("PARENT");
+                self.context_for_var(parentnode, remainder, path)
+            } else {
+                None
+            }
+        } else if component == "." {
+            path.push_str("THIS");
+            if !remainder.is_empty() {
+                //a . is meaningless if not the final component
+                self.context_for_var(node, remainder, path)
+            } else {
+                Some(recursive_text(node).into())
+            }
+        } else {
+            let (prefix, localname)  = if let Some(pos) = component.find(":") {
+                (Some(&component[0..pos]),  &component[pos+1..])
+            } else {
+                (None, component)
+            };
+            let localname_with_condition = localname;
+            let (localname, condition_str, condition) = self.extract_condition(localname_with_condition); //extract X-Path like conditions [@attrib="value"]  (very limited!)
+            //eprintln!("DEBUG: looking for {} (localname={}, condition={:?}) in {:?}", localname_with_condition,  localname, condition, node.tag_name());
+            for child in node.children() {
+                if child.is_element() {
+                    let namedata = child.tag_name();
+                    let mut child_matches = if let Some(namespace) = namedata.namespace() {
+                        if let Some(foundprefix) = self.prefixes.get(namespace) {
+                            Some(foundprefix.as_str()) == prefix && localname == namedata.name()
                         } else {
-                            namedata.name() == localname
-                        };
-                        if child_matches {
-                            //MAYBE TODO: move to separate funtion
-                            if let Some((attribname, negate, attribvalue)) = condition {
-                                //test condition: falsify child_matches
-                                if let Some(pos) = attribname.find(":") {
-                                    let prefix = &attribname[1..pos];
-                                    if let Some(ns) = self.config.namespaces.get(prefix) {
-                                        let var = &attribname[pos+1..];
-                                        if let Some(value) = node.attribute((ns.as_str(),var)) {
-                                            if !negate && attribvalue != Some(value) {
-                                                child_matches = false;
-                                            } else if negate && attribvalue == Some(value) {
-                                                child_matches = false;
-                                            }
-                                        } else {
-                                            child_matches = false;
-                                        }
-                                    } else {
-                                        child_matches = false;
-                                    }
-                                } else {
-                                    let var = &attribname[1..];
-                                    if let Some(value) = node.attribute(var) {
+                            false
+                        }
+                    } else {
+                        namedata.name() == localname
+                    };
+                    if child_matches {
+                        //MAYBE TODO: move to separate funtion
+                        if let Some((attribname, negate, attribvalue)) = condition {
+                            //test condition: falsify child_matches
+                            if let Some(pos) = attribname.find(":") {
+                                let prefix = &attribname[0..pos];
+                                if let Some(ns) = self.config.namespaces.get(prefix) {
+                                    let attribname = &attribname[pos+1..];
+                                    if let Some(value) = child.attribute((ns.as_str(),attribname)) {
                                         if !negate && attribvalue != Some(value) {
                                             child_matches = false;
                                         } else if negate && attribvalue == Some(value) {
@@ -2140,52 +2136,62 @@ impl<'a> XmlToStamConverter<'a> {
                                     } else {
                                         child_matches = false;
                                     }
+                                } else {
+                                    child_matches = false;
+                                }
+                            } else {
+                                if let Some(value) = child.attribute(attribname) {
+                                    if !negate && attribvalue != Some(value) {
+                                        child_matches = false;
+                                    } else if negate && attribvalue == Some(value) {
+                                        child_matches = false;
+                                    }
+                                } else {
+                                    child_matches = false;
                                 }
                             }
-                            //end condition test
                         }
-                        if child_matches {
-                            newnode = Some(node);
-                            if i > 0 {
-                                path.push_str("_IN_");
-                            }
-                            if let Some(prefix) = prefix {
-                                path.push_str(prefix);
-                                path.push_str("__");
-                            }
-                            path.push_str(localname);
-                            if condition.is_some() {
-                                //simply encode the condition as a hash (non-decodable but that's okay)
-                                let mut hasher = DefaultHasher::new();
-                                localname_with_condition.hash(&mut hasher);
-                                path += &format!("_COND{}_", hasher.finish());
-                            }
-                            break;
+                        if !child_matches && self.config.debug {
+                            eprintln!("[STAM fromxml] candidate node does not meet condition: {}", localname_with_condition);
                         }
+                        //end condition test
+                    }
+                    if child_matches {
+                        if let Some(prefix) = prefix {
+                            path.push_str(prefix);
+                            path.push_str("__");
+                        }
+                        path.push_str(localname);
+                        if condition.is_some() {
+                            //simply encode the condition as a hash (non-decodable but that's okay)
+                            let mut hasher = DefaultHasher::new();
+                            condition_str.hash(&mut hasher);
+                            let h = hasher.finish();
+                            path.push_str(&format!("_COND{}_", h));
+                        }
+                        return self.context_for_var(&child, remainder, path);
                     }
                 }
-                if let Some(newnode) = newnode {
-                    node = newnode;
-                }
             }
+            //no match found for this variable
+            None
         }
-        return Some((path, recursive_text(node).into()));
     }
 
-    fn extract_condition<'b>(&self, localname: &'b str) -> (&'b str, Option<(&'b str, bool, Option<&'b str>)>) { //(localname, Option<(attrib, negation, attribvalue)>)
+    fn extract_condition<'b>(&self, localname: &'b str) -> (&'b str, &'b str, Option<(&'b str, bool, Option<&'b str>)>) { //(localname, condition, Option<(attrib, negation, attribvalue)>)
         //simple conditional statement
         if localname.ends_with("]") {
             if let Some(pos) = localname.find("[") {
-                let condition = localname[pos+1..localname.len()-1].trim();
+                let condition = &localname[pos+1..localname.len()-1];
                 let (mut attrib, negation, attribvalue) = if let Some(pos) = condition.find("=") {
-                     let attrib = &condition[0..pos];
+                     let attrib = condition[0..pos].trim();
                      let value = condition[pos+1..].trim();
                      let value = &value[1..value.len() - 1]; //strips the literal quotes (") for the value
                      if attrib.ends_with('!') {
                         //negation (!= operator)
-                        (attrib[..attrib.len() - 1].trim(), true, Some(&value[1..value.len() - 1]))
+                        (attrib[..attrib.len() - 1].trim(), true, Some(value))
                      } else {
-                        (attrib.trim(), false, Some(&value[1..value.len() - 1]))
+                        (attrib.trim(), false, Some(value))
                      }
                 } else {
                     (condition, false, None)
@@ -2194,10 +2200,10 @@ impl<'a> XmlToStamConverter<'a> {
                     //this should actually be mandatory and already checked during template precompilation
                     attrib = &attrib[1..];
                 }
-                return (&localname[..pos], Some((attrib,  negation,attribvalue )) );
+                return (&localname[..pos], condition, Some((attrib,  negation,attribvalue )) );
             }
         }
-        (localname, None)
+        (localname, "", None)
     }
 
 
@@ -2356,7 +2362,8 @@ impl<'a> XmlToStamConverter<'a> {
                 if let Some(begin) = begincondition {
                     let mut hasher = DefaultHasher::new();
                     let _ = &s[begin..i].hash(&mut hasher);
-                    replacement.push_str(&format!("_COND{}_", hasher.finish()));
+                    let h = hasher.finish();
+                    replacement.push_str(&format!("_COND{}_", h));
                 }
                 begincondition = None;
             } else {
