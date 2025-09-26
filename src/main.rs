@@ -827,7 +827,6 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("context-file")
             .long("context-file")
             .help("A TOML or JSON file containing context variables to make available to the templating engine")
-            .required(true)
             .takes_value(true),
     );
     args.push(
