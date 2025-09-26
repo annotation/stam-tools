@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, BTreeSet};
 use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
+use std::hash::{Hash,DefaultHasher,Hasher};
 
 use roxmltree::{Document, Node, NodeId, ParsingOptions};
 use serde::Deserialize;
@@ -12,6 +13,7 @@ use upon::Engine;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
 const CONTEXT_ANNO: &str = "http://www.w3.org/ns/anno.jsonld";
+
 
 fn default_set() -> String {
     "urn:stam-fromxml".into()
@@ -2092,10 +2094,13 @@ impl<'a> XmlToStamConverter<'a> {
                 } else {
                     (None, component)
                 };
+                let localname_with_condition = localname;
+                let (localname, condition) = self.extract_condition(localname_with_condition); //extract X-Path like conditions [@attrib="value"]  (very limited!)
+                //eprintln!("DEBUG: extract condition {} -> {} + {:?}", localname_with_condition, localname, condition);
                 for child in node.children() {
                     if child.is_element() {
                         let namedata = child.tag_name();
-                        let child_matches = if let Some(namespace) = namedata.namespace() {
+                        let mut child_matches = if let Some(namespace) = namedata.namespace() {
                             if let Some(foundprefix) = self.prefixes.get(namespace) {
                                 Some(foundprefix.as_str()) == prefix && localname == namedata.name()
                             } else {
@@ -2105,6 +2110,41 @@ impl<'a> XmlToStamConverter<'a> {
                             namedata.name() == localname
                         };
                         if child_matches {
+                            //MAYBE TODO: move to separate funtion
+                            if let Some((attribname, negate, attribvalue)) = condition {
+                                //test condition: falsify child_matches
+                                if let Some(pos) = attribname.find(":") {
+                                    let prefix = &attribname[1..pos];
+                                    if let Some(ns) = self.config.namespaces.get(prefix) {
+                                        let var = &attribname[pos+1..];
+                                        if let Some(value) = node.attribute((ns.as_str(),var)) {
+                                            if !negate && attribvalue != Some(value) {
+                                                child_matches = false;
+                                            } else if negate && attribvalue == Some(value) {
+                                                child_matches = false;
+                                            }
+                                        } else {
+                                            child_matches = false;
+                                        }
+                                    } else {
+                                        child_matches = false;
+                                    }
+                                } else {
+                                    let var = &attribname[1..];
+                                    if let Some(value) = node.attribute(var) {
+                                        if !negate && attribvalue != Some(value) {
+                                            child_matches = false;
+                                        } else if negate && attribvalue == Some(value) {
+                                            child_matches = false;
+                                        }
+                                    } else {
+                                        child_matches = false;
+                                    }
+                                }
+                            }
+                            //end condition test
+                        }
+                        if child_matches {
                             newnode = Some(node);
                             if i > 0 {
                                 path.push_str("_IN_");
@@ -2112,9 +2152,14 @@ impl<'a> XmlToStamConverter<'a> {
                             if let Some(prefix) = prefix {
                                 path.push_str(prefix);
                                 path.push_str("__");
-                            } else {
                             }
                             path.push_str(localname);
+                            if condition.is_some() {
+                                //simply encode the condition as a hash (non-decodable but that's okay)
+                                let mut hasher = DefaultHasher::new();
+                                localname_with_condition.hash(&mut hasher);
+                                path += &format!("_COND{}_", hasher.finish());
+                            }
                             break;
                         }
                     }
@@ -2126,6 +2171,35 @@ impl<'a> XmlToStamConverter<'a> {
         }
         return Some((path, recursive_text(node).into()));
     }
+
+    fn extract_condition<'b>(&self, localname: &'b str) -> (&'b str, Option<(&'b str, bool, Option<&'b str>)>) { //(localname, Option<(attrib, negation, attribvalue)>)
+        //simple conditional statement
+        if localname.ends_with("]") {
+            if let Some(pos) = localname.find("[") {
+                let condition = localname[pos+1..localname.len()-1].trim();
+                let (mut attrib, negation, attribvalue) = if let Some(pos) = condition.find("=") {
+                     let attrib = &condition[0..pos];
+                     let value = condition[pos+1..].trim();
+                     let value = &value[1..value.len() - 1]; //strips the literal quotes (") for the value
+                     if attrib.ends_with('!') {
+                        //negation (!= operator)
+                        (attrib[..attrib.len() - 1].trim(), true, Some(&value[1..value.len() - 1]))
+                     } else {
+                        (attrib.trim(), false, Some(&value[1..value.len() - 1]))
+                     }
+                } else {
+                    (condition, false, None)
+                };
+                if attrib.starts_with('@') {
+                    //this should actually be mandatory and already checked during template precompilation
+                    attrib = &attrib[1..];
+                }
+                return (&localname[..pos], Some((attrib,  negation,attribvalue )) );
+            }
+        }
+        (localname, None)
+    }
+
 
     fn get_node_name_for_template<'b>(&self, node: &'b Node) -> Cow<'b,str> {
         let extended_name = node.tag_name();
@@ -2192,7 +2266,11 @@ impl<'a> XmlToStamConverter<'a> {
         let mut begin = 0;
         let mut end = 0;
         let mut replacement = String::new();
+        let mut in_condition = false;
         for (i,c) in s.char_indices() {
+            if in_condition && c != ']' {
+                continue;
+            }
             if c == '"' {
                 quoted = !quoted;
             } else if !quoted {
@@ -2200,17 +2278,28 @@ impl<'a> XmlToStamConverter<'a> {
                     //token is an XML variable name, its syntax needs some changes before it can be used in the templating engine
                     var = true;
                     begin = i;
-                } else if var && !c.is_alphanumeric() && c != '.' && c != '/' && c != '_' && c != ':' && c != '@' {
-                    //end of variable
+                } else if var && c == '[' {
+                    in_condition = true;
+                } else if var && ((!c.is_alphanumeric() && c != '.' && c != '/' && c != '_' && c != ':' && c != '@') || (c == ']' && in_condition)) {
+                    //end of variable (including condition if applicable)
                     if end < begin {
                         replacement.push_str(&s[end..begin]);
                     }
-                    let varname = &s[begin..i];
+                    let varname = if c == ']' {
+                        &s[begin..i+1]
+                    } else {
+                        &s[begin..i]
+                    };
                     vars.insert(varname);
                     let replacement_var = self.precompile_name(varname);
                     replacement += &replacement_var;
                     var = false;
-                    end = i;
+                    end = if c == ']' {
+                        i + 1
+                    } else {
+                        i
+                    };
+                    in_condition = false;
                 }
             }
         }
@@ -2234,9 +2323,12 @@ impl<'a> XmlToStamConverter<'a> {
     /// upon's templating syntax doesn't support some of the characters we use in names, this function substitutes them for more verbose equivalents
     fn precompile_name(&self, s: &str) -> String {
         let mut replacement = String::new();
+        let mut begincondition = None;
         let mut skip = 0;
         for (i,c) in s.char_indices() {
-            if skip > 0 {
+            if begincondition.is_some() && c != ']' {
+                continue;
+            } else if skip > 0 {
                 skip -= 1;
                 continue;
             }
@@ -2257,6 +2349,16 @@ impl<'a> XmlToStamConverter<'a> {
                 replacement.push_str("_IN_");
             } else if c == ':' {
                 replacement.push_str("__");
+            } else if c == '[' {
+                begincondition = Some(i+1);
+            } else if c == ']' {
+                //conditions are just stored as hashes
+                if let Some(begin) = begincondition {
+                    let mut hasher = DefaultHasher::new();
+                    let _ = &s[begin..i].hash(&mut hasher);
+                    replacement.push_str(&format!("_COND{}_", hasher.finish()));
+                }
+                begincondition = None;
             } else {
                 replacement.push(c);
             }
