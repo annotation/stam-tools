@@ -38,6 +38,9 @@ pub struct AlignmentConfig {
 
     /// Output alignments to standard output in a TSV format
     pub verbose: bool,
+
+    /// Limit output
+    pub quiet: bool,
 }
 
 impl Default for AlignmentConfig {
@@ -52,6 +55,7 @@ impl Default for AlignmentConfig {
             simple_only: false,
             verbose: false,
             grow: false,
+            quiet: false,
         }
     }
 }
@@ -103,7 +107,9 @@ pub fn align<'store>(
             if let Ok(result) = resultrow.get_by_name_or_last(use_var) {
                 for (i, query2raw) in queries2.iter().enumerate() {
                     //MAYBE TODO: this could be parallellized (but memory may be a problem then)
-                    eprintln!("Aligning #{}/{}...", i + 1, queries2.len());
+                    if !config.quiet {
+                        eprintln!("Aligning #{}/{}...", i + 1, queries2.len());
+                    }
                     let (text, query2) = match result {
                         QueryResultItem::TextResource(resource) => ( resource.clone().to_textselection(), query2raw.clone().with_resourcevar(use_var.unwrap_or("resource"), resource)),
                         QueryResultItem::Annotation(annotation) => {
@@ -160,7 +166,9 @@ pub fn align<'store>(
     for builder in buildtranspositions {
         transpositions.push(store.annotate(builder)?);
     }
-    eprintln!("{} annotations(s) created", transpositions.len());
+    if !config.quiet {
+        eprintln!("{} annotations(s) created", transpositions.len());
+    }
     Ok(transpositions)
 }
 

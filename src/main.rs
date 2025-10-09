@@ -39,6 +39,12 @@ fn common_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .required(false),
     );
     args.push(
+        Arg::with_name("quiet")
+            .long("quiet")
+            .help("Produce as little output as possible, show only errors")
+            .required(false),
+    );
+    args.push(
         Arg::with_name("dry-run")
             .long("dry-run")
             .short('n')
@@ -827,6 +833,7 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("context-file")
             .long("context-file")
             .help("A TOML or JSON file containing context variables to make available to the templating engine")
+            .required(false)
             .takes_value(true),
     );
     args.push(
@@ -933,7 +940,7 @@ fn load_store(args: &ArgMatches) -> AnnotationStore {
                 },
             );
         } else if !filename.ends_with(".json") {
-            eprintln!("When loading multiple annotation store, the other ones must be in STAM JSON format (CSV and CBOR not supported)");
+            eprintln!("Error: When loading multiple annotation stores, the other ones must be in STAM JSON format (CSV and CBOR not supported)");
             exit(1);
         } else {
             store = store.with_file(filename).unwrap_or_else(|err| {
@@ -1264,6 +1271,8 @@ fn main() {
     }
     let args = args.unwrap();
 
+    let quiet = args.is_present("quiet");
+
     let mut store = if rootargs.subcommand_matches("import").is_some()
         || rootargs.subcommand_matches("init").is_some()
         || rootargs.subcommand_matches("fromxml").is_some()
@@ -1271,10 +1280,14 @@ fn main() {
         let force_new = !args.is_present("outputstore")
             && (args.is_present("force-new") || rootargs.subcommand_matches("init").is_some());
         if !force_new && store_exists(args) {
-            eprintln!("Existing annotation store found, loading");
+            if !quiet {
+                eprintln!("Existing annotation store found, loading");
+            }
             load_store(args)
         } else {
-            eprintln!("New annotation store created");
+            if !quiet {
+                eprintln!("New annotation store created");
+            }
             let mut store = AnnotationStore::new(config_from_args(args));
             if args.is_present("annotationstore") {
                 if let Some(filename) = args.values_of("annotationstore").unwrap().next() {
@@ -1308,8 +1321,10 @@ fn main() {
     }
 
     if changed && !args.is_present("dry-run") {
-        if let Some(filename) = store.filename() {
-            eprintln!("Writing annotation store to {}", filename);
+        if !quiet {
+            if let Some(filename) = store.filename() {
+                eprintln!("Writing annotation store to {}", filename);
+            }
         }
         store.save().unwrap_or_else(|err| {
             eprintln!(
@@ -1393,14 +1408,18 @@ fn run<W: Write>(
         if batchmode {
             return Err(format!("Batch can't be used when already in batch mode"));
         }
-        eprintln!("Batch mode enabled, enter stam commands as usual but without the initial 'stam' command\n but without store input/output arguments\nintermediate output may be redirected to file rather than stdout with the > and >> operators\ntype 'help' for help\ntype 'quit' or ^D to quit with saving (if applicable), 'cancel' or ^C to quit without saving");
+        if !rootargs.is_present("quiet") {
+            eprintln!("Batch mode enabled, enter stam commands as usual but without the initial 'stam' command\n but without store input/output arguments\nintermediate output may be redirected to file rather than stdout with the > and >> operators\ntype 'help' for help\ntype 'quit' or ^D to quit with saving (if applicable), 'cancel' or ^C to quit without saving");
+        }
         let mut line = String::new();
         let is_tty = atty::is(atty::Stream::Stdin);
         let mut seqnr = 0;
         loop {
             seqnr += 1;
             //prompt
-            eprint!("stam[{}{}]> ", seqnr, if changed { "*" } else { "" });
+            if !rootargs.is_present("quiet") {
+                eprint!("stam[{}{}]> ", seqnr, if changed { "*" } else { "" });
+            }
             match io::stdin().lock().read_line(&mut line) {
                 Ok(0) => break,
                 Ok(_) => {
@@ -1756,17 +1775,19 @@ fn run<W: Write>(
             .values_of("annotations")
             .unwrap_or_default()
             .collect::<Vec<&str>>();
-        eprintln!(
-            "{} store: {} new annotation file(s), {} new resource(s), {} new annotationset(s)",
-            if rootargs.subcommand_matches("annotate").is_some() {
-                "Adding to"
-            } else {
-                "Initializing"
-            },
-            annotationfiles.len(),
-            resourcefiles.len(),
-            setfiles.len(),
-        );
+        if !rootargs.is_present("quiet") {
+            eprintln!(
+                "{} store: {} new annotation file(s), {} new resource(s), {} new annotationset(s)",
+                if rootargs.subcommand_matches("annotate").is_some() {
+                    "Adding to"
+                } else {
+                    "Initializing"
+                },
+                annotationfiles.len(),
+                resourcefiles.len(),
+                setfiles.len(),
+            );
+        }
         annotate(store, &resourcefiles, &setfiles, &annotationfiles)?;
         changed = true;
 
@@ -1776,12 +1797,14 @@ fn run<W: Write>(
             store.query_mut(query).map_err(|err| format!("{}", err))?;
         }
 
-        eprintln!(
-            "  total: {} annotation(s), {} resource(s), {} annotationset(s)",
-            store.annotations_len(),
-            store.resources_len(),
-            store.datasets_len()
-        );
+        if !rootargs.is_present("quiet") {
+            eprintln!(
+                "  total: {} annotation(s), {} resource(s), {} annotationset(s)",
+                store.annotations_len(),
+                store.resources_len(),
+                store.datasets_len()
+            );
+        }
     } else if rootargs.subcommand_matches("tag").is_some() {
         //load the store
         tag(
@@ -1905,6 +1928,7 @@ fn run<W: Write>(
                     0
                 },
                 grow: args.is_present("grow"),
+                quiet: rootargs.is_present("quiet"),
                 verbose: args.is_present("verbose"),
             },
         ) {
@@ -2166,10 +2190,12 @@ fn run<W: Write>(
             for filename in args.values_of("inputfile").unwrap().into_iter() {
                 if let Err(e) = from_xml(Path::new(filename), &config, store) {
                     if args.is_present("ignore-errors") {
-                        eprintln!(
-                            "WARNING: Skipped {} (or part thereof) due to errors: {}",
-                            filename, e
-                        )
+                        if !rootargs.is_present("quiet") {
+                            eprintln!(
+                                "WARNING: Skipped {} (or part thereof) due to errors: {}",
+                                filename, e
+                            )
+                        }
                     } else {
                         return Err(e);
                     }
@@ -2189,10 +2215,12 @@ fn run<W: Write>(
                             filename.split('\t').map(|s| Path::new(s)).collect();
                         if let Err(e) = from_multi_xml(&filenames, &config, store) {
                             if args.is_present("ignore-errors") {
-                                eprintln!(
-                                    "WARNING: Skipped {} (or part thereof) due to errors: {}",
-                                    filename, e
-                                )
+                                if !rootargs.is_present("quiet") {
+                                    eprintln!(
+                                        "WARNING: Skipped {} (or part thereof) due to errors: {}",
+                                        filename, e
+                                    )
+                                }
                             } else {
                                 return Err(e);
                             }
@@ -2201,10 +2229,12 @@ fn run<W: Write>(
                     } else {
                         if let Err(e) = from_xml(Path::new(filename), &config, store) {
                             if args.is_present("ignore-errors") {
-                                eprintln!(
-                                    "WARNING: Skipped {} (or part thereof) due to errors: {}",
-                                    filename, e
-                                )
+                                if !rootargs.is_present("quiet") {
+                                    eprintln!(
+                                        "WARNING: Skipped {} (or part thereof) due to errors: {}",
+                                        filename, e
+                                    )
+                                }
                             } else {
                                 return Err(e);
                             }
