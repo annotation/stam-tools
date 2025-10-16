@@ -181,6 +181,10 @@ impl XmlConversionConfig {
     pub fn add_context(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.context.insert(key.into(), value.into());
     }
+
+    pub fn debug(&self) -> bool {
+        self.debug
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
