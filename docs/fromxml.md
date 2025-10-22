@@ -80,6 +80,15 @@ tei = "http://www.tei-c.org/ns/1.0"
 
 These prefixes can subsequently be used in path selectors and templates.
 
+### id_strip_suffix
+
+This is a list of suffixes to strip when forming identifiers for resources.
+A common practise is to add the extension of your text files here:
+
+```toml
+id_strip_suffix = [ ".txt" ]
+```
+
 ### elements
 
 Elements is a list of tables, each entry defines how to map a certain XML
