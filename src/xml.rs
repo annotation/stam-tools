@@ -54,8 +54,12 @@ pub struct XmlConversionConfig {
     default_set: String,
 
     #[serde(default)]
-    /// A prefix to assign when setting annotation IDs, within this string you can use the special variable `{resource}` to use the resource ID.
+    /// A prefix to assign when setting annotation IDs
     id_prefix: Option<String>,
+
+    #[serde(default)]
+    /// A suffix to strip when setting annotation IDs
+    id_strip_suffix: Vec<String>,
 
     #[serde(default)]
     /// Add provenance information pointing each annotation to the appropriate node in the XML source files where it came from (translates into XPathSelector in Web Annotation output)
@@ -78,6 +82,7 @@ impl XmlConversionConfig {
             default_set: default_set(),
             inject_dtd: None,
             id_prefix: None,
+            id_strip_suffix: Vec::new(),
             provenance: false,
             debug: false,
         }
@@ -139,6 +144,12 @@ impl XmlConversionConfig {
     /// A prefix to assign when setting annotation IDs, within this string you can use the special variable `{resource}` to use the resource ID.
     pub fn with_id_prefix(mut self, prefix: impl Into<String>) -> Self {
         self.id_prefix = Some(prefix.into());
+        self
+    }
+
+    /// A suffix to strip when assigning annotation IDs
+    pub fn with_id_strip_suffix(mut self, suffix: impl Into<String>) -> Self {
+        self.id_strip_suffix.push(suffix.into());
         self
     }
 
@@ -713,7 +724,7 @@ pub fn from_xml<'a>(
         eprintln!("[STAM fromxml] extracted full text: {}", &converter.text);
     }
     let resource = TextResourceBuilder::new()
-        .with_id(textoutfilename.clone())
+        .with_id(filename_to_id(textoutfilename.as_str(), config).to_string())
         .with_text(converter.text.clone())
         .with_filename(&textoutfilename);
 
@@ -815,7 +826,7 @@ pub fn from_multi_xml<'a>(
     }
 
     let resource = TextResourceBuilder::new()
-        .with_id(textoutfilename.clone())
+        .with_id(filename_to_id(textoutfilename.as_str(), config).to_string())
         .with_text(converter.text.clone())
         .with_filename(&textoutfilename);
 
@@ -910,6 +921,15 @@ pub fn from_xml_in_memory<'a>(
         })?;
 
     Ok(())
+}
+
+pub fn filename_to_id<'a>(filename: &'a str, config: &XmlConversionConfig) -> &'a str {
+    for suffix in config.id_strip_suffix.iter() {
+        if filename.ends_with(suffix) {
+            return &filename[..filename.len() - suffix.len()];
+        }
+    }
+    return filename;
 }
 
 struct XmlToStamConverter<'a> {

@@ -848,6 +848,13 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .help("Prefix to use when assigning annotation IDs. If you use the special variable {resource}, it will be resolved to the resource ID, which is useful when annotation IDs in the XML are not globally unique."),
     );
     args.push(
+        Arg::with_name("id-strip-suffix")
+            .long("id-strip-suffix")
+            .takes_value(true)
+            .action(ArgAction::Append)
+            .help("Suffix to strip when deriving annotation IDs from resource filenames"),
+    );
+    args.push(
         Arg::with_name("ignore-errors")
             .long("ignore-errors")
             .help("Skip XML files that have errors and output a warning, this would produce a hard failure otherwise"),
@@ -2166,6 +2173,11 @@ fn run<W: Write>(
             .with_provenance(args.is_present("provenance"));
         if let Some(prefix) = args.value_of("id-prefix") {
             config = config.with_id_prefix(prefix);
+        }
+        if let Some(iter) = args.values_of("id-strip-suffix") {
+            for suffix in iter {
+                config = config.with_id_strip_suffix(suffix);
+            }
         }
         if let Some(contextfile) = args.value_of("context-file") {
             let rawdata = fs::read_to_string(contextfile).map_err(|e| {
