@@ -753,18 +753,23 @@ pub fn from_xml<'a>(
 /// Translate an XML file to STAM, given a particular configuration. This translates multiple XML files to a single output file.
 pub fn from_multi_xml<'a>(
     filenames: &Vec<&Path>,
+    outputfile: Option<&Path>,
     config: &XmlConversionConfig,
     store: &'a mut AnnotationStore,
 ) -> Result<(), String> {
 
-    let textoutfilename = format!(
-        "{}.txt",
-            filenames.iter().next().expect("1 or more filename need to be provided")
-            .file_stem()
-            .expect("invalid filename")
-            .to_str()
-            .expect("invalid utf-8 in filename")
-    );
+    let textoutfilename = if let Some(outputfile) = outputfile {
+        format!("{}",outputfile.to_str().expect("invalid utf-8 in filename"))
+    } else {
+        format!(
+            "{}.txt",
+                filenames.iter().next().expect("1 or more filename need to be provided")
+                .file_stem()
+                .expect("invalid filename")
+                .to_str()
+                .expect("invalid utf-8 in filename")
+        )
+    };
 
     // Read the raw XML data
     let mut xmlstrings: Vec<String> = Vec::new();

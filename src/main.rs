@@ -287,7 +287,7 @@ fn tsv_arguments_out<'a>() -> Vec<clap::Arg<'a>> {
             .help("Column Format, comma separated list of column names to output (or input depending on context)")
             .long_help(
                 "In most cases, you do not need to explicitly specify this as it will be automatically guessed based on the --type or --query parameter.
-However, if you want full control, you can choose from the following known columns names (case insensitive, comma seperated list):
+However, if you want full control, you can choose from the following known columns names (case insensitive, comma separated list):
 
 * Type                 - Outputs the type of the row (Annotation,AnnotationData), useful in Nested mode.
 * Id                   - Outputs the ID of the row item
@@ -308,7 +308,7 @@ However, if you want full control, you can choose from the following known colum
 * Ignore               - Always outputs the NULL value
 
 In addition to the above columns, you may also set a *custom* column by specifying an
-AnnotationDataSet and DataKey within, seperated by the set/key delimiter (by default a slash). The
+AnnotationDataSet and DataKey within, separated by the set/key delimiter (by default a slash). The
 rows will then be filled with the data values corresponding to the data key. Example:
 
 * my_set/part_of_speech
@@ -352,7 +352,7 @@ fn tsv_arguments_in<'a>() -> Vec<clap::Arg<'a>> {
             .short('C')
             .help("Column Format, comma separated list of column names to output")
             .long_help(
-                "Choose from the following known columns names (case insensitive, comma seperated list):
+                "Choose from the following known columns names (case insensitive, comma separated list):
 
 * Id                   - The ID of the annotation item
 * Annotation           - (same as above) 
@@ -363,7 +363,7 @@ fn tsv_arguments_in<'a>() -> Vec<clap::Arg<'a>> {
 * DataValue            - The value
 * TextSelection        - A combination of resource identifier(s) with an offset in the following format: resource#beginoffset-endoffset
 * Text                 - The text of the selection, target of the annotation 
-* Offset               - Offset in unicode character points (0-indexed, end is non-inclusive) seperated by a hyphen: beginoffset-endoffset
+* Offset               - Offset in unicode character points (0-indexed, end is non-inclusive) separated by a hyphen: beginoffset-endoffset
 * BeginOffset          - Begin offset in unicode character points
 * EndOffset            - End offset in unicode character points
 * BeginUtf8Offset      - Begin offset in UTF-8 bytes
@@ -818,7 +818,7 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
         Arg::with_name("inputfilelist")
             .long("inputfilelist")
             .short('l')
-            .help("Filename containing a list of input files (one per line, alternative to specifying --inputfile multiple times). You may also specify *multiple* files per line, seperated by tab characteers, these will then jointly produce a single text, named after the first file on the line.")
+            .help("Filename containing a list of input files (one per line, alternative to specifying --inputfile multiple times). You may also specify *multiple* files per line, separated by tab characters, these will then jointly produce a single text, by default named after the first file on the line. To assign an explicit output name, you can column (any one) with the character > prepended to the output filename")
             .takes_value(true),
     );
     args.push(
@@ -2226,9 +2226,22 @@ fn run<W: Write>(
             for filename in filenames {
                 if !filename.is_empty() {
                     if filename.find('\t').is_some() {
-                        let filenames: Vec<&Path> =
-                            filename.split('\t').map(|s| Path::new(s)).collect();
-                        if let Err(e) = from_multi_xml(&filenames, &config, store) {
+                        //multiple input files, one output file
+                        let mut outputfile: Option<&Path> = None;
+                        let filenames: Vec<&Path> = filename
+                            .split('\t')
+                            .filter_map(|s| {
+                                if s.chars().next() == Some('>') {
+                                    outputfile = Some(Path::new(&s[1..]));
+                                    None
+                                } else if !s.trim().is_empty() {
+                                    Some(Path::new(s))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        if let Err(e) = from_multi_xml(&filenames, outputfile, &config, store) {
                             if args.is_present("ignore-errors") {
                                 if !rootargs.is_present("quiet") {
                                     eprintln!(
