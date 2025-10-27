@@ -2193,11 +2193,11 @@ fn run<W: Write>(
             } else {
                 return Err("Context file must have extension .toml or .json".into());
             };
-            for (key, value) in table.iter() {
+            for (key, value) in table.into_iter() {
                 if config.debug() {
                     eprintln!("[STAM fromxml] added context variable {}={}", key, value)
                 }
-                config.add_context(key, value.to_string());
+                config.add_context(key, value);
             }
         }
         let mut has_input = false;

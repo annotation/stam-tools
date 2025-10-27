@@ -40,7 +40,7 @@ pub struct XmlConversionConfig {
 
     #[serde(default)]
     /// Sets additional context variables that can be used in templates
-    context: HashMap<String, String>,
+    context: HashMap<String, toml::Value>,
 
     #[serde(default)]
     /// Sets additional context variables that can be used in templates
@@ -189,8 +189,8 @@ impl XmlConversionConfig {
         None
     }
 
-    pub fn add_context(&mut self, key: impl Into<String>, value: impl Into<String>) {
-        self.context.insert(key.into(), value.into());
+    pub fn add_context(&mut self, key: impl Into<String>, value: toml::Value) {
+        self.context.insert(key.into(), value);
     }
 
     pub fn debug(&self) -> bool {
@@ -1955,7 +1955,7 @@ impl<'a> XmlToStamConverter<'a> {
 
     fn set_global_context(&mut self) {
         self.global_context
-            .insert("context".into(), self.config.context.clone().into());
+            .insert("context".into(), upon::Value::Map(self.config.context.iter().map(|(k,v)| (k.clone(), map_value(v))).collect()));
         self.global_context
             .insert("namespaces".into(), self.config.namespaces.clone().into());
         self.global_context
@@ -2558,6 +2558,18 @@ fn filter_capitalize(s: &str) -> String {
     out
 }
 
+/// Map value between toml and upon. This makes a clone.
+fn map_value(value: &toml::Value) -> upon::Value {
+    match value {
+        toml::Value::String(s) => upon::Value::String(s.clone()),
+        toml::Value::Integer(i) => upon::Value::Integer(*i),
+        toml::Value::Float(i) => upon::Value::Float(*i),
+        toml::Value::Boolean(v) => upon::Value::Bool(*v),
+        toml::Value::Datetime(s) => upon::Value::String(s.to_string()),
+        toml::Value::Array(v) => upon::Value::List(v.iter().map(|i| map_value(i)).collect()),
+        toml::Value::Table(v) => upon::Value::Map(v.iter().map(|(k,i)| (k.clone(),map_value(i))).collect()),
+    }
+}
 
 #[cfg(test)]
 mod tests {
