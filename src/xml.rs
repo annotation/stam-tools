@@ -182,7 +182,7 @@ impl XmlConversionConfig {
     /// How to handle this element?
     fn element_config(&self, node: Node, path: &NodePath) -> Option<&XmlElementConfig> {
         for elementconfig in self.elements.iter().rev() {
-            if elementconfig.path.test(path, &node, self) {
+            if elementconfig.path.test(path, node, self) {
                 return Some(elementconfig);
             }
         }
@@ -437,11 +437,13 @@ impl XPathExpression {
     pub fn iter<'a>(
         &'a self,
         config: &'a XmlConversionConfig,
-    ) -> impl Iterator<Item = (Option<&'a str>, &'a str)> {
-        self.main().trim_start_matches('/').split("/").map(|segment| {
-            if let Some((prefix, name)) = segment.split_once(":") {
+    ) -> impl Iterator<Item = (Option<&'a str>, &'a str, Option<&'a str>)> {
+        self.0.trim_start_matches('/').split("/").map(|segment| {
+            //eprintln!("DEBUG: segment={}", segment);
+            let (prefix, name, condition) = Self::parse_segment(segment);
+            let namespace = if let Some(prefix) = prefix {
                 if let Some(namespace) = config.namespaces.get(prefix).map(|x| x.as_str()) {
-                    (Some(namespace), name)
+                    Some(namespace)
                 } else {
                     panic!(
                         "XML namespace prefix not known in configuration: {}",
@@ -449,57 +451,75 @@ impl XPathExpression {
                     );
                 }
             } else {
-                (None, segment)
-            }
+                None
+            };
+            (namespace, name, condition)
         })
     }
 
     /// matches a node path against an XPath-like expression
-    fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, node: &Node<'a,'b>, config: &XmlConversionConfig) -> bool {
+    fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, mut node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
         let mut pathiter = path.components.iter().rev();
-        for (refns, pat) in self.iter(config).collect::<Vec<_>>().into_iter().rev() {
+        for (refns, refname, condition) in self.iter(config).collect::<Vec<_>>().into_iter().rev() {
             if let Some(component) = pathiter.next() {
-                if pat != "*" && pat != "" {
-                    if refns.is_none() != component.namespace.is_none() || component.namespace != refns || pat != component.tagname {
+                /*if config.debug() {
+                    eprintln!("[STAM fromxml]          testing component {:?} against refns={:?} refname={} condition={:?}", component, refns, refname, condition);
+                }*/
+                if refname != "*" && refname != "" {
+                    if refns.is_none() != component.namespace.is_none() || component.namespace != refns || refname != component.tagname {
                         return false;
                     }
                 }
+                if let Some(condition) = condition {
+                    if !self.test_condition(condition, node, config) {
+                        return false;
+                    }
+                }
+                if let Some(parent) = node.parent() { 
+                    node = parent;
+                }
             } else {
-                if pat != "" {
+                if refname != "" {
                     return false;
                 }
             }
         }
-        //condition parsing (very basic language only), only supported on the leaf node
-        if let Some(condition) = self.condition() {
-            for condition in condition.split(" and ") { //MAYBE TODO: doesn't take quotes into account yet!
-                let condition = condition.trim();
-                if let Some(pos) = condition.find("!=") {
-                    let var = &condition[..pos];
-                    let right = condition[pos+2..].trim_matches('"');
-                    if self.get_var(var, node, config) == Some(right) {
-                        return false;
-                    }
-                } else if let Some(pos) = condition.find("=") {
-                    let var = &condition[..pos];
-                    let right = condition[pos+1..].trim_matches('"');
-                    let value = self.get_var(var, node, config);
-                    if value != Some(right) {
-                        return false;
-                    }
-                } else {
-                    //condition is one variable and merely needs to exist
-                    let v = self.get_var(condition, node, config);
-                    if v.is_none() || v == Some("") {
-                        return false;
-                    }
-                }
-            }
-        }
+        /* if config.debug() {
+            eprintln!("[STAM fromxml]          match");
+        }*/
         true
     }
 
-    /// Resolve a variable from a conditional expression, given a variable name, node and condfig
+    fn test_condition<'a,'b>(&self, condition: &'a str, node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
+        for condition in condition.split(" and ") { //MAYBE TODO: doesn't take literals into account yet!
+            if let Some(pos) = condition.find("!=") {
+                let var = &condition[..pos];
+                let right = condition[pos+2..].trim_matches('"');
+                if self.get_var(var, &node, config) == Some(right) {
+                    return false;
+                }
+            } else if let Some(pos) = condition.find("=") {
+                let var = &condition[..pos];
+                let right = condition[pos+1..].trim_matches('"');
+                let value = self.get_var(var, &node, config);
+                if value != Some(right) {
+                    return false;
+                }
+            } else {
+                //condition is one variable and merely needs to exist
+                let v = self.get_var(condition, &node, config);
+                if v.is_none() || v == Some("") {
+                    return false;
+                }
+            }
+        }
+        /*if config.debug() {
+            eprintln!("[STAM fromxml]          condition matches");
+        }*/
+        true
+    }
+
+    /// Resolve a variable from a conditional expression, given a variable name, node and config
     fn get_var<'a,'b>(&self, var: &str, node: &Node<'a,'b>, config: &XmlConversionConfig) -> Option<&'a str> { 
         if var.starts_with("@") {
             if let Some(pos) = var.find(":") {
@@ -520,26 +540,22 @@ impl XPathExpression {
         }
     }
 
-
-
-    /// Returns the main part of the expression, without any conditions
-    fn main(&self) -> &str {
-        if let Some(end) = self.0.find("[") {
-            &self.0[..end]
+    /// Parses a segment into a namespace-prefix, a name and a condition
+    fn parse_segment<'a>(s: &'a str) -> (Option<&'a str>, &'a str, Option<&'a str>) {
+        let (name, condition) = if let (Some(begin), Some(end)) = (s.find("["), s.rfind("]")) {
+            (&s[..begin], Some(&s[begin + 1..end]))
         } else {
-            &self.0
-        }
-    }
-
-    /// Returns the conditional part of the expression, only supported on the leaf node
-    fn condition(&self) -> Option<&str> {
-        if let (Some(begin), Some(end)) = (self.0.find("["), self.0.find("]")) {
-            Some(&self.0[begin + 1..end])
+            (s, None)
+        };
+        if let Some((prefix, name)) = name.split_once(":") {
+            (Some(prefix), name, condition)
         } else {
-            None
+            (None, name, condition)
         }
     }
 }
+
+
 
 impl Default for XPathExpression {
     fn default() -> Self {
@@ -2287,6 +2303,7 @@ impl<'a> XmlToStamConverter<'a> {
             replacement.push_str(&template[end..]);
         }
         self.variables.insert(template.into(), variables);
+        //eprintln!("DEBUG: precompile({}) -> {}", template, replacement);
 
         if !replacement.is_empty() {
             Cow::Owned(replacement)
@@ -2328,13 +2345,13 @@ impl<'a> XmlToStamConverter<'a> {
                     vars.insert(varname);
                     let replacement_var = self.precompile_name(varname);
                     replacement += &replacement_var;
-                    var = false;
                     end = if c == ']' {
+                        in_condition = false;
                         i + 1
                     } else {
+                        var = false;
                         i
                     };
-                    in_condition = false;
                 }
             }
         }
@@ -2349,6 +2366,7 @@ impl<'a> XmlToStamConverter<'a> {
             replacement += &replacement_var;
         }
         if !replacement.is_empty() {
+            //eprintln!("DEBUG: precompile_inblock({}) -> {}", s, replacement);
             Cow::Owned(replacement)
         } else {
             Cow::Borrowed(s)
@@ -2407,10 +2425,6 @@ impl<'a> XmlToStamConverter<'a> {
         for metadata in self.config.metadata.iter() {
             let mut builder = AnnotationBuilder::new();
 
-            //prepare variables to pass to the template context
-            if metadata.annotation == XmlAnnotationHandling::TextSelector {
-
-            }
             let resource_id = if let Some(resource_handle) = self.resource_handle {
                 store.resource(resource_handle).unwrap().id()
             } else {
@@ -2610,7 +2624,7 @@ of CDATA and is configured to preserve whitespace, and weird &entities; ]]></p>
 
     <p>
     Have some fruits:<br/>
-    <ul xml:id="list1">
+    <ul xml:id="list1" class="fruits">
         <li xml:id="fruit1">apple</li>
         <li xml:id="fruit2">banana</li>
         <li xml:id="fruit3">melon</li>
@@ -2621,6 +2635,7 @@ of CDATA and is configured to preserve whitespace, and weird &entities; ]]></p>
 </body>
 </html>"#;
 
+    const XMLEXAMPLE_TEXTOUTPUT: &'static str = "Header\n\nThis is a sentence. This is the second sentence.\n\nThis is the second paragraph. It has a bold word and one in italics.\nLet's highlight stress in the following word: reputation.\n\nThis    third\nparagraph consists\nof CDATA and is configured to preserve whitespace, and weird &entities; \nSubsection\n\nHave some fruits:\n* apple\n* banana\n* melon\n\nSome lingering text outside of any confines...";
     
     //fake example (not real HTML, testing TEI-like space attribute with complex template)
     const XMLTEISPACE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
@@ -2735,22 +2750,18 @@ base = [ "common", "text" ]
 path = "//html:h2"
 textsuffix = "\n"
 
+#Generic, will be overriden by more specific one
 [[elements]]
 base = [ "common", "text" ]
 path = "//html:li"
+textprefix = "- "
+textsuffix = "\n"
+
+#More specific one takes precendence over the above generic one
+[[elements]]
+base = [ "common", "text" ]
+path = """//html:ul[@class="fruits"]/html:li"""
 textprefix = "* "
-textsuffix = "\n"
-
-[[elements]]
-base = [ "common", "text" ]
-path = "//html:li/html:li"
-textprefix = "  * "
-textsuffix = "\n"
-
-[[elements]]
-base = [ "common", "text" ]
-path = "//html:li/html:li/html:li"
-textprefix = "    * "
 textsuffix = "\n"
 
 #Not real HTML, test-case modelled after TEI space
@@ -2759,6 +2770,7 @@ base = [ "common" ]
 path = """//html:space[@dim="vertical" and @unit="lines"]"""
 text = true
 textsuffix = """\n{% for x in @quantity | int | as_range %}\n{% endfor %}"""
+
 
 [[elements]]
 base = [ "common", "text" ]
@@ -2786,6 +2798,7 @@ key = "map"
 text = "{{ $. }}"
 number = 42
 bogus = true
+
 "#;
 
     const XMLREQATTRIBEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
@@ -2923,7 +2936,7 @@ bogus = true
         let mut conv = XmlToStamConverter::new(&config);
         conv.compile().map_err(|e| format!("{}",e))?;
         assert_eq!(conv.config.namespaces.len(),4 , "number of namespaces");
-        assert_eq!(conv.config.elements.len(), 15, "number of elements");
+        assert_eq!(conv.config.elements.len(), 14, "number of elements");
         assert_eq!(conv.config.baseelements.len(), 2, "number of baseelements");
         assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 6,"number of annotationdata under first element");
         assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 6,"number of annotationdata under baseelement common");
@@ -2951,9 +2964,11 @@ bogus = true
 
     #[test]
     fn test_full() -> Result<(), String> {
-        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
         let mut store = stam::AnnotationStore::new(stam::Config::new());
         from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        let res = store.resource("test").expect("resource must have been created at this point");
+        assert_eq!(res.text(), XMLEXAMPLE_TEXTOUTPUT, "resource text");
         Ok(())
     }
 
