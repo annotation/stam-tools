@@ -1074,6 +1074,12 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("replace", |s: &str, from: &str, to: &str| { 
             upon::Value::String(s.replace(from,to))
         });
+        template_engine.add_function("starts_with", |s: &str, prefix: &str| { 
+            s.starts_with(prefix)
+        });
+        template_engine.add_function("ends_with", |s: &str, suffix: &str| { 
+            s.ends_with(suffix)
+        });
         template_engine.add_function("basename", |a: &upon::Value| match a {
             upon::Value::String(s) => upon::Value::String(s.split(|c| c == '/' || c == '\\').last().expect("splitting must work").to_string()),
             _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT

@@ -388,6 +388,8 @@ The following filters are implemented in the templating engine:
 * `s | replace: from, to` - replace a substring
 * `s | basename` - Returns the base name of a file path
 * `s | noext` - Strips the extension off a filename
+* `s | starts_with: prefix` - Tests if a string starts with a given prefix (string)
+* `s | ends_with: prefix` - Tests if a string ends with a given prefix (string)
 
 Usage example:
 
