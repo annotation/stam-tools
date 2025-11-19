@@ -2343,7 +2343,7 @@ impl<'a> XmlToStamConverter<'a> {
                     if end < begin {
                         replacement.push_str(&s[end..begin]);
                     }
-                    let varname = if c == ']' {
+                    let varname = if in_condition && c == ']' {
                         &s[begin..i+1]
                     } else {
                         &s[begin..i]
@@ -2351,13 +2351,17 @@ impl<'a> XmlToStamConverter<'a> {
                     vars.insert(varname);
                     let replacement_var = self.precompile_name(varname);
                     replacement += &replacement_var;
-                    end = if c == ']' {
-                        in_condition = false;
+                    end = if in_condition && c == ']' {
                         i + 1
                     } else {
-                        var = false;
                         i
                     };
+                    var = if in_condition && c ==']' {
+                        end < s.chars().count() - 1
+                    } else {
+                        false
+                    };
+                    in_condition = false;
                 }
             }
         }
