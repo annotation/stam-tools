@@ -1808,9 +1808,14 @@ impl<'a> XmlToStamConverter<'a> {
                 match compiled_template.render(&context).to_string().map_err(|e| 
                         XmlConversionError::TemplateError(
                             format!(
-                                "whilst rendering annotationdata/map template '{}' for node '{}'",
+                                "whilst rendering annotationdata/map template '{}' for node '{}'.{}",
                                 template,
                                 node.tag_name().name(),
+                                if self.config.debug() {
+                                    format!("\nContext was {:?}.\nVariables are: {:?}", context, self.variables.get(template))
+                                } else {
+                                    String::new()
+                                }
                             ),
                             Some(e),
                         )
@@ -2072,11 +2077,12 @@ impl<'a> XmlToStamConverter<'a> {
                 if let Some(value) = self.context_for_var(node, var, &mut encodedvar) {
                     if self.config.debug() {
                         eprintln!(
-                            "[STAM fromxml]              Set context variable for template '{}' for node '{}': {}={:?}",
+                            "[STAM fromxml]              Set context variable for template '{}' for node '{}': {}={:?}   (encodedvar={})",
                             template,
                             node.tag_name().name(),
                             var,
-                            value
+                            value,
+                            encodedvar
                         );
                     }
                     if value != upon::Value::None {
@@ -2391,30 +2397,23 @@ impl<'a> XmlToStamConverter<'a> {
                     begin = i;
                 } else if var && c == '[' {
                     in_condition = true;
-                } else if var && ((!c.is_alphanumeric() && c != '.' && c != '/' && c != '_' && c != ':' && c != '@') || (c == ']' && in_condition)) {
+                } else if var && in_condition && c == ']' {
+                    //end of condition
+                    in_condition = false;
+                } else if var && in_condition  {
+                    //in condition
+                    continue;
+                } else if var && (!c.is_alphanumeric() && c != '.' && c != '/' && c != '_' && c != ':' && c != '@') {
                     //end of variable (including condition if applicable)
                     if end < begin {
                         replacement.push_str(&s[end..begin]);
                     }
-                    let varname = if in_condition && c == ']' {
-                        &s[begin..i+1]
-                    } else {
-                        &s[begin..i]
-                    };
+                    let varname = &s[begin..i];
                     vars.insert(varname);
                     let replacement_var = self.precompile_name(varname);
                     replacement += &replacement_var;
-                    end = if in_condition && c == ']' {
-                        i + 1
-                    } else {
-                        i
-                    };
-                    var = if in_condition && c ==']' {
-                        end < s.chars().count() - 1
-                    } else {
-                        false
-                    };
-                    in_condition = false;
+                    end = i;
+                    var = false;
                 }
             }
         }
