@@ -2125,17 +2125,44 @@ impl<'a> XmlToStamConverter<'a> {
             var
         };
 
-        if !first && !var.is_empty() {
+        if !first && !var.is_empty() && !path.ends_with("ELEMENT_"){
             path.push_str("_IN_");
         }
 
         //get the first component of the variable
         let (component, remainder) = var.split_once("/").unwrap_or((var,""));
-        //eprintln!("DEBUG: component={}", component);
+        //eprintln!("DEBUG: component={}, remainder={}", component, remainder);
         if component.is_empty() {
-            //an empty component is the stop condition , this function is called recursively, stripping one
-            //component at a time until nothing is left, we then take the text of that final node:
-            Some(recursive_text(node).into())
+            if first && !remainder.is_empty() {
+                //we're asked to start at the root node
+                let mut n = node.clone();
+                //find the root node
+                while let Some(parentnode) = n.parent_element() {
+                    n = parentnode;
+                }
+                //recurse from root node
+                let (rootcomponent, remainder) = remainder.split_once("/").unwrap_or((remainder,""));
+                let (prefix, localname)  = if let Some(pos) = rootcomponent.find(":") {
+                    (Some(&rootcomponent[0..pos]),  &rootcomponent[pos+1..])
+                } else {
+                    (None, rootcomponent)
+                };
+                //test if root name corresponds with what we expected
+                if localname != n.tag_name().name() && localname != "*" {
+                    None
+                } else {
+                    if let Some(prefix) = prefix {
+                        path.push_str(prefix);
+                        path.push_str("__");
+                    }
+                    path.push_str(localname);
+                    self.context_for_var(&n, remainder, path)
+                }
+            } else {
+                //an empty component is the stop condition , this function is called recursively, stripping one
+                //component at a time until nothing is left, we then take the text of that final node:
+                Some(recursive_text(node).into())
+            }
         } else if component.starts_with("@"){
             if let Some(pos) = component.find(":") {
                 let prefix = &component[1..pos];
@@ -2428,6 +2455,9 @@ impl<'a> XmlToStamConverter<'a> {
                     skip = 2;
                 } else if slice.starts_with("$.") {
                     replacement.push_str("ELEMENT_THIS");
+                    skip = 1;
+                } else if slice.starts_with("$/") {
+                    replacement.push_str("ELEMENT_");
                     skip = 1;
                 } else {
                     replacement.push_str("ELEMENT_");
@@ -2797,10 +2827,17 @@ textsuffix = "\n"
 base = [ "common", "text" ]
 path = """//html:body"""
 annotation = "TextSelector"
+id = "body"
 
     [[elements.annotationdata]]
-    key = "title"
+    key = "title_from_parent"
     value = "{{ $../html:head/html:title }}"
+    skip_if_missing = true
+
+    [[elements.annotationdata]]
+    key = "title_from_root"
+    value = "{{ $/html:html/html:head/html:title }}"
+    skip_if_missing = true
 
 #More specific one takes precendence over the above generic one
 [[elements]]
@@ -3004,6 +3041,11 @@ bogus = true
         let key = store.key("urn:stam-fromhtml", "title").expect("key must exist");
         let annotation = res.annotations_as_metadata().next().expect("annotation");
         assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("test"));
+        let bodyannotation = store.annotation("body").expect("body annotation not found");
+        let title1 = store.key("urn:stam-fromhtml", "title_from_parent").expect("key must exist");
+        let title2 = store.key("urn:stam-fromhtml", "title_from_root").expect("key must exist");
+        assert_eq!(bodyannotation.data().filter_key(&title1).value_as_str(), Some("test"));
+        assert_eq!(bodyannotation.data().filter_key(&title2).value_as_str(), Some("test"));
         Ok(())
     }
 
