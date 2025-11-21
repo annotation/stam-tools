@@ -1794,6 +1794,16 @@ impl<'a> XmlToStamConverter<'a> {
         match value {
             toml::Value::String(template) => {  
                 let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
+                /*
+                if self.config.debug() {
+                    eprintln!(
+                        "[STAM fromxml]              Context for annotationdata/map template '{}' for node '{}': {:?}",
+                        template,
+                        node.tag_name().name(),
+                        context
+                    );
+                }
+                */
                 let compiled_template = self.template_engine.template(template.as_str()); //panics if doesn't exist, but that can't happen
                 match compiled_template.render(&context).to_string().map_err(|e| 
                         XmlConversionError::TemplateError(
@@ -2060,9 +2070,25 @@ impl<'a> XmlToStamConverter<'a> {
             for var in vars {
                 let mut encodedvar = String::new();
                 if let Some(value) = self.context_for_var(node, var, &mut encodedvar) {
+                    if self.config.debug() {
+                        eprintln!(
+                            "[STAM fromxml]              Set context variable for template '{}' for node '{}': {}={:?}",
+                            template,
+                            node.tag_name().name(),
+                            var,
+                            value
+                        );
+                    }
                     if value != upon::Value::None {
                         context.insert(encodedvar, value);
                     }
+                } else if self.config.debug() {
+                    eprintln!(
+                        "[STAM fromxml]              Missed context variable for template '{}' for node '{}': {}",
+                        template,
+                        node.tag_name().name(),
+                        var
+                    );
                 }
             }
         }
@@ -2157,7 +2183,7 @@ impl<'a> XmlToStamConverter<'a> {
             };
             let localname_with_condition = localname;
             let (localname, condition_str, condition) = self.extract_condition(localname_with_condition); //extract X-Path like conditions [@attrib="value"]  (very limited!)
-            //eprintln!("DEBUG: looking for {} (localname={}, condition={:?}) in {:?}", localname_with_condition,  localname, condition, node.tag_name());
+            //eprintln!("DEBUG: looking for {} (prefix={:?},localname={}, condition={:?}) in {:?}", localname_with_condition,  prefix, localname, condition, node.tag_name());
             for child in node.children() {
                 if child.is_element() {
                     let namedata = child.tag_name();
@@ -2606,7 +2632,7 @@ mod tests {
     //use crate::info::info;
 
     const XMLSMALLEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
-<body><head><title>test</title></head><h1>TEST</h1><p xml:id="p1">This  is a <em xml:id="emphasis" style="color:green">test</em>.</p></body></html>"#;
+<head><title>test</title></head><body><h1>TEST</h1><p xml:id="p1">This  is a <em xml:id="emphasis" style="color:green">test</em>.</p></body></html>"#;
 
     const XMLEXAMPLE: &'static str = r#"<!DOCTYPE entities[<!ENTITY nbsp "&#xA0;">]>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:my="http://example.com">
@@ -2766,6 +2792,15 @@ base = [ "common", "text" ]
 path = "//html:li"
 textprefix = "- "
 textsuffix = "\n"
+
+[[elements]]
+base = [ "common", "text" ]
+path = """//html:body"""
+annotation = "TextSelector"
+
+    [[elements.annotationdata]]
+    key = "title"
+    value = "{{ $../html:head/html:title }}"
 
 #More specific one takes precendence over the above generic one
 [[elements]]
@@ -2946,7 +2981,7 @@ bogus = true
         let mut conv = XmlToStamConverter::new(&config);
         conv.compile().map_err(|e| format!("{}",e))?;
         assert_eq!(conv.config.namespaces.len(),4 , "number of namespaces");
-        assert_eq!(conv.config.elements.len(), 14, "number of elements");
+        assert_eq!(conv.config.elements.len(), 15, "number of elements");
         assert_eq!(conv.config.baseelements.len(), 2, "number of baseelements");
         assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 6,"number of annotationdata under first element");
         assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 6,"number of annotationdata under baseelement common");
@@ -2955,7 +2990,7 @@ bogus = true
 
     #[test]
     fn test_small() -> Result<(), String> {
-        let config = XmlConversionConfig::from_toml_str(CONF)?;
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
         let mut store = stam::AnnotationStore::new(stam::Config::new());
         from_xml_in_memory("test", XMLSMALLEXAMPLE, &config, &mut store)?;
         let res = store.resource("test").expect("resource must have been created at this point");
