@@ -360,7 +360,10 @@ Peculiarities in our implementation:
     * ``{{ inputfile }}`` -  the path + filename of the input file (exactly as passed) 
     * ``{{ localname }}`` -  the tag name of the current node (without namespace) 
     * ``{{ namespace }}`` -  the namespace name of the current node (without tag)
-
+    * ``{{ doc_num }}`` -  the document number (integer, 0-indexed), will only have a non-zero value in case of concatenating multiple XML input files to a single output text
+    * ``{{ begin }}`` -  the begin offset (integer, 0-indexed) of the referenced text (integer)
+    * ``{{ end }}`` -  the end offset (integer, non-inclusive) of the referenced text (integer)
+    * ``{{ length }}`` -  the length (integer) of the referenced text (in unicode points)
 
 ### Filters
 
@@ -470,6 +473,7 @@ base = [ "withtype" ]
 You can derive from multiple base elements so you can mix and match, just take
 note that fields are assigned on a first-come-first-serve basis in case there are
 conflicting definitions.
+
 
 ## Metadata
 
