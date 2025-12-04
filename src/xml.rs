@@ -1677,6 +1677,7 @@ impl<'a> XmlToStamConverter<'a> {
                     None
                 };
 
+                let mut have_id = false;
                 if let Some(template) = &element_config.id {
                     let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
                     let compiled_template = self.template_engine.template(template.as_str());
@@ -1692,6 +1693,16 @@ impl<'a> XmlToStamConverter<'a> {
                         )?;
                     if !id.is_empty() {
                         builder = builder.with_id(id);
+                        have_id = true;
+                    }
+                }
+
+                if !have_id {
+                    //generate a random ID if we have none
+                    if let Some(resource_id) = resource_id {
+                        builder = builder.with_id(stam::generate_id(&format!("{}-",resource_id), ""));
+                    } else {
+                        builder = builder.with_id(stam::generate_id("", ""));
                     }
                 }
 
