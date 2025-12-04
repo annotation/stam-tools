@@ -330,6 +330,39 @@ Derives this element definition from a base element defined earlier. This preven
 
 Multiple are allowed.
 
+### include_textprefix  & include_textsuffix
+
+By default, the textprefix and textsuffix will **NOT** be a part of the annotation's targeted text (i.e. the text selector will not cover it).
+If you do want these covered then set the respective property to ``true``:
+
+```toml
+[[elements]]
+path = "//tei:list/tei:item"
+textprefix = "* "
+text = true
+textsuffix = "\n"
+include_textprefix = true
+include_textsuffix = true
+```
+
+### annotatetextprefix  & annotatetextsuffix
+
+You may also decide to annotate the textprefix and/or textsuffix explicitly. This uses the exact the syntax as `annotationdata`, but 
+it will be associated with a separate annotation that is placed only on the textprefix/textsuffix:
+
+```toml
+[[elements]]
+path = "//tei:list/tei:item"
+textprefix = "* "
+text = true
+textsuffix = "\n"
+
+[[elements.annotatetextprefix]]
+set = "myvocab"
+key = "type"
+value = "ListMarker"
+```
+
 ## Templating language
 
 The underlying templating syntax we use is as implemented in
@@ -491,7 +524,6 @@ Metadata annotations will by default be represented using a `ResourceSelector` o
 the entire text resource that is produced, but you can also opt for a
 `TextSelector` on the entire resource's text by setting `annotation =
 TextSelector`.
-
 
 
 

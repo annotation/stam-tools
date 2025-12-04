@@ -268,6 +268,22 @@ pub struct XmlElementConfig {
     #[serde(default)]
     textsuffix: Option<String>,
 
+    // Annotation data for the text prefix
+    #[serde(default)]
+    annotatetextprefix: Vec<XmlAnnotationDataConfig>,
+
+    // Annotation data for the text suffix
+    #[serde(default)]
+    annotatetextsuffix: Vec<XmlAnnotationDataConfig>,
+
+    /// Include the text prefix in the annotation's text selector. None means unspecified and defaults to false
+    #[serde(default)]
+    include_textprefix: Option<bool>,
+
+    /// Include the text suffix in the annotation's text selector. None means unspecified and defaults to false
+    #[serde(default)]
+    include_textsuffix: Option<bool>,
+
     /// Base elements to derive from
     #[serde(default)]
     base: Vec<String>,
@@ -298,6 +314,10 @@ impl XmlElementConfig {
             textprefix: None,
             text: None,
             textsuffix: None,
+            annotatetextprefix: Vec::new(),
+            annotatetextsuffix: Vec::new(),
+            include_textprefix: None,
+            include_textsuffix: None,
         }
     }
 
@@ -331,6 +351,18 @@ impl XmlElementConfig {
             if !self.annotationdata.contains(annotationdata) {
                 self.annotationdata.push(annotationdata.clone());
             }
+        }
+        if self.annotatetextsuffix.is_empty() && !base.annotatetextsuffix.is_empty() {
+            self.annotatetextsuffix = base.annotatetextsuffix.clone();
+        }
+        if self.annotatetextprefix.is_empty() && !base.annotatetextprefix.is_empty() {
+            self.annotatetextprefix = base.annotatetextprefix.clone();
+        }
+        if self.include_textsuffix.is_none() {
+            self.include_textsuffix = base.include_textsuffix;
+        }
+        if self.include_textprefix.is_none() {
+            self.include_textprefix = base.include_textprefix;
         }
     }
 
@@ -953,6 +985,13 @@ pub fn filename_to_id<'a>(filename: &'a str, config: &XmlConversionConfig) -> &'
     return filename;
 }
 
+#[derive(Clone,Copy,PartialEq, Hash, Eq)]
+enum PositionType {
+    Body,
+    TextPrefix,
+    TextSuffix,
+}
+
 struct XmlToStamConverter<'a> {
     /// The current character position the conversion process is at
     cursor: usize,
@@ -964,10 +1003,10 @@ struct XmlToStamConverter<'a> {
     template_engine: Engine<'a>,
 
     /// Keep track of the new positions (unicode offset) where the node starts in the untangled document. The key consist of a document sequence number and a node ID.
-    positionmap: HashMap<(usize,NodeId), Offset>,
+    positionmap: HashMap<(usize,NodeId,PositionType), Offset>,
 
     /// Keep track of the new positions (bytes offset) where the node starts in the untangled document. The key consist of a document sequence number and a node ID.
-    bytepositionmap: HashMap<(usize,NodeId), (usize, usize)>,
+    bytepositionmap: HashMap<(usize,NodeId,PositionType), (usize, usize)>,
 
     /// Keep track of markers (XML elements with `XmlAnnotationHandling::TextSelectorBetweenMarkers`), the key in this map is some hash of XmlElementConfig.
     markers: HashMap<usize, Vec<(usize,NodeId)>>,
@@ -1154,7 +1193,7 @@ impl<'a> XmlToStamConverter<'a> {
                     })?;
                 }
             }
-            for annotationdata in element.annotationdata.iter() {
+            for annotationdata in element.annotationdata.iter().chain(element.annotatetextprefix.iter()).chain(element.annotatetextsuffix.iter()) {
                 if let Some(id) = annotationdata.id.as_ref() {
                     if self.template_engine.get_template(id.as_str()).is_none() {
                         let template = self.precompile(id.as_str());
@@ -1349,12 +1388,23 @@ impl<'a> XmlToStamConverter<'a> {
                                 e => e,
                             })?;
                     let result_charlen = result.chars().count();
+
+                    if !element_config.annotatetextprefix.is_empty() {
+                        //record the offsets for textprefix annotation later
+                        let offset = Offset::simple(self.cursor, self.cursor + result_charlen);
+                        self.positionmap.insert((doc_num, node.id(), PositionType::TextPrefix), offset);
+                        self.bytepositionmap
+                            .insert((doc_num, node.id(), PositionType::TextPrefix), (bytebegin, bytebegin + result.len()));
+                    }
+
                     self.cursor += result_charlen;
                     self.text += &result;
 
-                    // the textprefix will never be part of the annotation's text selection, increment the offsets:
-                    begin += result_charlen;
-                    bytebegin += result.len();
+                    if element_config.include_textprefix != Some(true) {
+                        // the textprefix will not be part of the annotation's text selection, increment the offsets:
+                        begin += result_charlen;
+                        bytebegin += result.len();
+                    }
                 }
 
                 let textbegin = self.cursor;
@@ -1497,13 +1547,31 @@ impl<'a> XmlToStamConverter<'a> {
                     })?;
                     let end_discount_tmp = result.chars().count();
                     let end_bytediscount_tmp = result.len();
+
+
                     self.text += &result;
 
-                    // the textsuffix will never be part of the annotation's text selection, we substract a 'discount'
+                    if !element_config.annotatetextsuffix.is_empty() {
+                        //record the offsets for textsuffix annotation later
+                        let offset = Offset::simple(self.cursor, self.cursor + end_discount_tmp);
+                        self.positionmap.insert((doc_num, node.id(), PositionType::TextSuffix), offset);
+                        self.bytepositionmap
+                            .insert((doc_num, node.id(), PositionType::TextSuffix), (self.text.len() - end_bytediscount_tmp, self.text.len()));
+                    }
+
                     self.cursor += end_discount_tmp;
                     self.pending_whitespace = false;
-                    end_discount = end_discount_tmp;
-                    end_bytediscount = end_bytediscount_tmp;
+
+                    if element_config.include_textsuffix == Some(true) {
+                        // the textsuffix will be part of the annotation's text selection, no discount for later
+                        end_discount = 0;
+                        end_bytediscount = 0;
+                    } else {
+                        // the textsuffix will not be part of the annotation's text selection, set discounts for later
+                        end_discount = end_discount_tmp;
+                        end_bytediscount = end_bytediscount_tmp;
+                    }
+
                 }
             } else if element_config.annotation == XmlAnnotationHandling::TextSelectorBetweenMarkers
             {
@@ -1538,9 +1606,9 @@ impl<'a> XmlToStamConverter<'a> {
                     &self.text[bytebegin..(self.text.len() - end_bytediscount)]
                 );
             }
-            self.positionmap.insert((doc_num, node.id()), offset);
+            self.positionmap.insert((doc_num, node.id(), PositionType::Body), offset);
             self.bytepositionmap
-                .insert((doc_num, node.id()), (bytebegin, self.text.len() - end_bytediscount));
+                .insert((doc_num, node.id(), PositionType::Body), (bytebegin, self.text.len() - end_bytediscount));
         }
         Ok(())
     }
@@ -1574,9 +1642,9 @@ impl<'a> XmlToStamConverter<'a> {
                 let mut builder = AnnotationBuilder::new();
 
                 //prepare variables to pass to the template context
-                let offset = self.positionmap.get(&(doc_num, node.id()));
+                let offset = self.positionmap.get(&(doc_num, node.id(), PositionType::Body));
                 if element_config.annotation == XmlAnnotationHandling::TextSelector {
-                    if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&(doc_num, node.id())) {
+                    if let Some((beginbyte, endbyte)) = self.bytepositionmap.get(&(doc_num, node.id(), PositionType::Body)) {
                         if self.config.debug {
                             eprintln!("[STAM fromxml]{} annotation covers text {:?} (bytes {}-{})", self.debugindent, offset, beginbyte, endbyte);
                         }
@@ -1627,75 +1695,8 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
 
-                for annotationdata in element_config.annotationdata.iter() {
-                    let mut databuilder = AnnotationDataBuilder::new();
-                    if let Some(template) = &annotationdata.set {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
-                        let compiled_template = self.template_engine.template(template.as_str());
-                        let dataset = compiled_template.render(&context).to_string().map_err(|e| 
-                                XmlConversionError::TemplateError(
-                                    format!(
-                                        "whilst rendering annotationdata/dataset template '{}' for node '{}'",
-                                        template,
-                                        node.tag_name().name(),
-                                    ),
-                                    Some(e),
-                                )
-                            )?;
-                        if !dataset.is_empty() {
-                            databuilder = databuilder.with_dataset(dataset.into())
-                        }
-                    } else {
-                        databuilder =
-                            databuilder.with_dataset(self.config.default_set.as_str().into());
-                    }
-                    if let Some(template) = &annotationdata.key {
-                        let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
-                        let compiled_template = self.template_engine.template(template.as_str());
-                        match compiled_template.render(&context).to_string().map_err(|e| 
-                                XmlConversionError::TemplateError(
-                                    format!(
-                                        "whilst rendering annotationdata/key template '{}' for node '{}'",
-                                        template,
-                                        node.tag_name().name(),
-                                    ),
-                                    Some(e),
-                                )
-                            )  {
-                            Ok(key) if !key.is_empty() =>
-                                databuilder = databuilder.with_key(key.into()) ,
-                            Ok(_) if !annotationdata.skip_if_missing => {
-                                return Err(XmlConversionError::TemplateError(
-                                    format!(
-                                        "whilst rendering annotationdata/key template '{}' for node '{}'",
-                                        template,
-                                        node.tag_name().name(),
-                                    ),
-                                    None
-                                ));
-                            },
-                            Err(e) if !annotationdata.skip_if_missing => {
-                                return Err(e)
-                            },
-                            _ => {
-                                //skip whole databuilder if missing
-                                continue
-                            }
-                        }
-                    }
-                    if let Some(value) = &annotationdata.value {
-                        match self.extract_value(value,  node, annotationdata.allow_empty_value, annotationdata.skip_if_missing, begin, end, resource_id, inputfile, doc_num)? {
-                            Some(value) => {
-                                databuilder = databuilder.with_value(value);
-                            },
-                            None =>  {
-                                //skip whole databuilder if missing
-                                continue
-                            }
-                        }
-                    }
-                    builder = builder.with_data_builder(databuilder);
-                }
+                builder = self.add_annotationdata_to_builder(element_config.annotationdata.iter(), builder, node.clone(), begin, end, resource_id, inputfile, doc_num)?;
+
 
                 if self.config.provenance  && inputfile.is_some() {
                     let path_string = if let Some(id) = node.attribute((NS_XML,"id")) {
@@ -1724,12 +1725,15 @@ impl<'a> XmlToStamConverter<'a> {
                 match element_config.annotation {
                     XmlAnnotationHandling::TextSelector => {
                         // Annotation is on text, translates to TextSelector
-                        if let Some(selector) = self.textselector(node, doc_num) {
+                        if let Some(selector) = self.textselector(node, doc_num, PositionType::Body) {
                             builder = builder.with_target(selector);
                             if self.config.debug {
                                 eprintln!("[STAM fromxml]   builder AnnotateText: {:?}", builder);
                             }
                             store.annotate(builder)?;
+                        }
+                        if !element_config.annotatetextprefix.is_empty() || !element_config.annotatetextsuffix.is_empty() {
+                            self.annotate_textaffixes(node, element_config, inputfile, doc_num, store)?;
                         }
                     }
                     XmlAnnotationHandling::ResourceSelector => {
@@ -1755,6 +1759,9 @@ impl<'a> XmlToStamConverter<'a> {
                                 );
                             }
                             store.annotate(builder)?;
+                            if !element_config.annotatetextprefix.is_empty() || !element_config.annotatetextsuffix.is_empty() {
+                                self.annotate_textaffixes(node, element_config, inputfile, doc_num, store)?;
+                            }
                         }
                     }
                     _ => panic!(
@@ -1785,6 +1792,152 @@ impl<'a> XmlToStamConverter<'a> {
                 self.debugindent,
                 path
             );
+        }
+        Ok(())
+    }
+
+    fn add_annotationdata_to_builder<'input>(&self, iter: impl Iterator<Item = &'a XmlAnnotationDataConfig>,
+        mut builder: AnnotationBuilder<'a>,
+        node: Node<'a, 'input>,
+        begin: Option<usize>,
+        end: Option<usize>,
+        resource_id: Option<&str>,
+        inputfile: Option<&str>,
+        doc_num: usize,
+    ) -> Result<AnnotationBuilder<'a>, XmlConversionError> {
+        for annotationdata in iter {
+            let mut databuilder = AnnotationDataBuilder::new();
+            if let Some(template) = &annotationdata.set {
+                let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
+                let compiled_template = self.template_engine.template(template.as_str());
+                let dataset = compiled_template.render(&context).to_string().map_err(|e| 
+                        XmlConversionError::TemplateError(
+                            format!(
+                                "whilst rendering annotationdata/dataset template '{}' for node '{}'",
+                                template,
+                                node.tag_name().name(),
+                            ),
+                            Some(e),
+                        )
+                    )?;
+                if !dataset.is_empty() {
+                    databuilder = databuilder.with_dataset(dataset.into())
+                }
+            } else {
+                databuilder =
+                    databuilder.with_dataset(self.config.default_set.as_str().into());
+            }
+            if let Some(template) = &annotationdata.key {
+                let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
+                let compiled_template = self.template_engine.template(template.as_str());
+                match compiled_template.render(&context).to_string().map_err(|e| 
+                        XmlConversionError::TemplateError(
+                            format!(
+                                "whilst rendering annotationdata/key template '{}' for node '{}'",
+                                template,
+                                node.tag_name().name(),
+                            ),
+                            Some(e),
+                        )
+                    )  {
+                    Ok(key) if !key.is_empty() =>
+                        databuilder = databuilder.with_key(key.into()) ,
+                    Ok(_) if !annotationdata.skip_if_missing => {
+                        return Err(XmlConversionError::TemplateError(
+                            format!(
+                                "whilst rendering annotationdata/key template '{}' for node '{}'",
+                                template,
+                                node.tag_name().name(),
+                            ),
+                            None
+                        ));
+                    },
+                    Err(e) if !annotationdata.skip_if_missing => {
+                        return Err(e)
+                    },
+                    _ => {
+                        //skip whole databuilder if missing
+                        continue
+                    }
+                }
+            }
+            if let Some(value) = &annotationdata.value {
+                match self.extract_value(value,  node, annotationdata.allow_empty_value, annotationdata.skip_if_missing, begin, end, resource_id, inputfile, doc_num)? {
+                    Some(value) => {
+                        databuilder = databuilder.with_value(value);
+                    },
+                    None =>  {
+                        //skip whole databuilder if missing
+                        continue
+                    }
+                }
+            }
+            builder = builder.with_data_builder(databuilder);
+        }
+        Ok(builder)
+    }
+
+    /// Annotates textprefix and textsuffix, if applicable
+    fn annotate_textaffixes<'b>(
+        &mut self,
+        node: Node<'a,'b>,
+        element_config: &XmlElementConfig,
+        inputfile: Option<&str>,
+        doc_num: usize,
+        store: &mut AnnotationStore,
+    ) -> Result<(), XmlConversionError> {
+
+
+        if !element_config.annotatetextprefix.is_empty() {
+            let mut builder = AnnotationBuilder::new().with_id(stam::generate_id("textprefix-", ""));
+            if let Some(offset) = self.positionmap.get(&(doc_num, node.id(), PositionType::TextPrefix)) {
+                let begin = if let Cursor::BeginAligned(begin) = offset.begin {
+                        Some(begin)
+                    } else {
+                        None
+                    };
+                let end = if let Cursor::BeginAligned(end) = offset.end {
+                        Some(end)
+                    } else {
+                        None
+                    };
+                builder = self.add_annotationdata_to_builder(element_config.annotatetextprefix.iter(), builder, node.clone(), begin,end, None, inputfile, doc_num)?; //MAYBE TODO: pass resource_id
+                if let Some(selector) = self.textselector(node, doc_num, PositionType::TextPrefix) {
+                    builder = builder.with_target(selector);
+                    if self.config.debug {
+                        eprintln!("[STAM fromxml]   builder AnnotateText: {:?}", builder);
+                    }
+                    store.annotate(builder)?;
+                } else {
+                    return Err(XmlConversionError::ConfigError("Failed to create textselector to target textprefix".into()));
+                }
+            }
+        }
+
+        if !element_config.annotatetextsuffix.is_empty() {
+            let mut builder = AnnotationBuilder::new().with_id(stam::generate_id("textsuffix-", ""));
+            if let Some(offset) = self.positionmap.get(&(doc_num, node.id(), PositionType::TextSuffix)) {
+                let begin = if let Cursor::BeginAligned(begin) = offset.begin {
+                        Some(begin)
+                    } else {
+                        None
+                    };
+                let end = if let Cursor::BeginAligned(end) = offset.end {
+                        Some(end)
+                    } else {
+                        None
+                    };
+                builder = self.add_annotationdata_to_builder(element_config.annotatetextsuffix.iter(), builder, node.clone(), begin,end, None, inputfile, doc_num)?; //MAYBE TODO: pass resource_id
+                if let Some(selector) = self.textselector(node, doc_num, PositionType::TextSuffix) {
+                    builder = builder.with_target(selector);
+                    if self.config.debug {
+                        eprintln!("[STAM fromxml]   builder AnnotateText: {:?}", builder);
+                    }
+                    store.annotate(builder)?;
+                } else {
+                    return Err(XmlConversionError::ConfigError("Failed to create textselector to target textprefix".into()));
+                }
+            }
         }
         Ok(())
     }
@@ -1929,9 +2082,9 @@ impl<'a> XmlToStamConverter<'a> {
     }
 
     /// Select text corresponding to the element/node and document number
-    fn textselector<'s>(&'s self, node: Node, doc_num: usize) -> Option<SelectorBuilder<'s>> {
+    fn textselector<'s>(&'s self, node: Node, doc_num: usize, positiontype: PositionType) -> Option<SelectorBuilder<'s>> {
         let res_handle = self.resource_handle.expect("resource must be associated");
-        if let Some(offset) = self.positionmap.get(&(doc_num, node.id())) {
+        if let Some(offset) = self.positionmap.get(&(doc_num, node.id(), positiontype)) {
             Some(SelectorBuilder::TextSelector(
                 BuildItem::Handle(res_handle),
                 offset.clone(),
@@ -1961,7 +2114,7 @@ impl<'a> XmlToStamConverter<'a> {
             for (d_num, n_id) in markers.iter() {
                 if grab {
                     //this marker is the next one, it's begin position is our desired end position
-                    end = self.positionmap.get(&(*d_num, *n_id)).map(|offset| {
+                    end = self.positionmap.get(&(*d_num, *n_id, PositionType::Body)).map(|offset| {
                         offset
                             .begin
                             .try_into()
@@ -1979,7 +2132,7 @@ impl<'a> XmlToStamConverter<'a> {
             //no next marker found, use end of document instead
             end = Some(resource.textlen());
         }
-        if let (Some(offset), Some(end)) = (self.positionmap.get(&(doc_num, node.id())), end) {
+        if let (Some(offset), Some(end)) = (self.positionmap.get(&(doc_num, node.id(), PositionType::Body)), end) {
             Some(SelectorBuilder::TextSelector(
                 BuildItem::Handle(self.resource_handle.unwrap()),
                 Offset::simple(
