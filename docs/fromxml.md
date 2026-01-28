@@ -379,7 +379,7 @@ Peculiarities in our implementation:
     * XML namespaces are supported: `{{ @xml:id }}`
 * Variables for XML elements start with `$` and return the immediate text by default, for example: `{{ $child }}`
     * XML namespaces are supported: `{{ $prefix:child }}`
-    * Only immediate text of the first match, no mixed content.
+    * Only immediate text of the **first** match, no mixed content, no multiple matches.
 * The text of the current element is returned with: `{{ $. }}`.
     * It will contain the text of this node and all nodes under it recursively.
 * If you want to return the attribute of a child element instead, combine `$` with `@`: 
@@ -525,5 +525,20 @@ the entire text resource that is produced, but you can also opt for a
 `TextSelector` on the entire resource's text by setting `annotation =
 TextSelector`.
 
+## Value map 
 
+If you want the value of annotationdata to be a map, then you can use the following construction
+as seen in the follow example, instead of the simpler ``value = `` assignment:
 
+```toml
+[[elements.annotationdata]]
+set = "{{ default_set }}"
+key = "image"
+skip_if_missing = true
+
+[elements.annotationdata.value]
+type = "ImageObject"
+url = "{{ @imageFilename }}"
+width = "{{ @imageWidth }}"
+height = "{{ @imageHeight }}"
+```
