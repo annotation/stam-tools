@@ -1368,44 +1368,7 @@ impl<'a> XmlToStamConverter<'a> {
                 };
 
                 // process the text prefix, a text template to include prior to the actual text
-                if let Some(textprefix) = &element_config.textprefix {
-                    self.pending_whitespace = false;
-                    if self.config.debug {
-                        eprintln!("[STAM fromxml]{} outputting textprefix: {:?}", self.debugindent, textprefix);
-                    }
-                    let result =
-                        self.render_template(textprefix, &node, Some(self.cursor), None, resource_id, inputfile, doc_num)
-                            .map_err(|e| match e {
-                                XmlConversionError::TemplateError(s, e) => {
-                                    XmlConversionError::TemplateError(
-                                        format!(
-                                        "whilst rendering textprefix template '{}' for node '{}': {}",
-                                        textprefix, node.tag_name().name(), s
-                                    ),
-                                        e,
-                                    )
-                                }
-                                e => e,
-                            })?;
-                    let result_charlen = result.chars().count();
-
-                    if !element_config.annotatetextprefix.is_empty() {
-                        //record the offsets for textprefix annotation later
-                        let offset = Offset::simple(self.cursor, self.cursor + result_charlen);
-                        self.positionmap.insert((doc_num, node.id(), PositionType::TextPrefix), offset);
-                        self.bytepositionmap
-                            .insert((doc_num, node.id(), PositionType::TextPrefix), (bytebegin, bytebegin + result.len()));
-                    }
-
-                    self.cursor += result_charlen;
-                    self.text += &result;
-
-                    if element_config.include_textprefix != Some(true) {
-                        // the textprefix will not be part of the annotation's text selection, increment the offsets:
-                        begin += result_charlen;
-                        bytebegin += result.len();
-                    }
-                }
+                self.process_textprefix(element_config, node, resource_id, inputfile, doc_num, &mut begin, &mut bytebegin)?;
 
                 let textbegin = self.cursor;
                 // process all child elements
@@ -1517,62 +1480,8 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
 
-
                 // process the text suffix, a preconfigured string of text to include after to the actual text
-                if let Some(textsuffix) = &element_config.textsuffix {
-                    if self.config.debug {
-                        eprintln!("[STAM fromxml]{} outputting textsuffix: {:?}", self.debugindent, textsuffix);
-                    }
-                    let result = self.render_template(
-                        textsuffix.as_str(),
-                        &node,
-                        Some(textbegin),
-                        Some(self.cursor),
-                        resource_id,
-                        inputfile,
-                        doc_num
-                    ).map_err(|e| match e {
-                            XmlConversionError::TemplateError(s, e) => {
-                                XmlConversionError::TemplateError(
-                                    format!(
-                                        "whilst rendering textsuffix template '{}' for node '{}': {}",
-                                        textsuffix,
-                                        node.tag_name().name(),
-                                        s
-                                    ),
-                                    e,
-                                )
-                            }
-                            e => e,
-                    })?;
-                    let end_discount_tmp = result.chars().count();
-                    let end_bytediscount_tmp = result.len();
-
-
-                    self.text += &result;
-
-                    if !element_config.annotatetextsuffix.is_empty() {
-                        //record the offsets for textsuffix annotation later
-                        let offset = Offset::simple(self.cursor, self.cursor + end_discount_tmp);
-                        self.positionmap.insert((doc_num, node.id(), PositionType::TextSuffix), offset);
-                        self.bytepositionmap
-                            .insert((doc_num, node.id(), PositionType::TextSuffix), (self.text.len() - end_bytediscount_tmp, self.text.len()));
-                    }
-
-                    self.cursor += end_discount_tmp;
-                    self.pending_whitespace = false;
-
-                    if element_config.include_textsuffix == Some(true) {
-                        // the textsuffix will be part of the annotation's text selection, no discount for later
-                        end_discount = 0;
-                        end_bytediscount = 0;
-                    } else {
-                        // the textsuffix will not be part of the annotation's text selection, set discounts for later
-                        end_discount = end_discount_tmp;
-                        end_bytediscount = end_bytediscount_tmp;
-                    }
-
-                }
+                self.process_textsuffix(element_config, node, resource_id, inputfile, doc_num, &mut end_discount, &mut end_bytediscount, textbegin)?;
             } else if element_config.annotation == XmlAnnotationHandling::TextSelectorBetweenMarkers
             {
                 // this is a marker, keep track of it so we can extract the span between markers in [`extract_element_annotation()`] later
@@ -1583,6 +1492,7 @@ impl<'a> XmlToStamConverter<'a> {
                     .entry(element_config.hash())
                     .and_modify(|v| v.push((doc_num, node.id())))
                     .or_insert(vec![(doc_num, node.id())]);
+
             }
         } else if self.config.debug {
             eprintln!(
@@ -1609,6 +1519,126 @@ impl<'a> XmlToStamConverter<'a> {
             self.positionmap.insert((doc_num, node.id(), PositionType::Body), offset);
             self.bytepositionmap
                 .insert((doc_num, node.id(), PositionType::Body), (bytebegin, self.text.len() - end_bytediscount));
+        }
+        Ok(())
+    }
+
+    /// process the text prefix, a text template to include prior to the actual text
+    fn process_textprefix<'b>(
+        &mut self,
+        element_config: &XmlElementConfig,
+        node: Node<'a,'b>,
+        resource_id: Option<&str>,
+        inputfile: Option<&str>,
+        doc_num: usize,
+        begin: &mut usize,
+        bytebegin: &mut usize
+    ) -> Result<(), XmlConversionError> {
+        if let Some(textprefix) = &element_config.textprefix {
+            self.pending_whitespace = false;
+            if self.config.debug {
+                eprintln!("[STAM fromxml]{} outputting textprefix: {:?}", self.debugindent, textprefix);
+            }
+            let result =
+                self.render_template(textprefix, &node, Some(self.cursor), None, resource_id, inputfile, doc_num)
+                    .map_err(|e| match e {
+                        XmlConversionError::TemplateError(s, e) => {
+                            XmlConversionError::TemplateError(
+                                format!(
+                                "whilst rendering textprefix template '{}' for node '{}': {}",
+                                textprefix, node.tag_name().name(), s
+                            ),
+                                e,
+                            )
+                        }
+                        e => e,
+                    })?;
+            let result_charlen = result.chars().count();
+
+            if !element_config.annotatetextprefix.is_empty() {
+                //record the offsets for textprefix annotation later
+                let offset = Offset::simple(self.cursor, self.cursor + result_charlen);
+                self.positionmap.insert((doc_num, node.id(), PositionType::TextPrefix), offset);
+                self.bytepositionmap
+                    .insert((doc_num, node.id(), PositionType::TextPrefix), (*bytebegin, *bytebegin + result.len()));
+            }
+
+            self.cursor += result_charlen;
+            self.text += &result;
+
+            if element_config.include_textprefix != Some(true) {
+                // the textprefix will not be part of the annotation's text selection, increment the offsets:
+                *begin += result_charlen;
+                *bytebegin += result.len();
+            }
+        }
+        Ok(())
+    }
+
+    /// process the text prefix, a text template to include prior to the actual text
+    fn process_textsuffix<'b>(
+        &mut self,
+        element_config: &XmlElementConfig,
+        node: Node<'a,'b>,
+        resource_id: Option<&str>,
+        inputfile: Option<&str>,
+        doc_num: usize,
+        end_discount: &mut usize,
+        end_bytediscount: &mut usize,
+        textbegin: usize,
+    ) -> Result<(), XmlConversionError> {
+        if let Some(textsuffix) = &element_config.textsuffix {
+            if self.config.debug {
+                eprintln!("[STAM fromxml]{} outputting textsuffix: {:?}", self.debugindent, textsuffix);
+            }
+            let result = self.render_template(
+                textsuffix.as_str(),
+                &node,
+                Some(textbegin),
+                Some(self.cursor),
+                resource_id,
+                inputfile,
+                doc_num
+            ).map_err(|e| match e {
+                    XmlConversionError::TemplateError(s, e) => {
+                        XmlConversionError::TemplateError(
+                            format!(
+                                "whilst rendering textsuffix template '{}' for node '{}': {}",
+                                textsuffix,
+                                node.tag_name().name(),
+                                s
+                            ),
+                            e,
+                        )
+                    }
+                    e => e,
+            })?;
+            let end_discount_tmp = result.chars().count();
+            let end_bytediscount_tmp = result.len();
+
+
+            self.text += &result;
+
+            if !element_config.annotatetextsuffix.is_empty() {
+                //record the offsets for textsuffix annotation later
+                let offset = Offset::simple(self.cursor, self.cursor + end_discount_tmp);
+                self.positionmap.insert((doc_num, node.id(), PositionType::TextSuffix), offset);
+                self.bytepositionmap
+                    .insert((doc_num, node.id(), PositionType::TextSuffix), (self.text.len() - end_bytediscount_tmp, self.text.len()));
+            }
+
+            self.cursor += end_discount_tmp;
+            self.pending_whitespace = false;
+
+            if element_config.include_textsuffix == Some(true) {
+                // the textsuffix will be part of the annotation's text selection, no discount for later
+                *end_discount = 0;
+                *end_bytediscount = 0;
+            } else {
+                // the textsuffix will not be part of the annotation's text selection, set discounts for later
+                *end_discount = end_discount_tmp;
+                *end_bytediscount = end_bytediscount_tmp;
+            }
         }
         Ok(())
     }
