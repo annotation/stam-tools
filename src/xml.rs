@@ -1486,7 +1486,7 @@ impl<'a> XmlToStamConverter<'a> {
             {
                 // this is a marker, keep track of it so we can extract the span between markers in [`extract_element_annotation()`] later
                 if self.config.debug {
-                    eprintln!("[STAM fromxml]{} adding to markers", self.debugindent);
+                    eprintln!("[STAM fromxml]{} adding to markers (textprefix={:?}, textsuffix={:?})", self.debugindent, element_config.textprefix, element_config.textsuffix);
                 }
 
 
