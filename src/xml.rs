@@ -1488,11 +1488,17 @@ impl<'a> XmlToStamConverter<'a> {
                 if self.config.debug {
                     eprintln!("[STAM fromxml]{} adding to markers", self.debugindent);
                 }
+
+
                 self.markers
                     .entry(element_config.hash())
                     .and_modify(|v| v.push((doc_num, node.id())))
                     .or_insert(vec![(doc_num, node.id())]);
 
+                // for markers it doesn't matter whether something text is defined as a prefix or suffix, it's functionally the same because a marker has no text itself
+
+                self.process_textprefix(element_config, node, resource_id, inputfile, doc_num, &mut begin, &mut bytebegin)?;
+                self.process_textsuffix(element_config, node, resource_id, inputfile, doc_num, &mut end_discount, &mut end_bytediscount, self.cursor)?;
             }
         } else if self.config.debug {
             eprintln!(
@@ -1575,7 +1581,7 @@ impl<'a> XmlToStamConverter<'a> {
         Ok(())
     }
 
-    /// process the text prefix, a text template to include prior to the actual text
+    /// process the text suffix, a preconfigured string of text to include after to the actual text
     fn process_textsuffix<'b>(
         &mut self,
         element_config: &XmlElementConfig,
