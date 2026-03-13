@@ -363,6 +363,13 @@ key = "type"
 value = "ListMarker"
 ```
 
+### multiple
+
+This can be set to true if the value of the annotationdata is a **list**.
+Rather than retain it as a list, it will then create multiple annotationdata
+instances with the same key, and each with a single value. This is particularly
+useful when exporting to W3C Web Annotations. See the *value list* section later on.
+
 ## Templating language
 
 The underlying templating syntax we use is as implemented in
@@ -379,7 +386,7 @@ Peculiarities in our implementation:
     * XML namespaces are supported: `{{ @xml:id }}`
 * Variables for XML elements start with `$` and return the immediate text by default, for example: `{{ $child }}`
     * XML namespaces are supported: `{{ $prefix:child }}`
-    * Only immediate text of the **first** match, no mixed content, no multiple matches.
+    * Only immediate text of the **first** match, no mixed content, no multiple matches. Use `$$` to get a *list* of the text of all matches.
 * The text of the current element is returned with: `{{ $. }}`.
     * It will contain the text of this node and all nodes under it recursively.
 * If you want to return the attribute of a child element instead, combine `$` with `@`: 
@@ -387,6 +394,8 @@ Peculiarities in our implementation:
 * Parent elements are denoted with `$..` and return the text:
     * It will contain the text of the parent node and all nodes under it recursively
     * Refer to an attribute: `{{ $../@attrib }}`.
+* Use `$$` to get a **list** with the texts of all matches:
+    * `{{ $$prefix:child }}`
 * Use the `?.` prefix before a variable if you want to return an empty value if it does not exist, rather than raise an error, which would be the default: `{{ ?.@xml:id }}` or `{{ ?.$child }}`. If you set `skip_if_missing = true` then this is already implied.
 * The following variables are available as well:
     * ``{{ resource }}`` -  the ID of the associated resource
@@ -525,7 +534,7 @@ the entire text resource that is produced, but you can also opt for a
 `TextSelector` on the entire resource's text by setting `annotation =
 TextSelector`.
 
-## Value map 
+## Value map
 
 If you want the value of annotationdata to be a map, then you can use the following construction
 as seen in the follow example, instead of the simpler ``value = `` assignment:
@@ -542,3 +551,46 @@ url = "{{ @imageFilename }}"
 width = "{{ @imageWidth }}"
 height = "{{ @imageHeight }}"
 ```
+
+## Value list
+
+You can create list values and populate them as expected:
+
+```toml
+
+[[elements.annotationdata]]
+set = "{{ default_set }}"
+key = "fullname"
+value = [ "{{ @firstname }}", "{{ @lastname }}" ]
+```
+
+There is a special `$$` selector to use in templates instead of `$` to match
+against all matches rather than just the first one. It will automatically
+create a list (even if there is only one match!):
+
+```toml
+[[elements.annotationdata]]
+set = "{{ default_set }}"
+key = "image"
+value = "{{ $$./img/@src }}"
+```
+
+In the above example the value of `image` will become a list with the content
+of the `src` attribute on all all `<img>` elements that could be found. Compare
+that to the `{{ $./img['@src'] }}` where only the first match would be
+returned.
+
+Rather than retain the value as a list, you may likely convert it to multiple instance of
+the key, each mapping to one of the values. This is particularly useful if you're
+exporting to a W3C Web Annotation context. Enable this functionality by setting `multiple =
+true`:
+
+```toml
+[[elements.annotationdata]]
+set = "{{ default_set }}"
+key = "image"
+value = "{{ $$./img/@src }}"
+multiple = true
+```
+
+This translates to multiple annotationdata with a string value, rather than just a single one with a list value.
