@@ -429,6 +429,10 @@ pub struct XmlAnnotationDataConfig {
     /// Skip this data entirely if any underlying variables in the templates are undefined
     #[serde(default)]
     skip_if_missing: bool,
+
+    /// If the value is a list, convert it to multiple annotationdata instances with the same key, one for each of the values
+    #[serde(default)]
+    multiple: bool,
 }
 
 impl XmlAnnotationDataConfig {
@@ -1910,6 +1914,13 @@ impl<'a> XmlToStamConverter<'a> {
             }
             if let Some(value) = &annotationdata.value {
                 match self.extract_value(value,  node, annotationdata.allow_empty_value, annotationdata.skip_if_missing, begin, end, resource_id, inputfile, doc_num)? {
+                    Some(DataValue::List(values)) if annotationdata.multiple => {
+                        for value in values {
+                            let mut databuilder_multi = databuilder.clone();
+                            databuilder_multi = databuilder_multi.with_value(value);
+                            builder = builder.with_data_builder(databuilder_multi);
+                        }
+                    },
                     Some(value) => {
                         databuilder = databuilder.with_value(value);
                     },
@@ -1919,7 +1930,9 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
             }
-            builder = builder.with_data_builder(databuilder);
+            if !annotationdata.multiple {
+                builder = builder.with_data_builder(databuilder);
+            }
         }
         Ok(builder)
     }
@@ -2274,7 +2287,8 @@ impl<'a> XmlToStamConverter<'a> {
         if let Some(vars) = self.variables.get(template) {
             for var in vars {
                 let mut encodedvar = String::new();
-                if let Some(value) = self.context_for_var(node, var, &mut encodedvar) {
+                let mut multiple_buffer = None; //this is a buffer that is temporarily used by `context_for_var` in case we need to keep track of multiple values
+                if let Some(value) = self.context_for_var(node, var, &mut encodedvar, &mut multiple_buffer) {
                     if self.config.debug() {
                         eprintln!(
                             "[STAM fromxml]              Set context variable for template '{}' for node '{}': {}={:?}   (encodedvar={})",
@@ -2303,20 +2317,35 @@ impl<'a> XmlToStamConverter<'a> {
 
     /// Looks up a variable value (from the DOM XML) to be used in for template context
     // returns value and stores full the *encoded* variable name in path (this is safe to pass to template)
+    // return values are temporarily aggregated in multiple if multiple elements are requested, it will be emptied automatically, the caller owns it but doesn't use it itself
     fn context_for_var<'input>(
         &self,
         node: &Node<'a, 'input>,
-        var: &str, 
+        var: &str,
         path: &mut String,
+        multiple: &mut Option<Vec<upon::Value>>,
     ) -> Option<upon::Value> {
 
+        //are we the first call by the caller or are we a recursion?
         let first = path.is_empty();
-        let var = 
-        if var.starts_with("?.$") {
+
+        let var = if var.starts_with("?.$$") {
+            if first {
+                path.push_str("?.ELEMENTS_");
+                *multiple = Some(Vec::new());
+            };
+            &var[4..]
+        } else if var.starts_with("?.$") {
             if first {
                 path.push_str("?.ELEMENT_");
             };
             &var[3..]
+        } else if var.starts_with("$$") {
+            if first {
+                path.push_str("ELEMENTS_");
+                *multiple = Some(Vec::new());
+            };
+            &var[2..]
         } else if var.starts_with("$") {
             if first {
                 path.push_str("ELEMENT_");
@@ -2331,7 +2360,7 @@ impl<'a> XmlToStamConverter<'a> {
             var
         };
 
-        if !first && !var.is_empty() && !path.ends_with("ELEMENT_"){
+        if !first && !var.is_empty() && !path.ends_with("ELEMENT_") && !path.ends_with("ELEMENTS_"){
             path.push_str("_IN_");
         }
 
@@ -2362,7 +2391,7 @@ impl<'a> XmlToStamConverter<'a> {
                         path.push_str("__");
                     }
                     path.push_str(localname);
-                    self.context_for_var(&n, remainder, path)
+                    self.context_for_var(&n, remainder, path, multiple)
                 }
             } else {
                 //an empty component is the stop condition , this function is called recursively, stripping one
@@ -2396,7 +2425,7 @@ impl<'a> XmlToStamConverter<'a> {
             if let Some(parentnode) = node.parent_element().as_ref() {
                 //recurse with parent node
                 path.push_str("PARENT");
-                self.context_for_var(parentnode, remainder, path)
+                self.context_for_var(parentnode, remainder, path, multiple)
             } else {
                 None
             }
@@ -2404,7 +2433,7 @@ impl<'a> XmlToStamConverter<'a> {
             path.push_str("THIS");
             if !remainder.is_empty() {
                 //a . is meaningless if not the final component
-                self.context_for_var(node, remainder, path)
+                self.context_for_var(node, remainder, path, multiple)
             } else {
                 Some(recursive_text(node).into())
             }
@@ -2417,6 +2446,7 @@ impl<'a> XmlToStamConverter<'a> {
             let localname_with_condition = localname;
             let (localname, condition_str, condition) = self.extract_condition(localname_with_condition); //extract X-Path like conditions [@attrib="value"]  (very limited!)
             //eprintln!("DEBUG: looking for {} (prefix={:?},localname={}, condition={:?}) in {:?}", localname_with_condition,  prefix, localname, condition, node.tag_name());
+            let mut first_child_match = true;
             for child in node.children() {
                 if child.is_element() {
                     let namedata = child.tag_name();
@@ -2467,24 +2497,42 @@ impl<'a> XmlToStamConverter<'a> {
                         //end condition test
                     }
                     if child_matches {
-                        if let Some(prefix) = prefix {
-                            path.push_str(prefix);
-                            path.push_str("__");
+                        if first_child_match {
+                            //update path if this is the first child match (it always is if multiple = false)
+                            if let Some(prefix) = prefix {
+                                path.push_str(prefix);
+                                path.push_str("__");
+                            }
+                            path.push_str(localname);
+                            if condition.is_some() {
+                                //simply encode the condition as a hash (non-decodable but that's okay)
+                                let mut hasher = DefaultHasher::new();
+                                condition_str.hash(&mut hasher);
+                                let h = hasher.finish();
+                                path.push_str(&format!("_COND{}_", h));
+                            }
                         }
-                        path.push_str(localname);
-                        if condition.is_some() {
-                            //simply encode the condition as a hash (non-decodable but that's okay)
-                            let mut hasher = DefaultHasher::new();
-                            condition_str.hash(&mut hasher);
-                            let h = hasher.finish();
-                            path.push_str(&format!("_COND{}_", h));
+                        first_child_match = false;
+                        if multiple.is_some() {
+                            //list behaviour, add the value to the list and continue
+                            let value = self.context_for_var(&child, remainder, path, multiple);
+                            if let Some(value) = value {
+                                multiple.as_mut().map(|v| v.push(value));
+                            }
+                        } else {
+                            //normal behaviour, get first match
+                            return self.context_for_var(&child, remainder, path, multiple);
                         }
-                        return self.context_for_var(&child, remainder, path);
                     }
                 }
             }
-            //no match found for this variable
-            None
+            if (first) && multiple.is_some() && multiple.as_ref().map(|v| !v.is_empty()).unwrap() {
+                //we are at the first level, that is we're not a recursion but we finished all recursion, and we have multiple values to return to the caller:
+                Some(multiple.take().into())
+            } else {
+                //no match found for this variable
+                None
+            }
         }
     }
 
@@ -2603,7 +2651,7 @@ impl<'a> XmlToStamConverter<'a> {
                 } else if var && in_condition  {
                     //in condition
                     continue;
-                } else if var && (!c.is_alphanumeric() && c != '.' && c != '/' && c != '_' && c != ':' && c != '@') {
+                } else if var && (!c.is_alphanumeric() && c != '$' && c != '.' && c != '/' && c != '_' && c != ':' && c != '@') {
                     //end of variable (including condition if applicable)
                     if end < begin {
                         replacement.push_str(&s[end..begin]);
@@ -2649,7 +2697,19 @@ impl<'a> XmlToStamConverter<'a> {
             }
             if c == '$' {
                 let slice = &s[i..];
-                if slice.starts_with("$..") {
+                if slice.starts_with("$$..") {
+                    replacement.push_str("ELEMENTS_PARENT");
+                    skip = 3;
+                } else if slice.starts_with("$$.") {
+                    replacement.push_str("ELEMENTS_THIS");
+                    skip = 2;
+                } else if slice.starts_with("$$/") {
+                    replacement.push_str("ELEMENTS_");
+                    skip = 2;
+                } else if slice.starts_with("$$") {
+                    replacement.push_str("ELEMENTS_");
+                    skip = 1;
+                } else if slice.starts_with("$..") {
                     replacement.push_str("ELEMENT_PARENT");
                     skip = 2;
                 } else if slice.starts_with("$.") {
@@ -3173,6 +3233,28 @@ bogus = true
         let template_out = conv.precompile(template_in);
         assert_eq!(template_out, "{{ ELEMENT_PARENT }}");
         assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$.."));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_elements() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ $$foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ELEMENTS_foo }}");
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$$foo"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_precompile_template_elements_ns() -> Result<(), String> {
+        let config = XmlConversionConfig::new();
+        let mut conv = XmlToStamConverter::new(&config);
+        let template_in = "{{ $$bar:foo }}";
+        let template_out = conv.precompile(template_in);
+        assert_eq!(template_out, "{{ ELEMENTS_bar__foo }}");
+        assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$$bar:foo"));
         Ok(())
     }
 
