@@ -3140,6 +3140,12 @@ text = "{{ $. }}"
 number = 42
 bogus = true
 
+[[metadata]]
+id = "metadata"
+
+[[metadata.annotationdata]]
+key = "author"
+value = "proycon"
 "#;
 
     const XMLREQATTRIBEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
@@ -3313,14 +3319,14 @@ bogus = true
         from_xml_in_memory("test", XMLSMALLEXAMPLE, &config, &mut store)?;
         let res = store.resource("test").expect("resource must have been created at this point");
         assert_eq!(res.text(), "TEST\n\nThis is a test.\n", "resource text");
-        assert_eq!(store.annotations_len(), 4, "number of annotations");
+        assert_eq!(store.annotations_len(), 5, "number of annotations");
         let annotation = store.annotation("emphasis").expect("annotation must have been created at this point");
         assert_eq!(annotation.text_simple(), Some("test"));
         //eprintln!("DEBUG: {:?}",annotation.data().collect::<Vec<_>>());
         let key = store.key("urn:stam-fromhtml", "style").expect("key must exist");
         assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("color:green"));
         let key = store.key("urn:stam-fromhtml", "title").expect("key must exist");
-        let annotation = res.annotations_as_metadata().next().expect("annotation");
+        let annotation = res.annotations_as_metadata().filter_key(&key).next().expect("annotation");
         assert_eq!(annotation.data().filter_key(&key).value_as_str(), Some("test"));
         let bodyannotation = store.annotation("body").expect("body annotation not found");
         let title1 = store.key("urn:stam-fromhtml", "title_from_parent").expect("key must exist");
@@ -3409,4 +3415,17 @@ bogus = true
         }
         Ok(())
     }
+
+    #[test]
+    fn test_metadata() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        let annotation = store.annotation("metadata").expect("annotation");
+        let key = store.key("urn:stam-fromhtml", "author").expect("key must exist");
+        let data = annotation.data().filter_key(&key).value().expect("data must exist");
+        assert_eq!(data, &DataValue::String("proycon".into()));
+        Ok(())
+    }
+
 }
