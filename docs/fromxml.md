@@ -415,6 +415,7 @@ The following filters are implemented in the templating engine:
 * `s | upper` - Converts everything to uppercase 
 * `s | lower` - Converts everything to lowercase 
 * `s | trim` - Strips whitespace (includes newlines)
+* `v | join: delimiter` - Takes a list and concatenates with the specified delimiter
 * `x | first` - Returns the first element 
 * `x | last` - Returns the last element 
 * `s | tokenize` - Split on whitespace and newlines (consecutive whitespace is squashed)

@@ -10,6 +10,8 @@ use serde::Deserialize;
 use stam::*;
 use toml;
 use upon::Engine;
+use std::fmt::Write;
+use serde_json;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
 const CONTEXT_ANNO: &str = "http://www.w3.org/ns/anno.jsonld";
@@ -1078,6 +1080,7 @@ impl<'a> XmlToStamConverter<'a> {
             prefixes.insert(namespace.to_string(), prefix.to_string());
         }
         let mut template_engine = Engine::new();
+        template_engine.set_default_formatter(&value_formatter); //this one serializes Lists like in JSON
         template_engine.add_function("capitalize", filter_capitalize);
         template_engine.add_function("lower", str::to_lowercase);
         template_engine.add_function("upper", str::to_uppercase);
@@ -1134,6 +1137,21 @@ impl<'a> XmlToStamConverter<'a> {
                 s.to_string()
             },
             _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        });
+        template_engine.add_function("join", |list: &upon::Value, delimiter: &str| match list {
+            upon::Value::List(list) => { //too much cloning but it'll do for now
+                let newlist: Vec<String> = list.iter().map(|v| match v {
+                    upon::Value::String(s) => s.clone(),
+                    upon::Value::Integer(d) => format!("{}",d),
+                    upon::Value::Float(d) => format!("{}",d),
+                    upon::Value::Bool(d) => format!("{}",d),
+                    _ => String::new(),
+                }).collect();
+                upon::Value::String(newlist.join(delimiter))
+            },
+            _ => {
+                list.clone() //was not really a list after all, just pass it on so we don't need to panic
+            }
         });
         let mut converter = Self {
             cursor: 0,
@@ -2035,7 +2053,7 @@ impl<'a> XmlToStamConverter<'a> {
                     )  {
                     Ok(value) => {
                         if !value.is_empty() || allow_empty_value {
-                            Ok(Some(value.into()))
+                            string_to_datavalue(value).map(|v| Some(v))
                         } else {
                             //skip
                             Ok(None)
@@ -2287,8 +2305,7 @@ impl<'a> XmlToStamConverter<'a> {
         if let Some(vars) = self.variables.get(template) {
             for var in vars {
                 let mut encodedvar = String::new();
-                let mut multiple_buffer = None; //this is a buffer that is temporarily used by `context_for_var` in case we need to keep track of multiple values
-                if let Some(value) = self.context_for_var(node, var, &mut encodedvar, &mut multiple_buffer) {
+                if let Some(value) = self.context_for_var(node, var, &mut encodedvar, false) {
                     if self.config.debug() {
                         eprintln!(
                             "[STAM fromxml]              Set context variable for template '{}' for node '{}': {}={:?}   (encodedvar={})",
@@ -2317,13 +2334,13 @@ impl<'a> XmlToStamConverter<'a> {
 
     /// Looks up a variable value (from the DOM XML) to be used in for template context
     // returns value and stores full the *encoded* variable name in path (this is safe to pass to template)
-    // return values are temporarily aggregated in multiple if multiple elements are requested, it will be emptied automatically, the caller owns it but doesn't use it itself
+    // return values are temporarily aggregated in multiple if multiple elements are requested, it will be emptied automatically, the caller owns it but doesn't use it itself.
     fn context_for_var<'input>(
         &self,
         node: &Node<'a, 'input>,
         var: &str,
         path: &mut String,
-        multiple: &mut Option<Vec<upon::Value>>,
+        mut return_all_matches: bool,
     ) -> Option<upon::Value> {
 
         //are we the first call by the caller or are we a recursion?
@@ -2332,7 +2349,10 @@ impl<'a> XmlToStamConverter<'a> {
         let var = if var.starts_with("?.$$") {
             if first {
                 path.push_str("?.ELEMENTS_");
-                *multiple = Some(Vec::new());
+                return_all_matches = true;
+                if self.config.debug {
+                    eprintln!("[STAM fromxml]              will return all matches for {}", var);
+                }
             };
             &var[4..]
         } else if var.starts_with("?.$") {
@@ -2343,7 +2363,10 @@ impl<'a> XmlToStamConverter<'a> {
         } else if var.starts_with("$$") {
             if first {
                 path.push_str("ELEMENTS_");
-                *multiple = Some(Vec::new());
+                return_all_matches = true;
+                if self.config.debug {
+                    eprintln!("[STAM fromxml]              will return all matches for {}", var);
+                }
             };
             &var[2..]
         } else if var.starts_with("$") {
@@ -2366,7 +2389,7 @@ impl<'a> XmlToStamConverter<'a> {
 
         //get the first component of the variable
         let (component, remainder) = var.split_once("/").unwrap_or((var,""));
-        //eprintln!("DEBUG: component={}, remainder={}", component, remainder);
+        //eprintln!("DEBUG: component={}, remainder={}, node={}, return_all_matches={}", component, remainder, node.tag_name().name(), return_all_matches);
         if component.is_empty() {
             if first && !remainder.is_empty() {
                 //we're asked to start at the root node
@@ -2391,7 +2414,7 @@ impl<'a> XmlToStamConverter<'a> {
                         path.push_str("__");
                     }
                     path.push_str(localname);
-                    self.context_for_var(&n, remainder, path, multiple)
+                    self.context_for_var(&n, remainder, path, return_all_matches)
                 }
             } else {
                 //an empty component is the stop condition , this function is called recursively, stripping one
@@ -2425,7 +2448,7 @@ impl<'a> XmlToStamConverter<'a> {
             if let Some(parentnode) = node.parent_element().as_ref() {
                 //recurse with parent node
                 path.push_str("PARENT");
-                self.context_for_var(parentnode, remainder, path, multiple)
+                self.context_for_var(parentnode, remainder, path, return_all_matches)
             } else {
                 None
             }
@@ -2433,7 +2456,7 @@ impl<'a> XmlToStamConverter<'a> {
             path.push_str("THIS");
             if !remainder.is_empty() {
                 //a . is meaningless if not the final component
-                self.context_for_var(node, remainder, path, multiple)
+                self.context_for_var(node, remainder, path, return_all_matches)
             } else {
                 Some(recursive_text(node).into())
             }
@@ -2446,7 +2469,8 @@ impl<'a> XmlToStamConverter<'a> {
             let localname_with_condition = localname;
             let (localname, condition_str, condition) = self.extract_condition(localname_with_condition); //extract X-Path like conditions [@attrib="value"]  (very limited!)
             //eprintln!("DEBUG: looking for {} (prefix={:?},localname={}, condition={:?}) in {:?}", localname_with_condition,  prefix, localname, condition, node.tag_name());
-            let mut first_child_match = true;
+            let mut multiple_value_buffer: Vec<upon::Value> = Vec::new(); //only used when multiple == true
+            let mut final_path: String = String::new(); //only used when multiple == true
             for child in node.children() {
                 if child.is_element() {
                     let namedata = child.tag_name();
@@ -2497,40 +2521,55 @@ impl<'a> XmlToStamConverter<'a> {
                         //end condition test
                     }
                     if child_matches {
-                        if first_child_match {
-                            //update path if this is the first child match (it always is if multiple = false)
-                            if let Some(prefix) = prefix {
-                                path.push_str(prefix);
-                                path.push_str("__");
-                            }
-                            path.push_str(localname);
-                            if condition.is_some() {
-                                //simply encode the condition as a hash (non-decodable but that's okay)
-                                let mut hasher = DefaultHasher::new();
-                                condition_str.hash(&mut hasher);
-                                let h = hasher.finish();
-                                path.push_str(&format!("_COND{}_", h));
+                        let prevpathlen = path.len();
+                        //update path
+                        if let Some(prefix) = prefix {
+                            path.push_str(prefix);
+                            path.push_str("__");
+                        }
+                        path.push_str(localname);
+                        if condition.is_some() {
+                            //simply encode the condition as a hash (non-decodable but that's okay)
+                            let mut hasher = DefaultHasher::new();
+                            condition_str.hash(&mut hasher);
+                            let h = hasher.finish();
+                            path.push_str(&format!("_COND{}_", h));
+                        }
+                        if let Some(value) = self.context_for_var(&child, remainder, path, return_all_matches) {
+                            //success
+                            if return_all_matches {
+                                if let upon::Value::List(v) = value {
+                                    multiple_value_buffer.extend(v.into_iter());
+                                } else {
+                                    multiple_value_buffer.push(value);
+                                }
+                                if final_path.is_empty() {
+                                    final_path = path.clone();
+                                }
+                                //do not return yet, there may be more!
+                            } else {
+                                //normal behaviour, get first match
+                                return Some(value);
                             }
                         }
-                        first_child_match = false;
-                        if multiple.is_some() {
-                            //list behaviour, add the value to the list and continue
-                            let value = self.context_for_var(&child, remainder, path, multiple);
-                            if let Some(value) = value {
-                                multiple.as_mut().map(|v| v.push(value));
-                            }
-                        } else {
-                            //normal behaviour, get first match
-                            return self.context_for_var(&child, remainder, path, multiple);
-                        }
+                        //child didn't match (or we want multiple matches), truncate path again and continue search (a later child may match again!)
+                        path.truncate(prevpathlen);
                     }
                 }
             }
-            if (first) && multiple.is_some() && multiple.as_ref().map(|v| !v.is_empty()).unwrap() {
-                //we are at the first level, that is we're not a recursion but we finished all recursion, and we have multiple values to return to the caller:
-                Some(multiple.take().into())
+            if !multiple_value_buffer.is_empty() {
+                //we found multiple values, return them
+                if self.config.debug {
+                    eprintln!("[STAM fromxml]              returning multiple matches of {} as list", var);
+                }
+                //we also return the path of the match
+                *path = final_path;
+                Some(multiple_value_buffer.into())
             } else {
                 //no match found for this variable
+                if self.config.debug {
+                    eprintln!("[STAM fromxml]              returning with no match found for {} in {}", var, node.tag_name().name());
+                }
                 None
             }
         }
@@ -2915,6 +2954,62 @@ fn map_value(value: &toml::Value) -> upon::Value {
     }
 }
 
+/// Parse a string that is a result from the template renderer to a DataValue again
+#[inline]
+fn string_to_datavalue(value: String) -> Result<DataValue,XmlConversionError> {
+    if let Ok(value) =  value.parse::<isize>() {
+        Ok(DataValue::Int(value))
+    } else if let Ok(value) =  value.parse::<f64>() {
+        Ok(DataValue::Float(value))
+    } else if value.starts_with("(list) [ ") && value.ends_with(" ]") {
+        //deserialize lists again
+        if let Ok(serde_json::Value::Array(values)) = serde_json::from_str(&value[6..]) {
+            Ok(DataValue::List(values.into_iter().map(|v| {
+                match v {
+                    serde_json::Value::String(s) => DataValue::String(s),
+                    serde_json::Value::Number(n) => if let Some(n) = n.as_i64() {
+                        DataValue::Int(n as isize)
+                    } else if let Some(n) = n.as_f64() {
+                        DataValue::Float(n)
+                    } else {
+                        unreachable!("number should always be either int or float")
+                    },
+                    serde_json::Value::Bool(b) => DataValue::Bool(b),
+                    _ => DataValue::Null, //nested arrays and maps are NOT supported here!
+                }
+            }).collect()))
+        } else {
+            Err(XmlConversionError::TemplateError("Unable to deserialize list value".to_string(), None))
+        }
+    } else {
+        Ok(value.into())
+    }
+}
+
+/// Custom formatter for templating that can also handle lists (the default one in upon can't)
+/// Lists will be output JSON-style prepended by the marker text "(list) ", this allows deserialisers to turn it into a list again
+fn value_formatter(f: &mut upon::fmt::Formatter<'_>, value: &upon::Value) -> upon::fmt::Result {
+    match value {
+        upon::Value::List(vs) => {
+            f.write_str("(list) [ ")?;
+            for (i, v) in vs.iter().enumerate() {
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
+                if let upon::Value::String(s) = v {
+                    write!(f, "\"{}\"", s.replace("\"","\\\""))?;
+                } else {
+                    upon::fmt::default(f, v)?;
+                    f.write_char('"')?;
+                }
+            }
+            f.write_str(" ]")?;
+        }
+        v => upon::fmt::default(f, v)?, // fallback to default formatter
+    };
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3096,6 +3191,16 @@ id = "body"
     [[elements.annotationdata]]
     key = "title_from_root"
     value = "{{ $/html:html/html:head/html:title }}"
+    skip_if_missing = true
+
+    [[elements.annotationdata]]
+    key = "firstfruit"
+    value = """{{ $./html:p/html:ul/html:li }}"""
+    skip_if_missing = true
+
+    [[elements.annotationdata]]
+    key = "fruits"
+    value = """{{ $$./html:p/html:ul/html:li }}"""
     skip_if_missing = true
 
 #More specific one takes precendence over the above generic one
@@ -3343,6 +3448,28 @@ value = "proycon"
         from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
         let res = store.resource("test").expect("resource must have been created at this point");
         assert_eq!(res.text(), XMLEXAMPLE_TEXTOUTPUT, "resource text");
+        Ok(())
+    }
+
+    #[test]
+    fn test_firstfruit() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        let bodyannotation = store.annotation("body").expect("body annotation not found");
+        let fruit = store.key("urn:stam-fromhtml", "firstfruit").expect("key must exist");
+        assert_eq!(bodyannotation.data().filter_key(&fruit).value_as_str(), Some("apple") );
+        Ok(())
+    }
+
+    #[test]
+    fn test_fruits() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        let bodyannotation = store.annotation("body").expect("body annotation not found");
+        let fruits = store.key("urn:stam-fromhtml", "fruits").expect("key must exist");
+        assert_eq!(bodyannotation.data().filter_key(&fruits).value(), Some(&DataValue::List(vec!("apple".into(),"banana".into(),"melon".into()) )));
         Ok(())
     }
 
