@@ -3203,6 +3203,12 @@ id = "body"
     value = """{{ $$./html:p/html:ul/html:li }}"""
     skip_if_missing = true
 
+    [[elements.annotationdata]]
+    key = "multifruits"
+    value = """{{ $$./html:p/html:ul/html:li }}"""
+    skip_if_missing = true
+    multiple = true
+
 #More specific one takes precendence over the above generic one
 [[elements]]
 base = [ "common", "text" ]
@@ -3470,6 +3476,21 @@ value = "proycon"
         let bodyannotation = store.annotation("body").expect("body annotation not found");
         let fruits = store.key("urn:stam-fromhtml", "fruits").expect("key must exist");
         assert_eq!(bodyannotation.data().filter_key(&fruits).value(), Some(&DataValue::List(vec!("apple".into(),"banana".into(),"melon".into()) )));
+        Ok(())
+    }
+
+    #[test]
+    fn test_multifruits() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        let bodyannotation = store.annotation("body").expect("body annotation not found");
+        let fruits = store.key("urn:stam-fromhtml", "multifruits").expect("key must exist");
+        let results: Vec<_> = bodyannotation.data().filter_key(&fruits).collect();
+        assert_eq!(results.len(), 3);
+        assert_eq!(results.get(0).unwrap().value(),&DataValue::String("apple".to_string()) );
+        assert_eq!(results.get(1).unwrap().value(),&DataValue::String("banana".to_string()) );
+        assert_eq!(results.get(2).unwrap().value(),&DataValue::String("melon".to_string()) );
         Ok(())
     }
 
