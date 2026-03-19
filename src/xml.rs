@@ -4,13 +4,15 @@ use std::fmt::Display;
 use std::fs::read_to_string;
 use std::path::Path;
 use std::hash::{Hash,DefaultHasher,Hasher};
+use std::process::{Command,  Stdio};
+use std::io::{ BufWriter, Write};
 
 use roxmltree::{Document, Node, NodeId, ParsingOptions};
 use serde::Deserialize;
 use stam::*;
 use toml;
 use upon::Engine;
-use std::fmt::Write;
+use std::fmt::Write as FmtWrite;
 use serde_json;
 
 const NS_XML: &str = "http://www.w3.org/XML/1998/namespace";
@@ -67,6 +69,9 @@ pub struct XmlConversionConfig {
     /// Add provenance information pointing each annotation to the appropriate node in the XML source files where it came from (translates into XPathSelector in Web Annotation output)
     provenance: bool,
 
+    #[serde(default)]
+    external_filters: Vec<ExternalFilter>,
+
     #[serde(skip_deserializing)]
     debug: bool,
 
@@ -86,6 +91,7 @@ impl XmlConversionConfig {
             id_prefix: None,
             id_strip_suffix: Vec::new(),
             provenance: false,
+            external_filters: Vec::new(),
             debug: false,
         }
     }
@@ -1169,7 +1175,14 @@ impl<'a> XmlToStamConverter<'a> {
             config,
         };
         converter.set_global_context();
+        converter.add_external_filters();
         converter
+    }
+
+    fn add_external_filters(&mut self) {
+        for filter in self.config.external_filters.clone() {
+            self.template_engine.add_function(filter.name.clone(), move |value: &upon::Value| filter.run(value)  );
+        }
     }
 
     /// Compile templates
@@ -3056,6 +3069,16 @@ fn string_to_datavalue(value: String) -> Result<DataValue,XmlConversionError> {
     }
 }
 
+fn string_to_templatevalue(value: String) -> upon::Value {
+    if let Ok(value) =  value.parse::<i64>() {
+        upon::Value::Integer(value)
+    } else if let Ok(value) =  value.parse::<f64>() {
+        upon::Value::Float(value)
+    } else {
+        upon::Value::String(value)
+    }
+}
+
 /// Custom formatter for templating that can also handle lists (the default one in upon can't)
 /// Lists will be output JSON-style prepended by the marker text "(list) ", this allows deserialisers to turn it into a list again
 fn value_formatter(f: &mut upon::fmt::Formatter<'_>, value: &upon::Value) -> upon::fmt::Result {
@@ -3078,6 +3101,66 @@ fn value_formatter(f: &mut upon::fmt::Formatter<'_>, value: &upon::Value) -> upo
         v => upon::fmt::default(f, v)?, // fallback to default formatter
     };
     Ok(())
+}
+
+#[derive(Clone,Debug,Deserialize)]
+struct ExternalFilter {
+    /// The name of the filter
+    name: String,
+
+    /// The command to run.
+    command: String,
+
+    /// The arguments to pass to the command, you can use "{{ value }}" or `$value` to represent the input value if needed. It will also be passed to stdin. No escaping needed, it is not mediated by a shell.
+    args: Vec<String>
+}
+
+impl ExternalFilter {
+    //TODO: panic may be too strict in here:
+    fn run(&self, input_value: &upon::Value) -> upon::Value {
+        let process = Command::new(self.command.as_str()).args(
+            //args are passed directly, not mediated via shell, so no escaping necessary
+            self.args.iter().map(|x| if x == "{{value}}" || x == "{{ value }}" || x == "$value" {
+                match input_value {
+                    upon::Value::String(s) => s.clone(),
+                    upon::Value::Integer(d) => format!("{}",d),
+                    upon::Value::Float(d) => format!("{}",d),
+                    upon::Value::Bool(d) => format!("{}",d),
+                    upon::Value::None => String::new(),
+                    _ => panic!("Lists and maps are not supported to be passed as parameter to  external filters yet!"), 
+                }
+            } else {
+                x.clone() //too much cloning, but Cow didn't work here because it is coerced into OsStr later
+            })
+        ).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn();
+
+
+        if let Ok(mut process) = process {
+            {
+                let mut outstdin = process.stdin.take().expect("unable to open stdin for external filter");
+                let mut writer = BufWriter::new(&mut outstdin);
+                match input_value {
+                    upon::Value::String(s) => writer.write(s.as_bytes()),
+                    upon::Value::Integer(d) => writer.write(format!("{}",d).as_bytes()),
+                    upon::Value::Float(d) => writer.write(format!("{}",d).as_bytes()),
+                    upon::Value::Bool(d) => writer.write(format!("{}",d).as_bytes()),
+                    upon::Value::None => writer.write(&[]),
+                    _ => panic!("Lists and maps are not supported to be passed as input to external filters yet!"),
+                }.expect("Writing to stdin for external filter failed!");
+                //block ensures writer and outputsdin are dropped prior to waiting for output
+            }
+            let output = process.wait_with_output().expect("External filter wasn't running");
+            if !output.status.success() {
+                panic!("External filter {} failed ({:?})", self.name, output.status.code());
+            }
+            if let Ok(s) = String::from_utf8(output.stdout) {
+                return string_to_templatevalue(s);
+            } else {
+                panic!("External filter {} produced invalid UTF-8!", self.name);
+            }
+        }
+        panic!("External filter {} failed!", self.name);
+    }
 }
 
 #[cfg(test)]

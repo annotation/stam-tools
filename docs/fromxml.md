@@ -443,6 +443,32 @@ Usage example:
 {{ my_variable | trim }}
 ```
 
+### External filters
+
+The templating language and filters therein are limited, if you need extra
+filters to do more complex computations or mappings, then you can write a
+script in a language of your choice and define an external filter as follows:
+
+```
+[[external_filters]]
+name = "myfilter"
+command = "awk"
+args = [ "-f" , "myfilter.awk" ]
+```
+
+You can then do the following:
+
+```
+{{ my_variable | myfilter }}
+```
+
+Your script will be run with contents of the
+variable passed via standard input, the value that you write to standard output is
+then picked up again by the templating engine:
+
+Alternatively, you can use ``{{ value }}`` or `$value` in args, which will pass
+the value as an argument to your script.
+
 ## Markers
 
 The natural way in XML to mark a span of text is using some element that scopes over the text, i.e.:
