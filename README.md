@@ -485,6 +485,9 @@ formulated in XML, such as are present for instance in
 [FoLiA](http://proycon.github.io/folia/). For that format, a dedicated
 `stam2folia` converter is available as part of
 [foliatools](https://github.com/proycon/foliatools).
+* **Security notice**: Configuration files may define external filters, which are arbitrary external scripts/programs.
+When running in `stam fromxml` in restricted environments (e.g. as a webservice),
+make sure to never just accept configuration files submitted by arbitrary users!
 
 ### stam split
 
