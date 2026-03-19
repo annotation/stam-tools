@@ -1,3 +1,11 @@
+# v0.15.0 - 2026-03-19
+
+* fromxml: important bugfix in node matching behaviour, certain nodes were missed in older versions
+* fromxml: support list values and multiple value matches ([#30](https://github.com/annotation/stam-tools/issues/30))
+* fromxml: filters add,sub,mul,div,gt,gte,lt,lte can now deal with other types than just integers
+* fromxml: added external_filters (uses arbitrary external scripts as template filters), see README for documentation.
+    * Note that this has security implications, in restricted environments always ensure the fromxml configuration can not be supplied by arbitrary users
+
 # v0.14.1 - 2026-02-04
 
 * allow textsuffix and textprefix on annotations using TextSelectorBetweenMarkers. This implementation was missing, so markers could not have textprefixes or suffixes yet.
