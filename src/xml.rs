@@ -1085,16 +1085,16 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("lower", str::to_lowercase);
         template_engine.add_function("upper", str::to_uppercase);
         template_engine.add_function("trim", |s: &str| s.trim().to_string() );
-        template_engine.add_function("add", |a: i64, b: i64| a + b);
-        template_engine.add_function("sub", |a: i64, b: i64| a - b);
-        template_engine.add_function("mul", |a: i64, b: i64| a * b);
-        template_engine.add_function("div", |a: i64, b: i64| a / b);
+        template_engine.add_function("add", filter_add);
+        template_engine.add_function("sub", filter_sub);
+        template_engine.add_function("mul", filter_mul);
+        template_engine.add_function("div", filter_div);
         template_engine.add_function("eq", |a: &upon::Value, b: &upon::Value| a == b);
         template_engine.add_function("ne", |a: &upon::Value, b: &upon::Value| a != b);
-        template_engine.add_function("gt", |a: i64, b: i64| a > b);
-        template_engine.add_function("lt", |a: i64, b: i64| a < b);
-        template_engine.add_function("gte", |a: i64, b: i64| a >= b);
-        template_engine.add_function("lte", |a: i64, b: i64| a <= b);
+        template_engine.add_function("gt", filter_gt);
+        template_engine.add_function("lt", filter_lt);
+        template_engine.add_function("gte", filter_gte);
+        template_engine.add_function("lte", filter_lte);
         template_engine.add_function("int", |a: &upon::Value| match a {
             upon::Value::Integer(x) => upon::Value::Integer(*x), 
             upon::Value::Float(x) => upon::Value::Integer(*x as i64), 
@@ -2940,6 +2940,76 @@ fn filter_capitalize(s: &str) -> String {
     }
     out
 }
+
+fn filter_gt(a: &upon::Value, b: &upon::Value) -> bool {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => *a > *b,
+        (upon::Value::Float(a), upon::Value::Float(b)) => *a > *b,
+        (upon::Value::String(a), upon::Value::String(b)) => *a > *b,
+        _ => false,
+    }
+}
+
+fn filter_lt(a: &upon::Value, b: &upon::Value) -> bool {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => *a < *b,
+        (upon::Value::Float(a), upon::Value::Float(b)) => *a < *b,
+        (upon::Value::String(a), upon::Value::String(b)) => *a < *b,
+        _ => false,
+    }
+}
+
+fn filter_gte(a: &upon::Value, b: &upon::Value) -> bool {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => *a >= *b,
+        (upon::Value::Float(a), upon::Value::Float(b)) => *a >= *b,
+        (upon::Value::String(a), upon::Value::String(b)) => *a >= *b,
+        _ => false,
+    }
+}
+
+fn filter_lte(a: &upon::Value, b: &upon::Value) -> bool {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => *a <= *b,
+        (upon::Value::Float(a), upon::Value::Float(b)) => *a <= *b,
+        (upon::Value::String(a), upon::Value::String(b)) => *a <= *b,
+        _ => false,
+    }
+}
+
+fn filter_add(a: &upon::Value, b: &upon::Value) -> upon::Value {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => upon::Value::Integer(a + b),
+        (upon::Value::Float(a), upon::Value::Float(b)) => upon::Value::Float(a + b),
+        (upon::Value::String(a), upon::Value::String(b)) => upon::Value::String(a.clone() + b),
+        _ => upon::Value::None,
+    }
+}
+
+fn filter_sub(a: &upon::Value, b: &upon::Value) -> upon::Value {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => upon::Value::Integer(a - b),
+        (upon::Value::Float(a), upon::Value::Float(b)) => upon::Value::Float(a - b),
+        _ => upon::Value::None,
+    }
+}
+
+fn filter_mul(a: &upon::Value, b: &upon::Value) -> upon::Value {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => upon::Value::Integer(a * b),
+        (upon::Value::Float(a), upon::Value::Float(b)) => upon::Value::Float(a * b),
+        _ => upon::Value::None,
+    }
+}
+
+fn filter_div(a: &upon::Value, b: &upon::Value) -> upon::Value {
+    match (a, b) {
+        (upon::Value::Integer(a), upon::Value::Integer(b)) => upon::Value::Integer(a / b),
+        (upon::Value::Float(a), upon::Value::Float(b)) => upon::Value::Float(a / b),
+        _ => upon::Value::None,
+    }
+}
+
 
 /// Map value between toml and upon. This makes a clone.
 fn map_value(value: &toml::Value) -> upon::Value {
