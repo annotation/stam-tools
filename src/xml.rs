@@ -3062,7 +3062,7 @@ fn string_to_datavalue(value: String) -> Result<DataValue,XmlConversionError> {
                 }
             }).collect()))
         } else {
-            Err(XmlConversionError::TemplateError("Unable to deserialize list value".to_string(), None))
+            Err(XmlConversionError::TemplateError(format!("Unable to deserialize list value: {}", value), None))
         }
     } else {
         Ok(value.into())
@@ -3090,7 +3090,7 @@ fn value_formatter(f: &mut upon::fmt::Formatter<'_>, value: &upon::Value) -> upo
                     f.write_str(", ")?;
                 }
                 if let upon::Value::String(s) = v {
-                    write!(f, "\"{}\"", s.replace("\"","\\\""))?;
+                    write!(f, "\"{}\"", s.replace("\"","\\\"").replace("\n"," ").split_whitespace().collect::<Vec<_>>().join(" "))?;
                 } else {
                     upon::fmt::default(f, v)?;
                     f.write_char('"')?;
