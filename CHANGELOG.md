@@ -1,3 +1,8 @@
+# v0.15.1 - 2026-03-19
+
+* fromxml: added `float` and `str` filters
+* fromxml: added `valuetype` property on annotationdata to force a specific data type
+
 # v0.15.0 - 2026-03-19
 
 * fromxml: important bugfix in node matching behaviour, certain nodes were missed in older versions
