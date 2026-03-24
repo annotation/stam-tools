@@ -430,6 +430,10 @@ pub struct XmlAnnotationDataConfig {
     /// Any string values are interpreted as templates
     value: Option<toml::Value>,
 
+    /// The type of the value, will be automatically detected if not set.
+    #[serde(default)]
+    valuetype: Option<String>,
+
     /// Allow value templates that yield an empty string?
     #[serde(default)]
     allow_empty_value: bool,
@@ -437,6 +441,7 @@ pub struct XmlAnnotationDataConfig {
     /// Skip this data entirely if any underlying variables in the templates are undefined
     #[serde(default)]
     skip_if_missing: bool,
+
 
     /// If the value is a list, convert it to multiple annotationdata instances with the same key, one for each of the values
     #[serde(default)]
@@ -1968,7 +1973,7 @@ impl<'a> XmlToStamConverter<'a> {
                 }
             }
             if let Some(value) = &annotationdata.value {
-                match self.extract_value(value,  node, annotationdata.allow_empty_value, annotationdata.skip_if_missing, begin, end, resource_id, inputfile, doc_num)? {
+                match self.extract_value(value,  node, annotationdata.allow_empty_value, annotationdata.skip_if_missing, annotationdata.valuetype.as_ref().map(|s| s.as_str()), begin, end, resource_id, inputfile, doc_num)? {
                     Some(DataValue::List(values)) if annotationdata.multiple => {
                         for value in values {
                             let mut databuilder_multi = databuilder.clone();
@@ -2058,7 +2063,7 @@ impl<'a> XmlToStamConverter<'a> {
     }
 
     /// Extract values, running the templating engine in case of string values
-    fn extract_value<'b>(&self, value: &'a toml::Value, node: Node<'a,'b>, allow_empty_value: bool, skip_if_missing: bool, begin: Option<usize>, end: Option<usize>, resource_id: Option<&str>, inputfile: Option<&str>, doc_num: usize) -> Result<Option<DataValue>, XmlConversionError>{
+    fn extract_value<'b>(&self, value: &'a toml::Value, node: Node<'a,'b>, allow_empty_value: bool, skip_if_missing: bool, valuetype: Option<&str>, begin: Option<usize>, end: Option<usize>, resource_id: Option<&str>, inputfile: Option<&str>, doc_num: usize) -> Result<Option<DataValue>, XmlConversionError>{
         match value {
             toml::Value::String(template) => {  
                 let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
@@ -2090,7 +2095,7 @@ impl<'a> XmlToStamConverter<'a> {
                     )  {
                     Ok(value) => {
                         if !value.is_empty() || allow_empty_value {
-                            string_to_datavalue(value).map(|v| Some(v))
+                            string_to_datavalue(value, valuetype).map(|v| Some(v))
                         } else {
                             //skip
                             Ok(None)
@@ -2108,19 +2113,19 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
             },
-            toml::Value::Table(map) => {  
+            toml::Value::Table(map) => {
                 let mut resultmap: BTreeMap<String,DataValue> = BTreeMap::new();
                 for (key, value) in map.iter() {
-                    if let Some(value) = self.extract_value(value,  node, false, true, begin, end, resource_id, inputfile, doc_num)? {
+                    if let Some(value) = self.extract_value(value,  node, false, true, None, begin, end, resource_id, inputfile, doc_num)? {
                         resultmap.insert(key.clone(), value);
                     }
                 }
                 Ok(Some(resultmap.into()))
             },
-            toml::Value::Array(list) => {  
+            toml::Value::Array(list) => {
                 let mut resultlist: Vec<DataValue> = Vec::new();
                 for value in list.iter() {
-                    if let Some(value) = self.extract_value(value, node, false, true, begin, end, resource_id, inputfile, doc_num)? {
+                    if let Some(value) = self.extract_value(value, node, false, true, None,  begin, end, resource_id, inputfile, doc_num)? {
                         resultlist.push(value);
                     }
                 }
@@ -3063,33 +3068,60 @@ fn map_value(value: &toml::Value) -> upon::Value {
 
 /// Parse a string that is a result from the template renderer to a DataValue again
 #[inline]
-fn string_to_datavalue(value: String) -> Result<DataValue,XmlConversionError> {
-    if let Ok(value) =  value.parse::<isize>() {
-        Ok(DataValue::Int(value))
-    } else if let Ok(value) =  value.parse::<f64>() {
-        Ok(DataValue::Float(value))
-    } else if value.starts_with("(list) [ ") && value.ends_with(" ]") {
-        //deserialize lists again
-        if let Ok(serde_json::Value::Array(values)) = serde_json::from_str(&value[6..]) {
-            Ok(DataValue::List(values.into_iter().map(|v| {
-                match v {
-                    serde_json::Value::String(s) => DataValue::String(s),
-                    serde_json::Value::Number(n) => if let Some(n) = n.as_i64() {
-                        DataValue::Int(n as isize)
-                    } else if let Some(n) = n.as_f64() {
-                        DataValue::Float(n)
-                    } else {
-                        unreachable!("number should always be either int or float")
-                    },
-                    serde_json::Value::Bool(b) => DataValue::Bool(b),
-                    _ => DataValue::Null, //nested arrays and maps are NOT supported here!
-                }
-            }).collect()))
-        } else {
-            Err(XmlConversionError::TemplateError(format!("Unable to deserialize list value: {}", value), None))
+fn string_to_datavalue(value: String, valuetype: Option<&str>) -> Result<DataValue,XmlConversionError> {
+    match valuetype {
+        Some("str") | Some("string")  => Ok(DataValue::String(value)),
+        Some("int") => {
+            if let Ok(value) = value.parse::<isize>() {
+                Ok(DataValue::Int(value))
+            } else {
+                Err(XmlConversionError::TemplateError(format!("Unable to interpret value as integer: {}", value), None))
+            }
+        },
+        Some("float") => {
+            if let Ok(value) = value.parse::<f64>() {
+                Ok(DataValue::Float(value))
+            } else {
+                Err(XmlConversionError::TemplateError(format!("Unable to interpret value as integer: {}", value), None))
+            }
+        },
+        Some("bool") => match value.as_str() {
+            "yes" | "true" | "enabled" | "on" | "1" | "active"  => Ok(DataValue::Bool(true)),
+            _ => Ok(DataValue::Bool(false))
+        },
+        Some(x) => {
+                Err(XmlConversionError::TemplateError(format!("Invalid valuetype: {}", x), None))
         }
-    } else {
-        Ok(value.into())
+        None => {
+            //automatically determine type
+            if let Ok(value) =  value.parse::<isize>() {
+                Ok(DataValue::Int(value))
+            } else if let Ok(value) =  value.parse::<f64>() {
+                Ok(DataValue::Float(value))
+            } else if value.starts_with("(list) [ ") && value.ends_with(" ]") {
+                //deserialize lists again
+                if let Ok(serde_json::Value::Array(values)) = serde_json::from_str(&value[6..]) {
+                    Ok(DataValue::List(values.into_iter().map(|v| {
+                        match v {
+                            serde_json::Value::String(s) => DataValue::String(s),
+                            serde_json::Value::Number(n) => if let Some(n) = n.as_i64() {
+                                DataValue::Int(n as isize)
+                            } else if let Some(n) = n.as_f64() {
+                                DataValue::Float(n)
+                            } else {
+                                unreachable!("number should always be either int or float")
+                            },
+                            serde_json::Value::Bool(b) => DataValue::Bool(b),
+                            _ => DataValue::Null, //nested arrays and maps are NOT supported here!
+                        }
+                    }).collect()))
+                } else {
+                    Err(XmlConversionError::TemplateError(format!("Unable to deserialize list value: {}", value), None))
+                }
+            } else {
+                Ok(value.into())
+            }
+        }
     }
 }
 
@@ -3193,7 +3225,7 @@ mod tests {
     //use crate::info::info;
 
     const XMLSMALLEXAMPLE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>test</title></head><body><h1>TEST</h1><p xml:id="p1">This  is a <em xml:id="emphasis" style="color:green">test</em>.</p></body></html>"#;
+<head><title>test</title></head><body><h1>TEST</h1><p xml:id="p1" n="001">This  is a <em xml:id="emphasis" style="color:green">test</em>.</p></body></html>"#;
 
     const XMLEXAMPLE: &'static str = r#"<!DOCTYPE entities[<!ENTITY nbsp "&#xA0;">]>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:my="http://example.com">
@@ -3233,14 +3265,14 @@ of CDATA and is configured to preserve whitespace, and weird &entities; ]]></p>
 </html>"#;
 
     const XMLEXAMPLE_TEXTOUTPUT: &'static str = "Header\n\nThis is a sentence. This is the second sentence.\n\nThis is the second paragraph. It has a bold word and one in italics.\nLet's highlight stress in the following word: reputation.\n\nThis    third\nparagraph consists\nof CDATA and is configured to preserve whitespace, and weird &entities; \nSubsection\n\nHave some fruits:\n* apple\n* banana\n* melon\n\nSome lingering text outside of any confines...";
-    
+
     //fake example (not real HTML, testing TEI-like space attribute with complex template)
     const XMLTEISPACE: &'static str = r#"<html xmlns="http://www.w3.org/1999/xhtml">
 <body><space dim="vertical" unit="lines" quantity="3" /></body></html>"#;
 
     const CONF: &'static str = r#"#default whitespace handling (Collapse or Preserve)
 whitespace = "Collapse"
-default_set = "urn:stam-fromhtml" 
+default_set = "urn:stam-fromhtml"
 
 [namespaces]
 #this defines the namespace prefixes you can use in this configuration
@@ -3268,6 +3300,13 @@ id = "{% if ?.@xml:id %}{{ @xml:id }}{% endif %}"
     key = "n"
     value = "{{ @n }}"
     skip_if_missing = true
+    valuetype = "int"
+
+    [[baseelements.common.annotationdata]]
+    key = "nstring"
+    value = "{{ @n }}"
+    skip_if_missing = true
+    valuetype = "string"
 
     [[baseelements.common.annotationdata]]
     key = "style"
@@ -3335,6 +3374,7 @@ base = [ "common", "text" ]
 path = "//html:p"
 textprefix = "\n"
 textsuffix = "\n"
+annotation = "TextSelector"
 
 # Let's do headers and bulleted lists like markdown
 [[elements]]
@@ -3595,8 +3635,8 @@ value = "proycon"
         assert_eq!(conv.config.namespaces.len(),4 , "number of namespaces");
         assert_eq!(conv.config.elements.len(), 15, "number of elements");
         assert_eq!(conv.config.baseelements.len(), 2, "number of baseelements");
-        assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 6,"number of annotationdata under first element");
-        assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 6,"number of annotationdata under baseelement common");
+        assert_eq!(conv.config.elements.get(0).unwrap().annotationdata.len(), 7,"number of annotationdata under first element");
+        assert_eq!(conv.config.baseelements.get("common").unwrap().annotationdata.len(), 7,"number of annotationdata under baseelement common");
         Ok(())
     }
 
@@ -3607,7 +3647,7 @@ value = "proycon"
         from_xml_in_memory("test", XMLSMALLEXAMPLE, &config, &mut store)?;
         let res = store.resource("test").expect("resource must have been created at this point");
         assert_eq!(res.text(), "TEST\n\nThis is a test.\n", "resource text");
-        assert_eq!(store.annotations_len(), 5, "number of annotations");
+        assert_eq!(store.annotations_len(), 6, "number of annotations");
         let annotation = store.annotation("emphasis").expect("annotation must have been created at this point");
         assert_eq!(annotation.text_simple(), Some("test"));
         //eprintln!("DEBUG: {:?}",annotation.data().collect::<Vec<_>>());
@@ -3750,6 +3790,28 @@ value = "proycon"
         let key = store.key("urn:stam-fromhtml", "author").expect("key must exist");
         let data = annotation.data().filter_key(&key).value().expect("data must exist");
         assert_eq!(data, &DataValue::String("proycon".into()));
+        Ok(())
+    }
+
+    #[test]
+    fn test_datavalue_int() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLSMALLEXAMPLE, &config, &mut store)?;
+        let annotation = store.annotation("p1").expect("annotation not found");
+        let key = store.key("urn:stam-fromhtml", "n").expect("key must exist");
+        assert_eq!(annotation.data().filter_key(&key).value(), Some(&DataValue::Int(1)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_datavalue_string() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLSMALLEXAMPLE, &config, &mut store)?;
+        let annotation = store.annotation("p1").expect("annotation not found");
+        let key = store.key("urn:stam-fromhtml", "nstring").expect("key must exist");
+        assert_eq!(annotation.data().filter_key(&key).value(), Some(&DataValue::String("001".to_string())));
         Ok(())
     }
 

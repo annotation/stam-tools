@@ -623,3 +623,41 @@ multiple = true
 ```
 
 This translates to multiple annotationdata with a string value, rather than just a single one with a list value.
+
+## Value type
+
+You can specify a value type as follows:
+
+```toml
+[[elements.annotationdata]]
+set = "{{ default_set }}"
+key = "n"
+value = "{{ @n }}"
+valuetype = "int"
+```
+
+This ensures the value is interpreted as an integer, an error will be raised if
+this is not possible. Another way to accomplish is shown in the next example.
+The first example, however, gives clearer error messages and is therefore
+preferred in the current implementation:
+
+```toml
+[[elements.annotationdata]]
+set = "{{ default_set }}"
+key = "n"
+value = "{{ @n | int }}"
+```
+
+If no `valuetype` is provided, `stam fromxml` attempts to automatically find
+the best fitting type. This works in most of the cases, but may not always be
+what you want, say you want to explicitly maintain a number as a string, then
+you need to add a `valuetype` as follows:
+
+```toml
+[[elements.annotationdata]]
+set = "{{ default_set }}"
+key = "n"
+value = "{{ @n }}"
+valuetype = "string"
+```
+
