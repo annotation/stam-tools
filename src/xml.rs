@@ -1102,10 +1102,34 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("gte", filter_gte);
         template_engine.add_function("lte", filter_lte);
         template_engine.add_function("int", |a: &upon::Value| match a {
-            upon::Value::Integer(x) => upon::Value::Integer(*x), 
+            upon::Value::Integer(x) => upon::Value::Integer(*x),
             upon::Value::Float(x) => upon::Value::Integer(*x as i64), 
             upon::Value::String(s) => upon::Value::Integer(s.parse().expect("int filter expects an integer value")),
             _ => panic!("int filter expects an integer value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        });
+        template_engine.add_function("float", |a: &upon::Value| match a {
+            upon::Value::Float(_) => a.clone(),
+            upon::Value::Integer(x) => upon::Value::Float(*x as f64),
+            upon::Value::String(s) => upon::Value::Float(s.parse().expect("float filter expects a float value")),
+            _ => panic!("int filter expects an integer value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        });
+        template_engine.add_function("str", |a: upon::Value| match a {
+            upon::Value::Integer(x) => upon::Value::String(format!("{}",x)),
+            upon::Value::Float(x) => upon::Value::String(format!("{}",x)),
+            upon::Value::Bool(x) => upon::Value::String(format!("{}",x)),
+            upon::Value::String(_) => a,
+            upon::Value::None => upon::Value::String(String::new()),
+            upon::Value::List(list) => { //too much cloning but it'll do for now
+                let newlist: Vec<String> = list.iter().map(|v| match v {
+                    upon::Value::String(s) => s.clone(),
+                    upon::Value::Integer(d) => format!("{}",d),
+                    upon::Value::Float(d) => format!("{}",d),
+                    upon::Value::Bool(d) => format!("{}",d),
+                    _ => String::new(),
+                }).collect();
+                upon::Value::String(newlist.join(", "))
+            },
+            _ => panic!("map to string not implemented"), //<< --^  TODO: PANIC IS WAY TO STRICT
         });
         template_engine.add_function("as_range", |a: i64| upon::Value::List(std::ops::Range { start: 0, end: a }.into_iter().map(|x| upon::Value::Integer(x+1)).collect::<Vec<_>>()) );
         template_engine.add_function("last", |list: &[upon::Value]| list.last().map(Clone::clone));
