@@ -1,3 +1,7 @@
+# v0.15.2 - 2026-03-25
+
+* Updated for stam-vust v0.18.7, adds support for zero-width annotations in `stam translate`
+
 # v0.15.1 - 2026-03-19
 
 * fromxml: added `float` and `str` filters
