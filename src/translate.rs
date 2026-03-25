@@ -83,10 +83,11 @@ pub fn translate<'store>(
                     }
                     match annotation.translate(&translation, config) {
                         Ok(results) => builders.extend(results),
-                        Err(StamError::NoText(_)) => {
+                        Err(StamError::NoText(e)) => {
                             eprintln!(
-                                "WARNING: Skipping translation of annotation that references no text: {}",
+                                "WARNING: Skipping translation of annotation {} that references no text: {}",
                                 annotation.id().unwrap_or("(no id)"),
+                                e
                             );
                         }
                         Err(err) => {
