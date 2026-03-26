@@ -307,6 +307,16 @@ pub struct XmlElementConfig {
     #[serde(default)]
     /// Whitespace handling for this element
     whitespace: XmlWhitespaceHandling,
+
+    #[serde(default)]
+    /// Assigns a scope id to this text range, it can later be referenced to constrain marker based annotation via `marker_scope`
+    scope_id: Option<String>,
+
+    #[serde(default)]
+    /// If annotation handling is TextSelectorBetweenMarkers, this sets a scope so the last marker won't transcend (otherwise you get all text of the document)
+    /// The scope refers to the `scope_id` of another element that was used in text extraction.
+    marker_scope: Option<String>,
+
 }
 
 impl XmlElementConfig {
@@ -326,6 +336,8 @@ impl XmlElementConfig {
             annotatetextsuffix: Vec::new(),
             include_textprefix: None,
             include_textsuffix: None,
+            scope_id: None,
+            marker_scope: None,
         }
     }
 
@@ -1028,6 +1040,9 @@ struct XmlToStamConverter<'a> {
     /// Keep track of markers (XML elements with `XmlAnnotationHandling::TextSelectorBetweenMarkers`), the key in this map is some hash of XmlElementConfig.
     markers: HashMap<usize, Vec<(usize,NodeId)>>,
 
+    /// Keep track of scopes. These are used to find marker scopes. Only the last scope is registered. The key is an Xpath expression. The value is a sequence number and node ID which can subsequently be looked up in the position maps
+    scopes: HashMap<String, (usize,NodeId)>,
+
     /// The resource
     resource_handle: Option<TextResourceHandle>,
 
@@ -1194,6 +1209,7 @@ impl<'a> XmlToStamConverter<'a> {
             template_engine,
             positionmap: HashMap::new(),
             bytepositionmap: HashMap::new(),
+            scopes:  HashMap::new(),
             markers: HashMap::new(),
             resource_handle: None,
             pending_whitespace: false,
@@ -1546,6 +1562,11 @@ impl<'a> XmlToStamConverter<'a> {
 
                 // process the text suffix, a preconfigured string of text to include after to the actual text
                 self.process_textsuffix(element_config, node, resource_id, inputfile, doc_num, &mut end_discount, &mut end_bytediscount, textbegin)?;
+
+                // Assign a scope ID if provided (used for constraining the scope of marker annotations later on)
+                if let Some(scope_id) = element_config.scope_id.as_ref() {
+                    self.scopes.insert( scope_id.clone(), (doc_num, node.id()) );
+                }
             } else if element_config.annotation == XmlAnnotationHandling::TextSelectorBetweenMarkers
             {
                 // this is a marker, keep track of it so we can extract the span between markers in [`extract_element_annotation()`] later
@@ -2249,8 +2270,24 @@ impl<'a> XmlToStamConverter<'a> {
             }
         };
         if end.is_none() {
-            //no next marker found, use end of document instead
-            end = Some(resource.textlen());
+            //no next marker found, find the end
+            //are we in a restricted scope?
+            if let Some(scope) = element_config.marker_scope.as_deref() {
+                if let Some((d_num, n_id)) = self.scopes.get(scope) {
+                    end = self.positionmap.get(&(*d_num, *n_id, PositionType::Body)).map(|offset| {
+                        offset
+                            .end
+                            .try_into()
+                            .expect("end cursor must be beginaligned")
+                    });
+                } else {
+                    eprintln!("WARNING: Undefined scope referenced in marker_scope: {}, no matching text with this `scope_id` in this document! Skipping last marker!", scope);
+                    return None;
+                }
+            } else {
+                //just use end of document instead
+                end = Some(resource.textlen());
+            }
         }
         if let (Some(offset), Some(end)) = (self.positionmap.get(&(doc_num, node.id(), PositionType::Body)), end) {
             Some(SelectorBuilder::TextSelector(

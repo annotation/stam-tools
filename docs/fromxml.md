@@ -272,6 +272,16 @@ id = "{{ ?.@xml:id }}"
 Empty IDs will be automatically discarded. The `?.` prefix is used to not raise
 an error on elements that have no `xml:id` attribute.
 
+### scope_id
+
+This assigns an ID to the scope of this text, it can later be referred to from `marker_scope` if you want to constrain marker annotation to this specific scope.
+
+```toml
+[[elements]]
+path = "//html:body"
+scope_id = "body"
+```
+
 ### annotationdata
 
 This is a list of tables that specifies the actual data or body for the annotation. These are the key/value pairs of which we can have an arbitrary number per annotation. We assume you're familiar with the STAM's concept of *AnnotationData*  and
@@ -497,6 +507,17 @@ text = true
 
 Now the annotation will not be made on the text underlying the element directly (because there isn't any),
 but on the text that follows it until the next marker is encountered.
+
+For the last marker, the text will span until the end of the document, unless you specify a specific scope using `marker_scope`.
+This is just an identifier that refers back to a `scope_id` you defined earlier.
+
+```toml
+[[elements]]
+path = "//tei:pb"
+annotation = "TextSelectorBetweenMarkers"
+text = true
+marker_scope ="body"
+```
 
 ## Base elements
 
