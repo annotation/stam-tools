@@ -1,3 +1,11 @@
+# v0.15.3 - 2025-03-26
+
+* fromxml: added scopes to contrain the last marker annotation
+
+(The last marker element (e.g. a pagebreak) would be interpreted
+to the very end of the document. Sometimes you want to limit its scope.
+This introduces a named scope feature that you can use to do this from the `fromxml` configuration)
+
 # v0.15.2 - 2026-03-25
 
 * Updated for stam-vust v0.18.7, adds support for zero-width annotations in `stam translate`
