@@ -624,7 +624,7 @@ fn translate_text_helper<'store, 'a>(
                     let mut constraints_match = true; //falsify
                     let sourcecharlen = m.source.chars().count();
                     let source = resource
-                        .textselection(&Offset::simple(charpos, sourcecharlen))
+                        .textselection(&Offset::simple(charpos, charpos + sourcecharlen))
                         .map_err(|e| format!("Failed to extract source: {}", e))?;
                     let left = resource
                         .textselection(&Offset::new(
