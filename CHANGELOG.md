@@ -1,3 +1,7 @@
+# v0.15.4 - 2025-04-02
+
+* translatetext: fixed constraints (source offset was wrong)
+
 # v0.15.3 - 2025-03-26
 
 * fromxml: added scopes to contrain the last marker annotation
