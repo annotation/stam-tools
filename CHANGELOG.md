@@ -1,3 +1,7 @@
+# v0.15.5 - 2025-04-14
+
+* fromxml: fixed `//` operator in XPath expressions (they only matched against something, not against nothing)
+
 # v0.15.4 - 2025-04-02
 
 * translatetext: fixed constraints (source offset was wrong)
