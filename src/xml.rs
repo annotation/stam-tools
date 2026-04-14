@@ -519,14 +519,26 @@ impl XPathExpression {
     }
 
     /// matches a node path against an XPath-like expression
-    fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, mut node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
-        let mut pathiter = path.components.iter().rev();
-        for (refns, refname, condition) in self.iter(config).collect::<Vec<_>>().into_iter().rev() {
+    fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
+        let refiter = self.iter(config).collect::<Vec<_>>().into_iter().rev();
+        let pathiter = path.components.iter().rev();
+        self.test_withiter(refiter, pathiter, node, config)
+    }
+
+    /// matches a node path against an XPath-like expression
+    fn test_withiter<'a, 'b>(&self, mut refiter: impl Iterator<Item=(Option<&'a str>, &'a str, Option<&'a str>)> + Clone, mut pathiter: impl Iterator<Item=&'a NodePathComponent<'a, 'b>> + Clone, mut node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
+        while let Some((refns, refname, condition)) = refiter.next() {
+            if refns.is_none() && refname == "" && condition.is_none() {
+                // This is a `//` selector, we bifurcate here so we match both in case SOMETHING matches as well as when NOTHING matches, the recursion covers the latter logic route
+                if self.test_withiter(refiter.clone(), pathiter.clone(), node, config) {
+                    return true;
+                }
+            }
             if let Some(component) = pathiter.next() {
                 /*if config.debug() {
                     eprintln!("[STAM fromxml]          testing component {:?} against refns={:?} refname={} condition={:?}", component, refns, refname, condition);
                 }*/
-                if refname != "*" && refname != "" {
+                if refname != "" && refname != "*" {
                     if refns.is_none() != component.namespace.is_none() || component.namespace != refns || refname != component.tagname {
                         return false;
                     }
@@ -536,7 +548,7 @@ impl XPathExpression {
                         return false;
                     }
                 }
-                if let Some(parent) = node.parent() { 
+                if let Some(parent) = node.parent() {
                     node = parent;
                 }
             } else {
@@ -550,6 +562,7 @@ impl XPathExpression {
         }*/
         true
     }
+
 
     fn test_condition<'a,'b>(&self, condition: &'a str, node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
         for condition in condition.split(" and ") { //MAYBE TODO: doesn't take literals into account yet!
@@ -1060,7 +1073,7 @@ struct XmlToStamConverter<'a> {
 
     /// Variable names per template
     variables: BTreeMap<String, BTreeSet<&'a str>>,
-    
+
     debugindent: String,
 }
 
@@ -1159,21 +1172,21 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("tokenize", |s: &str| {
             upon::Value::List(
                 s.split(|c| c == ' ' || c == '\n').filter_map(|x|
-                    if !x.is_empty() { 
-                        Some(upon::Value::String(x.to_string())) 
+                    if !x.is_empty() {
+                        Some(upon::Value::String(x.to_string()))
                     } else {
                         None
                     }
                 )
                 .collect::<Vec<upon::Value>>())
         });
-        template_engine.add_function("replace", |s: &str, from: &str, to: &str| { 
+        template_engine.add_function("replace", |s: &str, from: &str, to: &str| {
             upon::Value::String(s.replace(from,to))
         });
-        template_engine.add_function("starts_with", |s: &str, prefix: &str| { 
+        template_engine.add_function("starts_with", |s: &str, prefix: &str| {
             s.starts_with(prefix)
         });
-        template_engine.add_function("ends_with", |s: &str, suffix: &str| { 
+        template_engine.add_function("ends_with", |s: &str, suffix: &str| {
             s.ends_with(suffix)
         });
         template_engine.add_function("basename", |a: &upon::Value| match a {
@@ -1841,7 +1854,7 @@ impl<'a> XmlToStamConverter<'a> {
                     let databuilder = AnnotationDataBuilder::new().with_dataset(CONTEXT_ANNO.into()).with_key("target".into()).with_value(
                         BTreeMap::from([
                             ("source".to_string(),inputfile.unwrap().into()),
-                            ("selector".to_string(), 
+                            ("selector".to_string(),
                                     BTreeMap::from([
                                         ("type".to_string(),"XPathSelector".into()),
                                         ("value".to_string(),path_string.into())
@@ -1942,7 +1955,7 @@ impl<'a> XmlToStamConverter<'a> {
             if let Some(template) = &annotationdata.set {
                 let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
                 let compiled_template = self.template_engine.template(template.as_str());
-                let dataset = compiled_template.render(&context).to_string().map_err(|e| 
+                let dataset = compiled_template.render(&context).to_string().map_err(|e|
                         XmlConversionError::TemplateError(
                             format!(
                                 "whilst rendering annotationdata/dataset template '{}' for node '{}'",
@@ -2086,7 +2099,7 @@ impl<'a> XmlToStamConverter<'a> {
     /// Extract values, running the templating engine in case of string values
     fn extract_value<'b>(&self, value: &'a toml::Value, node: Node<'a,'b>, allow_empty_value: bool, skip_if_missing: bool, valuetype: Option<&str>, begin: Option<usize>, end: Option<usize>, resource_id: Option<&str>, inputfile: Option<&str>, doc_num: usize) -> Result<Option<DataValue>, XmlConversionError>{
         match value {
-            toml::Value::String(template) => {  
+            toml::Value::String(template) => {
                 let context = self.context_for_node(&node, begin, end, template.as_str(), resource_id, inputfile, doc_num);
                 /*
                 if self.config.debug() {
@@ -2099,7 +2112,7 @@ impl<'a> XmlToStamConverter<'a> {
                 }
                 */
                 let compiled_template = self.template_engine.template(template.as_str()); //panics if doesn't exist, but that can't happen
-                match compiled_template.render(&context).to_string().map_err(|e| 
+                match compiled_template.render(&context).to_string().map_err(|e|
                         XmlConversionError::TemplateError(
                             format!(
                                 "whilst rendering annotationdata/map template '{}' for node '{}'.{}",
@@ -3418,11 +3431,15 @@ annotation = "TextSelector"
 base = [ "common", "text" ]
 path = "//html:h1"
 textsuffix = "\n"
+annotation = "TextSelector"
+id = "h1"
 
 [[elements]]
 base = [ "common", "text" ]
-path = "//html:h2"
+path = "//html:body//html:h2"
 textsuffix = "\n"
+annotation = "TextSelector"
+id = "h2"
 
 #Generic, will be overriden by more specific one
 [[elements]]
@@ -3544,7 +3561,7 @@ value = "proycon"
         let template_in = "{{ @foo }}";
         let template_out = conv.precompile(template_in);
         assert_eq!(template_out, "{{ ATTRIB_foo }}");
-        //foo is an attribute so is returned 
+        //foo is an attribute so is returned
         assert!(conv.variables.get(template_in).as_ref().unwrap().contains("@foo"));
         Ok(())
     }
@@ -3556,7 +3573,7 @@ value = "proycon"
         let template_in = "{{ @bar:foo }}";
         let template_out = conv.precompile(template_in);
         assert_eq!(template_out, "{{ ATTRIB_bar__foo }}");
-        //foo is an attribute so is returned 
+        //foo is an attribute so is returned
         assert!(conv.variables.get(template_in).as_ref().unwrap().contains("@bar:foo"));
         Ok(())
     }
@@ -3568,7 +3585,7 @@ value = "proycon"
         let template_in = "{{ $foo }}";
         let template_out = conv.precompile(template_in);
         assert_eq!(template_out, "{{ ELEMENT_foo }}");
-        //foo is an element so is returned 
+        //foo is an element so is returned
         assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$foo"));
         Ok(())
     }
@@ -3580,7 +3597,7 @@ value = "proycon"
         let template_in = "{{ $bar:foo }}";
         let template_out = conv.precompile(template_in);
         assert_eq!(template_out, "{{ ELEMENT_bar__foo }}");
-        //foo is an element so is returned 
+        //foo is an element so is returned
         assert!(conv.variables.get(template_in).as_ref().unwrap().contains("$bar:foo"));
         Ok(())
     }
@@ -3637,7 +3654,7 @@ value = "proycon"
         let template_in = "{% for x in @foo %}";
         let template_out = conv.precompile(template_in);
         assert_eq!(template_out, "{% for x in ATTRIB_foo %}");
-        //foo is an attribute so is returned 
+        //foo is an attribute so is returned
         assert!(conv.variables.get(template_in).as_ref().unwrap().contains("@foo"));
         Ok(())
     }
@@ -3684,7 +3701,7 @@ value = "proycon"
         from_xml_in_memory("test", XMLSMALLEXAMPLE, &config, &mut store)?;
         let res = store.resource("test").expect("resource must have been created at this point");
         assert_eq!(res.text(), "TEST\n\nThis is a test.\n", "resource text");
-        assert_eq!(store.annotations_len(), 6, "number of annotations");
+        assert_eq!(store.annotations_len(), 7, "number of annotations");
         let annotation = store.annotation("emphasis").expect("annotation must have been created at this point");
         assert_eq!(annotation.text_simple(), Some("test"));
         //eprintln!("DEBUG: {:?}",annotation.data().collect::<Vec<_>>());
@@ -3851,5 +3868,24 @@ value = "proycon"
         assert_eq!(annotation.data().filter_key(&key).value(), Some(&DataValue::String("001".to_string())));
         Ok(())
     }
+
+    #[test]
+    fn test_doubleslash_selector_root() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        assert!( store.annotation("h1").is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_doubleslash_selector_infix_none() -> Result<(), String> {
+        let config = XmlConversionConfig::from_toml_str(CONF)?.with_debug(true);
+        let mut store = stam::AnnotationStore::new(stam::Config::new());
+        from_xml_in_memory("test", XMLEXAMPLE, &config, &mut store)?;
+        assert!( store.annotation("h2").is_some());
+        Ok(())
+    }
+
 
 }
