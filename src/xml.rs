@@ -2164,9 +2164,9 @@ impl<'a> XmlToStamConverter<'a> {
     /// Extract values for metadata (no associated node), running the templating engine in case of string values
     fn extract_value_metadata<'b>(&self, value: &'a toml::Value, context: &upon::Value, allow_empty_value: bool, skip_if_missing: bool, resource_id: Option<&str>) -> Result<Option<DataValue>, XmlConversionError>{
         match value {
-            toml::Value::String(template) => {  
+            toml::Value::String(template) => {
                 let compiled_template = self.template_engine.template(template.as_str()); //panics if doesn't exist, but that can't happen
-                match compiled_template.render(&context).to_string().map_err(|e| 
+                match compiled_template.render(&context).to_string().map_err(|e|
                         XmlConversionError::TemplateError(
                             format!(
                                 "whilst rendering annotationdata/metadata template '{}' for metadata",
@@ -2195,7 +2195,7 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
             },
-            toml::Value::Table(map) => {  
+            toml::Value::Table(map) => {
                 let mut resultmap: BTreeMap<String,DataValue> = BTreeMap::new();
                 for (key, value) in map.iter() {
                     if let Some(value) = self.extract_value_metadata(value, context, false, true,  resource_id)? {
@@ -2204,7 +2204,7 @@ impl<'a> XmlToStamConverter<'a> {
                 }
                 Ok(Some(resultmap.into()))
             },
-            toml::Value::Array(list) => {  
+            toml::Value::Array(list) => {
                 let mut resultlist: Vec<DataValue> = Vec::new();
                 for value in list.iter() {
                     if let Some(value) = self.extract_value_metadata(value, context, false, true, resource_id)? {
@@ -2341,7 +2341,7 @@ impl<'a> XmlToStamConverter<'a> {
         node: &Node<'a, 'input>,
         begin: Option<usize>,
         end: Option<usize>,
-        template: &str, 
+        template: &str,
         resource: Option<&str>,
         inputfile: Option<&str>,
         doc_num: usize,
