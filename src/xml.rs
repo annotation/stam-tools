@@ -1467,7 +1467,8 @@ impl<'a> XmlToStamConverter<'a> {
                 // process all child elements
                 for child in node.children() {
                     if self.config.debug {
-                        eprintln!("[STAM fromxml]{} child {:?}", self.debugindent, child);
+                        eprintln!("[STAM fromxml]{} child {:?}", self.debugindent,child);
+                        eprintln!("[STAM fromxml]{}  cursor={} begin={} textbegin={}", self.debugindent, self.cursor, begin, textbegin);
                     }
                     if child.is_text() && element_config.text == Some(true) {
                         // extract the actual element text
@@ -1481,8 +1482,9 @@ impl<'a> XmlToStamConverter<'a> {
                             let mut all_whitespace = true;
                             leading_whitespace = innertext.chars().next().unwrap().is_whitespace();
 
-                            // any pending whitespace after this elements is 'buffered' in this boolean
+                            // any pending whitespace after this element is 'buffered' in this boolean
                             // and only written out depending on the next text's whitespace situation
+                            // it will later be assigned to self.pending_whitespace just before going next iteration
                             pending_whitespace = innertext
                                 .chars()
                                 .inspect(|c| {
@@ -1513,7 +1515,7 @@ impl<'a> XmlToStamConverter<'a> {
                             }
                         }
                         if self.pending_whitespace || leading_whitespace {
-                            //output any pending whitespace
+                            //output any pending whitespace from the previous iteration, or leading whitespace from this one
                             if !self.text.is_empty()
                                 && !self.text.chars().rev().next().unwrap().is_whitespace()
                             {
@@ -1525,7 +1527,9 @@ impl<'a> XmlToStamConverter<'a> {
                                 if firsttext && self.pending_whitespace {
                                     begin += 1;
                                     bytebegin += 1;
-                                    firsttext = false;
+                                    if self.config.debug {
+                                        eprintln!("[STAM fromxml]{}  firsttext, begin is now {}",self.debugindent, begin);
+                                    }
                                 }
                             }
                             self.pending_whitespace = false;
@@ -1552,6 +1556,9 @@ impl<'a> XmlToStamConverter<'a> {
                                 eprintln!("[STAM fromxml]{} ^- outputting text child, cursor is now {}: {}",self.debugindent, self.cursor, innertext);
                             }
                         }
+                        firsttext = self.cursor == textbegin;
+
+                        //set the pending whitespace buffer (bool) for next iteration
                         self.pending_whitespace = pending_whitespace;
                     } else if child.is_element() {
                         if self.config.debug {
