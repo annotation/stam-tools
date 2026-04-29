@@ -1,3 +1,9 @@
+# v0.15.6 - 2025-04-29
+
+* fromxml: fix in pending whitespace processing.
+
+This fixes a bug where some annotations had a missing first character.
+
 # v0.15.5 - 2025-04-14
 
 * fromxml: fixed `//` operator in XPath expressions (they only matched against something, not against nothing)
