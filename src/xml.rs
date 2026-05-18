@@ -1528,7 +1528,7 @@ impl<'a> XmlToStamConverter<'a> {
                                     begin += 1;
                                     bytebegin += 1;
                                     if self.config.debug {
-                                        eprintln!("[STAM fromxml]{}  firsttext, begin is now {}",self.debugindent, begin);
+                                        eprintln!("[STAM fromxml]{}  firsttext, begin is now {}, cursor {}",self.debugindent, begin, self.cursor);
                                     }
                                 }
                             }
@@ -1570,6 +1570,7 @@ impl<'a> XmlToStamConverter<'a> {
                         let count = elder_siblings.count(&child);
                         path.add(&child, Some(count));
                         self.extract_element_text(child, &path, whitespace, resource_id, inputfile, doc_num)?;
+                        firsttext = self.cursor == textbegin;
                         self.debugindent.pop();
                         self.debugindent.pop();
                     } else {
