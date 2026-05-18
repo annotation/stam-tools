@@ -1,18 +1,25 @@
-# v0.15.6 - 2025-04-29
+# v0.15.7 - 2026-05-18
+
+* fromxml: another fix in pending whitespace processing.
+
+This fixes another instance of the bug where some annotations had a missing first character.
+There were still some edge-cases where the previous fix didn't work.
+
+# v0.15.6 - 2026-04-29
 
 * fromxml: fix in pending whitespace processing.
 
 This fixes a bug where some annotations had a missing first character.
 
-# v0.15.5 - 2025-04-14
+# v0.15.5 - 2026-04-14
 
 * fromxml: fixed `//` operator in XPath expressions (they only matched against something, not against nothing)
 
-# v0.15.4 - 2025-04-02
+# v0.15.4 - 2026-04-02
 
 * translatetext: fixed constraints (source offset was wrong)
 
-# v0.15.3 - 2025-03-26
+# v0.15.3 - 2026-03-26
 
 * fromxml: added scopes to contrain the last marker annotation
 
