@@ -697,18 +697,34 @@ fn translate_text_helper<'store, 'a>(
                 new_text += &m.target;
 
                 if !config.no_annotations {
-                    sourceselectors.push(SelectorBuilder::TextSelector(
-                        resource.handle().into(),
-                        Offset::simple(
-                            baseoffset + charpos,
-                            baseoffset + charpos + m.source.chars().count(),
-                        ),
-                    ));
+                    let sourcelen = m.source.chars().count();
                     let targetlen = m.target.chars().count();
-                    targetselectors.push(SelectorBuilder::TextSelector(
-                        new_resource_id.clone().into(),
-                        Offset::simple(targetcharpos, targetcharpos + targetlen),
-                    ));
+                    if targetlen == 0 && sourcelen > 1 {
+                        //multichar deletion, delete each char individually (allows for matching on any prefix of the source-side in the translate step)
+                        for i in 0..sourcelen {
+                            sourceselectors.push(SelectorBuilder::TextSelector(
+                                resource.handle().into(),
+                                Offset::simple(
+                                    baseoffset + charpos + i,
+                                    baseoffset + charpos + i + 1,
+                                ),
+                            ));
+                            targetselectors.push(SelectorBuilder::TextSelector(
+                                new_resource_id.clone().into(),
+                                Offset::simple(targetcharpos, targetcharpos),
+                            ));
+                        }
+                    } else {
+                        //normal behaviour
+                        sourceselectors.push(SelectorBuilder::TextSelector(
+                            resource.handle().into(),
+                            Offset::simple(baseoffset + charpos, baseoffset + charpos + sourcelen),
+                        ));
+                        targetselectors.push(SelectorBuilder::TextSelector(
+                            new_resource_id.clone().into(),
+                            Offset::simple(targetcharpos, targetcharpos + targetlen),
+                        ));
+                    }
                     targetcharpos += targetlen;
                 }
 
