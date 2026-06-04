@@ -776,14 +776,16 @@ fn translate_text_helper<'store, 'a>(
     resourcebuilders.push(resourcebuilder);
 
     if !config.no_annotations {
+        let source_id = format!("{}.translation-source", new_resource_id.as_str());
+        let target_id = format!("{}.translation-target", new_resource_id.as_str());
         annotations.push(
             AnnotationBuilder::new()
-                .with_id(format!("{}.translation-source", new_resource_id.as_str()))
+                .with_id(source_id.as_str())
                 .with_target(SelectorBuilder::DirectionalSelector(sourceselectors)),
         );
         annotations.push(
             AnnotationBuilder::new()
-                .with_id(format!("{}.translation-target", new_resource_id.as_str()))
+                .with_id(target_id.as_str())
                 .with_target(SelectorBuilder::DirectionalSelector(targetselectors)),
         );
         annotations.push(
@@ -795,14 +797,8 @@ fn translate_text_helper<'store, 'a>(
                     DataValue::Null,
                 )
                 .with_target(SelectorBuilder::DirectionalSelector(vec![
-                    SelectorBuilder::AnnotationSelector(
-                        format!("{}.translation-source", &new_resource_id).into(),
-                        None,
-                    ),
-                    SelectorBuilder::AnnotationSelector(
-                        format!("{}.translation-target", &new_resource_id).into(),
-                        None,
-                    ),
+                    SelectorBuilder::AnnotationSelector(source_id.into(), None),
+                    SelectorBuilder::AnnotationSelector(target_id.into(), None),
                 ])),
         );
     }
