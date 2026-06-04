@@ -714,6 +714,9 @@ fn translate_text_helper<'store, 'a>(
                                 Offset::simple(targetcharpos, targetcharpos),
                             ));
                         }
+
+                        //MAYBE TODO: similar to this, we could make things more robust
+                        //by identifying if the source and target share a prefix and/or suffix and determine a segmentation based on that
                     } else {
                         //normal behaviour
                         sourceselectors.push(SelectorBuilder::TextSelector(
