@@ -767,14 +767,6 @@ fn translate_text_helper<'store, 'a>(
         return Ok(());
     }
 
-    let mut resourcebuilder = TextResourceBuilder::new()
-        .with_text(new_text)
-        .with_id(new_resource_id.clone());
-    if let Some(new_filename) = new_filename {
-        resourcebuilder = resourcebuilder.with_filename(new_filename);
-    }
-    resourcebuilders.push(resourcebuilder);
-
     if !config.no_annotations {
         let source_id = format!("{}.translation-source", new_resource_id.as_str());
         let target_id = format!("{}.translation-target", new_resource_id.as_str());
@@ -802,5 +794,13 @@ fn translate_text_helper<'store, 'a>(
                 ])),
         );
     }
+
+    let mut resourcebuilder = TextResourceBuilder::new()
+        .with_text(new_text)
+        .with_id(new_resource_id);
+    if let Some(new_filename) = new_filename {
+        resourcebuilder = resourcebuilder.with_filename(new_filename);
+    }
+    resourcebuilders.push(resourcebuilder);
     Ok(())
 }
