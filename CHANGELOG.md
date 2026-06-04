@@ -1,3 +1,9 @@
+# v0.15.8 - 2026-06-04
+
+* translatetext: fix multichar deletion, delete each char individually
+
+Allows for matching on any prefix of the source-side in a later translate step.
+
 # v0.15.7 - 2026-05-18
 
 * fromxml: another fix in pending whitespace processing.
