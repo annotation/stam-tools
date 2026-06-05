@@ -1,3 +1,8 @@
+# v0.15.9 - 2026-06-05
+
+* Updated from stam-rust v0.18.8
+* transpose/translate: major performance gain due to new pivot abstractions in stam-rust v0.18.8
+
 # v0.15.8 - 2026-06-04
 
 * translatetext: fix multichar deletion, delete each char individually
