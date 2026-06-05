@@ -50,6 +50,7 @@ pub fn transpose<'store>(
         }
         if let Some(transposition) = transposition {
             let iter = store.query(query)?;
+            let transpositionpivot = (&transposition).try_into()?;
             for resultrow in iter {
                 if let Ok(QueryResultItem::Annotation(annotation)) =
                     resultrow.get_by_name_or_last(use_var)
@@ -77,7 +78,7 @@ pub fn transpose<'store>(
                     } else {
                         config.existing_source_side = false;
                     }
-                    match annotation.transpose(&transposition, config) {
+                    match annotation.transpose(&transpositionpivot, config) {
                         Ok(results) => builders.extend(results),
                         Err(StamError::NoText(_)) => {
                             eprintln!(
