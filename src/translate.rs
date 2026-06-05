@@ -54,6 +54,7 @@ pub fn translate<'store>(
         }
         if let Some(translation) = translation {
             let iter = store.query(query)?;
+            let translationpivot: TranslationPivot<'_> = (&translation).try_into()?;
             for resultrow in iter {
                 if let Ok(QueryResultItem::Annotation(annotation)) =
                     resultrow.get_by_name_or_last(use_var)
@@ -81,7 +82,7 @@ pub fn translate<'store>(
                     } else {
                         config.existing_source_side = false;
                     }
-                    match annotation.translate(&translation, config) {
+                    match annotation.translate(&translationpivot, config) {
                         Ok(results) => builders.extend(results),
                         Err(StamError::NoText(e)) => {
                             eprintln!(
