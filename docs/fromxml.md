@@ -448,6 +448,7 @@ The following filters are implemented in the templating engine:
 * `s | noext` - Strips the extension off a filename
 * `s | starts_with: prefix` - Tests if a string starts with a given prefix (string)
 * `s | ends_with: prefix` - Tests if a string ends with a given prefix (string)
+* `s | substr: begin, end` - Returns a substring, index values are unicode points, end is exclusive. End may be set to 0 to be boundless. Negative values are allowed for end-relative offsets.
 
 Usage example:
 

@@ -1189,6 +1189,23 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("ends_with", |s: &str, suffix: &str| {
             s.ends_with(suffix)
         });
+        template_engine.add_function("substr", |s: &str, begin: isize, end: isize| {
+            let begin = if begin < 0 {
+                s.chars().count() as isize + begin
+            } else {
+                begin
+            };
+            let end = if end < 0 {
+                s.chars().count() as isize + end
+            } else {
+                end
+            };
+            if end > begin {
+                upon::Value::String(s.chars().skip(begin as usize).take((end-begin) as usize).collect())
+            } else {
+                upon::Value::String(s.chars().skip(begin as usize).take(usize::MAX).collect())
+            }
+        });
         template_engine.add_function("basename", |a: &upon::Value| match a {
             upon::Value::String(s) => upon::Value::String(s.split(|c| c == '/' || c == '\\').last().expect("splitting must work").to_string()),
             _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
