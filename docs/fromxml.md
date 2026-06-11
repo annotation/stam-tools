@@ -456,6 +456,18 @@ Usage example:
 {{ my_variable | trim }}
 ```
 
+### Map filters
+
+For some of the filters there are also *map* variants that apply a filter to each item in a list:
+
+* `map_str`
+* `map_int`
+* `map_float`
+* `map_replace`
+* `map_substr`
+* `map_basename`
+* `map_noext`
+
 ### External filters
 
 The templating language and filters therein are limited, if you need extra

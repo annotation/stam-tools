@@ -1134,35 +1134,29 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("lt", filter_lt);
         template_engine.add_function("gte", filter_gte);
         template_engine.add_function("lte", filter_lte);
-        template_engine.add_function("int", |a: &upon::Value| match a {
-            upon::Value::Integer(x) => upon::Value::Integer(*x),
-            upon::Value::Float(x) => upon::Value::Integer(*x as i64), 
-            upon::Value::String(s) => upon::Value::Integer(s.parse().expect("int filter expects an integer value")),
-            _ => panic!("int filter expects an integer value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        template_engine.add_function("int", filter_int);
+        template_engine.add_function("map_int", |list: &upon::Value| {
+            if let upon::Value::List(list) = list {
+                upon::Value::List(list.iter().map(filter_int).collect())
+            } else {
+                panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
+            }
         });
-        template_engine.add_function("float", |a: &upon::Value| match a {
-            upon::Value::Float(_) => a.clone(),
-            upon::Value::Integer(x) => upon::Value::Float(*x as f64),
-            upon::Value::String(s) => upon::Value::Float(s.parse().expect("float filter expects a float value")),
-            _ => panic!("int filter expects an integer value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        template_engine.add_function("float", filter_float);
+        template_engine.add_function("map_float", |list: &upon::Value| {
+            if let upon::Value::List(list) = list {
+                upon::Value::List(list.iter().map(filter_float).collect())
+            } else {
+                panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
+            }
         });
-        template_engine.add_function("str", |a: upon::Value| match a {
-            upon::Value::Integer(x) => upon::Value::String(format!("{}",x)),
-            upon::Value::Float(x) => upon::Value::String(format!("{}",x)),
-            upon::Value::Bool(x) => upon::Value::String(format!("{}",x)),
-            upon::Value::String(_) => a,
-            upon::Value::None => upon::Value::String(String::new()),
-            upon::Value::List(list) => { //too much cloning but it'll do for now
-                let newlist: Vec<String> = list.iter().map(|v| match v {
-                    upon::Value::String(s) => s.clone(),
-                    upon::Value::Integer(d) => format!("{}",d),
-                    upon::Value::Float(d) => format!("{}",d),
-                    upon::Value::Bool(d) => format!("{}",d),
-                    _ => String::new(),
-                }).collect();
-                upon::Value::String(newlist.join(", "))
-            },
-            _ => panic!("map to string not implemented"), //<< --^  TODO: PANIC IS WAY TO STRICT
+        template_engine.add_function("str", filter_str);
+        template_engine.add_function("map_str", |list: upon::Value| {
+            if let upon::Value::List(list) = list {
+                upon::Value::List(list.into_iter().map(filter_str).collect())
+            } else {
+                panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
+            }
         });
         template_engine.add_function("as_range", |a: i64| upon::Value::List(std::ops::Range { start: 0, end: a }.into_iter().map(|x| upon::Value::Integer(x+1)).collect::<Vec<_>>()) );
         template_engine.add_function("last", |list: &[upon::Value]| list.last().map(Clone::clone));
@@ -1183,40 +1177,42 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("replace", |s: &str, from: &str, to: &str| {
             upon::Value::String(s.replace(from,to))
         });
+        template_engine.add_function("map_replace", |list: &upon::Value, from: &str, to: &str| {
+            if let upon::Value::List(list) = list {
+                upon::Value::List(list.iter().filter_map(|s: &upon::Value| if let upon::Value::String(s) = s { Some(upon::Value::String(s.replace(from,to))) } else { None } ).collect())
+            } else {
+                panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
+            }
+        });
         template_engine.add_function("starts_with", |s: &str, prefix: &str| {
             s.starts_with(prefix)
         });
         template_engine.add_function("ends_with", |s: &str, suffix: &str| {
             s.ends_with(suffix)
         });
-        template_engine.add_function("substr", |s: &str, begin: isize, end: isize| {
-            let begin = if begin < 0 {
-                s.chars().count() as isize + begin
+        template_engine.add_function("substr", filter_substr);
+        template_engine.add_function("map_substr", |list: &upon::Value, begin: isize, end: isize| {
+            if let upon::Value::List(list) = list {
+                upon::Value::List(list.iter().filter_map(|s: &upon::Value| if let upon::Value::String(s) = s { Some(upon::Value::String(filter_substr(s, begin,end))) } else { None } ).collect())
             } else {
-                begin
-            };
-            let end = if end < 0 {
-                s.chars().count() as isize + end
-            } else {
-                end
-            };
-            if end > begin {
-                upon::Value::String(s.chars().skip(begin as usize).take((end-begin) as usize).collect())
-            } else {
-                upon::Value::String(s.chars().skip(begin as usize).take(usize::MAX).collect())
+                panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
             }
         });
-        template_engine.add_function("basename", |a: &upon::Value| match a {
-            upon::Value::String(s) => upon::Value::String(s.split(|c| c == '/' || c == '\\').last().expect("splitting must work").to_string()),
-            _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
-        });
-        template_engine.add_function("noext", |a: &upon::Value| match a {
-            upon::Value::String(s) => if let Some(pos) = s.rfind('.') {
-                s[..pos].to_string()
+        template_engine.add_function("basename", filter_basename);
+        template_engine.add_function("map_basename", |list: &upon::Value| {
+            if let upon::Value::List(list) = list {
+                upon::Value::List(list.iter().map(filter_basename).collect())
             } else {
-                s.to_string()
-            },
-            _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+                panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
+            }
+        });
+        template_engine.add_function("noext", filter_noext );
+        template_engine.add_function("map_noext", |list: &upon::Value| {
+            if let upon::Value::List(list) = list {
+                upon::Value::List(list.iter().map(|s| filter_noext(s).into()).collect())
+            } else {
+                panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
+            }
         });
         template_engine.add_function("join", |list: &upon::Value, delimiter: &str| match list {
             upon::Value::List(list) => { //too much cloning but it'll do for now
@@ -3127,6 +3123,80 @@ fn filter_div(a: &upon::Value, b: &upon::Value) -> upon::Value {
     }
 }
 
+fn filter_int(a: &upon::Value) -> upon::Value {
+    match a {
+        upon::Value::Integer(x) => upon::Value::Integer(*x),
+        upon::Value::Float(x) => upon::Value::Integer(*x as i64), 
+        upon::Value::String(s) => upon::Value::Integer(s.parse().expect("int filter expects an integer value")),
+        _ => panic!("int filter expects an integer value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
+
+fn filter_float(a: &upon::Value) -> upon::Value {
+    match a {
+        upon::Value::Float(_) => a.clone(),
+        upon::Value::Integer(x) => upon::Value::Float(*x as f64),
+        upon::Value::String(s) => upon::Value::Float(s.parse().expect("float filter expects a float value")),
+        _ => panic!("float filter expects a float value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
+
+fn filter_str(a: upon::Value) -> upon::Value {
+    match a {
+        upon::Value::Integer(x) => upon::Value::String(format!("{}",x)),
+        upon::Value::Float(x) => upon::Value::String(format!("{}",x)),
+        upon::Value::Bool(x) => upon::Value::String(format!("{}",x)),
+        upon::Value::String(_) => a,
+        upon::Value::None => upon::Value::String(String::new()),
+        upon::Value::List(list) => { //too much cloning but it'll do for now
+            let newlist: Vec<String> = list.iter().map(|v| match v {
+                upon::Value::String(s) => s.clone(),
+                upon::Value::Integer(d) => format!("{}",d),
+                upon::Value::Float(d) => format!("{}",d),
+                upon::Value::Bool(d) => format!("{}",d),
+                _ => String::new(),
+            }).collect();
+            upon::Value::String(newlist.join(", "))
+        },
+        _ => panic!("map to string not implemented"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
+
+fn filter_substr(s: &str, begin: isize, end: isize) -> String {
+    let begin = if begin < 0 {
+        s.chars().count() as isize + begin
+    } else {
+        begin
+    };
+    let end = if end < 0 {
+        s.chars().count() as isize + end
+    } else {
+        end
+    };
+    if end > begin {
+        s.chars().skip(begin as usize).take((end-begin) as usize).collect()
+    } else {
+        s.chars().skip(begin as usize).take(usize::MAX).collect()
+    }
+}
+
+fn filter_basename(a: &upon::Value) -> upon::Value {
+    match a {
+        upon::Value::String(s) => upon::Value::String(s.split(|c| c == '/' || c == '\\').last().expect("splitting must work").to_string()),
+        _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
+
+fn filter_noext(a: &upon::Value) -> String {
+    match a {
+        upon::Value::String(s) => if let Some(pos) = s.rfind('.') {
+            s[..pos].to_string()
+        } else {
+            s.to_string()
+        },
+        _ => panic!("basename filter expects a string value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
 
 /// Map value between toml and upon. This makes a clone.
 fn map_value(value: &toml::Value) -> upon::Value {
