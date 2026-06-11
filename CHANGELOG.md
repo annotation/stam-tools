@@ -1,3 +1,7 @@
+# v0.15.10 - 2026-06-11
+
+* fromxml: added ``map_*`` filters and substr filter
+
 # v0.15.9 - 2026-06-05
 
 * Updated from stam-rust v0.18.8
