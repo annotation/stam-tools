@@ -526,18 +526,28 @@ impl XPathExpression {
     }
 
     /// matches a node path against an XPath-like expression
+    /// The refiter is from the configuration, pathiter from the document. These paths are matched against eachother.
     fn test_withiter<'a, 'b>(&self, mut refiter: impl Iterator<Item=(Option<&'a str>, &'a str, Option<&'a str>)> + Clone, mut pathiter: impl Iterator<Item=&'a NodePathComponent<'a, 'b>> + Clone, mut node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
         while let Some((refns, refname, condition)) = refiter.next() {
             if refns.is_none() && refname == "" && condition.is_none() {
-                // This is a `//` selector, we bifurcate here so we match both in case SOMETHING matches as well as when NOTHING matches, the recursion covers the latter logic route
+                // This is a `//` selector (empty refname/ns/condition), we bifurcate here so we match both in case SOMETHING matches as well as when NOTHING matches, the recursion covers the latter logic route
                 if self.test_withiter(refiter.clone(), pathiter.clone(), node, config) {
                     return true;
                 }
+                // Bifurcate again for every possible component in the document path (as // is greedy and can match all) !
+                let mut pathiter2 = pathiter.clone();
+                while let Some(_) = pathiter2.next() {
+                    if self.test_withiter(refiter.clone(), pathiter2.clone(), node, config) {
+                        return true;
+                    }
+                }
             }
             if let Some(component) = pathiter.next() {
-                /*if config.debug() {
+                /*
+                if config.debug() {
                     eprintln!("[STAM fromxml]          testing component {:?} against refns={:?} refname={} condition={:?}", component, refns, refname, condition);
-                }*/
+                }
+                */
                 if refname != "" && refname != "*" {
                     if refns.is_none() != component.namespace.is_none() || component.namespace != refns || refname != component.tagname {
                         return false;
@@ -557,9 +567,11 @@ impl XPathExpression {
                 }
             }
         }
-        /* if config.debug() {
+        /*
+        if config.debug() {
             eprintln!("[STAM fromxml]          match");
-        }*/
+        }
+        */
         true
     }
 
