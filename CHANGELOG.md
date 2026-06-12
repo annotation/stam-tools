@@ -1,3 +1,7 @@
+# v0.15.11 - 2026-06-11
+
+* fromxml: further fix for // operator in XPath expressions
+
 # v0.15.10 - 2026-06-11
 
 * fromxml: added ``map_*`` filters and substr filter
