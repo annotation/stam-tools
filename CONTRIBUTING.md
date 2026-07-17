@@ -3,8 +3,7 @@
 We are a free software project and welcome contributions! These can take various forms:
 
 * If you find a bug or have a feature request, please report it on our issue tracker. Please first verify if the issue has not already been reported.
-    * **Note:** This project is moving away from GitHub so the
-issue tracker at GitHub is the *least preferred* option. Use the one at Codeberg (preferred for general public) or our own Gitlab instance (preferred for KNAW internal and partners) instead.
+    * **Note:** This project is moving away from GitHub so the issue tracker at GitHub is the *least preferred* option. Use the one at Codeberg (preferred for general public) or our own Gitlab instance (preferred for KNAW internal and partners) instead.
 * If you can implement a fix or feature yourself, this is much appreciated. Patches can be submitted via a pull request or via `git send-email`.
 * Or just tell others about this software! Feel free to share blog posts or videos about it, no need to ask permission.
 
@@ -25,7 +24,7 @@ If you plan a significant or possibly controversial contribution, it may be best
 ## Releases
 
 * The release notes for every release should be logged in `CHANGELOG.md`.
-* We follow semantic versioning (major.minor.revision), each release is git tagged with a version number starting with v.
+* We follow semantic versioning (major.minor.revision), each release is git tagged with a version number prefixed with a v.
 
 ## Issue Guidelines
 
@@ -39,7 +38,7 @@ If you plan a significant or possibly controversial contribution, it may be best
 * Adhere to the existing code style as much as possible (even if
   it may not be explicitly articulated)
 * Do not mix spaces and tabs for indentation, follow the existing style (which may differ per language).
-* Document your code in and alongside your code where applicable. API references will be automatically from these where possible.
+* Document your code in and alongside your code where applicable. API references will be automatically generated from these where possible.
 
 ## AI policy
 
