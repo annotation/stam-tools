@@ -1135,7 +1135,12 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("capitalize", filter_capitalize);
         template_engine.add_function("lower", str::to_lowercase);
         template_engine.add_function("upper", str::to_uppercase);
-        template_engine.add_function("trim", |s: &str| s.trim().to_string() );
+        template_engine.add_function("trim", |s: &upon::Value| match s {
+            upon::Value::String(s) => s.trim().to_string(),
+            upon::Value::Integer(i) => format!("{}",i),
+            upon::Value::Float(f) => format!("{}",f),
+            _ => String::new(),
+        });
         template_engine.add_function("add", filter_add);
         template_engine.add_function("sub", filter_sub);
         template_engine.add_function("mul", filter_mul);
@@ -1186,8 +1191,22 @@ impl<'a> XmlToStamConverter<'a> {
                 )
                 .collect::<Vec<upon::Value>>())
         });
-        template_engine.add_function("replace", |s: &str, from: &str, to: &str| {
-            upon::Value::String(s.replace(from,to))
+        template_engine.add_function("replace", |s: &upon::Value, from: &str, to: &str| {
+            match s {
+                upon::Value::String(s) => upon::Value::String(s.replace(from,to)),
+                upon::Value::Integer(i) => {
+                    let s = format!("{}",i);
+                    upon::Value::String(s.replace(from,to))
+                },
+                upon::Value::Float(i) => {
+                    let s = format!("{}",i);
+                    upon::Value::String(s.replace(from,to))
+                }
+                _ => {
+                    //empty string in other cases, especially important in case of None (this happens if the ?. operator is used)
+                    upon::Value::String(String::new())
+                }
+            }
         });
         template_engine.add_function("map_replace", |list: &upon::Value, from: &str, to: &str| {
             if let upon::Value::List(list) = list {
@@ -1196,16 +1215,24 @@ impl<'a> XmlToStamConverter<'a> {
                 panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
             }
         });
-        template_engine.add_function("starts_with", |s: &str, prefix: &str| {
-            s.starts_with(prefix)
+        template_engine.add_function("starts_with", |s: &upon::Value, prefix: &str| {
+            if let upon::Value::String(s) = s {
+                s.starts_with(prefix)
+            } else {
+                false
+            }
         });
-        template_engine.add_function("ends_with", |s: &str, suffix: &str| {
-            s.ends_with(suffix)
+        template_engine.add_function("ends_with", |s: &upon::Value, suffix: &str| {
+            if let upon::Value::String(s) = s {
+                s.ends_with(suffix)
+            } else {
+                false
+            }
         });
         template_engine.add_function("substr", filter_substr);
         template_engine.add_function("map_substr", |list: &upon::Value, begin: isize, end: isize| {
             if let upon::Value::List(list) = list {
-                upon::Value::List(list.iter().filter_map(|s: &upon::Value| if let upon::Value::String(s) = s { Some(upon::Value::String(filter_substr(s, begin,end))) } else { None } ).collect())
+                upon::Value::List(list.iter().map(|s: &upon::Value| upon::Value::String(filter_substr(s, begin,end)) ).collect())
             } else {
                 panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
             }
@@ -3174,21 +3201,25 @@ fn filter_str(a: upon::Value) -> upon::Value {
     }
 }
 
-fn filter_substr(s: &str, begin: isize, end: isize) -> String {
-    let begin = if begin < 0 {
-        s.chars().count() as isize + begin
+fn filter_substr(s: &upon::Value, begin: isize, end: isize) -> String {
+    if let upon::Value::String(s) = s {
+        let begin = if begin < 0 {
+            s.chars().count() as isize + begin
+        } else {
+            begin
+        };
+        let end = if end < 0 {
+            s.chars().count() as isize + end
+        } else {
+            end
+        };
+        if end > begin {
+            s.chars().skip(begin as usize).take((end-begin) as usize).collect()
+        } else {
+            s.chars().skip(begin as usize).take(usize::MAX).collect()
+        }
     } else {
-        begin
-    };
-    let end = if end < 0 {
-        s.chars().count() as isize + end
-    } else {
-        end
-    };
-    if end > begin {
-        s.chars().skip(begin as usize).take((end-begin) as usize).collect()
-    } else {
-        s.chars().skip(begin as usize).take(usize::MAX).collect()
+        String::new()
     }
 }
 
