@@ -1,3 +1,10 @@
+# v0.15.12 - 2026-08-13
+
+* fromxml: make string filters a bit more forgiving to other-typed values
+
+This is needed so they can be used with the ``?.`` operator, which resolves
+to None if a field does not exist
+
 # v0.15.11 - 2026-06-11
 
 * fromxml: further fix for // operator in XPath expressions
