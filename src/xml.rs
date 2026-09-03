@@ -1152,6 +1152,9 @@ impl<'a> XmlToStamConverter<'a> {
         template_engine.add_function("gte", filter_gte);
         template_engine.add_function("lte", filter_lte);
         template_engine.add_function("int", filter_int);
+        template_engine.add_function("round", filter_round);
+        template_engine.add_function("ceil", filter_ceil);
+        template_engine.add_function("floor", filter_floor);
         template_engine.add_function("map_int", |list: &upon::Value| {
             if let upon::Value::List(list) = list {
                 upon::Value::List(list.iter().map(filter_int).collect())
@@ -3177,6 +3180,42 @@ fn filter_float(a: &upon::Value) -> upon::Value {
         upon::Value::Integer(x) => upon::Value::Float(*x as f64),
         upon::Value::String(s) => upon::Value::Float(s.parse().expect("float filter expects a float value")),
         _ => panic!("float filter expects a float value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
+
+fn filter_round(a: &upon::Value) -> upon::Value {
+    match a {
+        upon::Value::Integer(x) => upon::Value::Integer(*x),
+        upon::Value::Float(x) => upon::Value::Integer(x.round() as i64),
+        upon::Value::String(s) => {
+            let f: f64 = s.parse().expect("round filter expects a float value");
+            upon::Value::Integer(f.round() as i64)
+        }
+        _ => panic!("round filter expects a float value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
+
+fn filter_ceil(a: &upon::Value) -> upon::Value {
+    match a {
+        upon::Value::Integer(x) => upon::Value::Integer(*x),
+        upon::Value::Float(x) => upon::Value::Integer(x.ceil() as i64),
+        upon::Value::String(s) => {
+            let f: f64 = s.parse().expect("round filter expects a float value");
+            upon::Value::Integer(f.ceil() as i64)
+        }
+        _ => panic!("ceil filter expects a float value"), //<< --^  TODO: PANIC IS WAY TO STRICT
+    }
+}
+
+fn filter_floor(a: &upon::Value) -> upon::Value {
+    match a {
+        upon::Value::Integer(x) => upon::Value::Integer(*x),
+        upon::Value::Float(x) => upon::Value::Integer(x.floor() as i64),
+        upon::Value::String(s) => {
+            let f: f64 = s.parse().expect("round filter expects a float value");
+            upon::Value::Integer(f.floor() as i64)
+        }
+        _ => panic!("ceil filter expects a float value"), //<< --^  TODO: PANIC IS WAY TO STRICT
     }
 }
 
