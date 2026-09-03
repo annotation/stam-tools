@@ -437,6 +437,9 @@ The following filters are implemented in the templating engine:
 * `x | lte: y` - less than or equal for integers
 * `x | int` - Converts a value (string, float) to an integer
 * `x | float` - Converts a value (string, integer) to a float
+* `x | round` - Rounds a value (float), produces an integer
+* `x | ceil` - Gives the ceiling of a value (float), produces an integer
+* `x | floor` - Gives the floor of a value (float), produces an integer
 * `x | str` - Converts a value (int, float, bool, list) to an string
 * `x | as_range` - Converts an integer to a range of integers (starting with 1, ending with the number)
 * `x | add: y` - addition (integers)
