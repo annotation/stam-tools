@@ -1,3 +1,7 @@
+# v0.15.13 - 2026-09-03
+
+* fromxml: added round, ceil, floor filters (converting float -> integer)
+
 # v0.15.12 - 2026-08-13
 
 * fromxml: make string filters a bit more forgiving to other-typed values
