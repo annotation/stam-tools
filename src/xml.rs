@@ -67,7 +67,7 @@ pub struct XmlConversionConfig {
 
     #[serde(default)]
     /// Add provenance information pointing each annotation to the appropriate node in the XML source files where it came from (translates into XPathSelector in Web Annotation output)
-    provenance: bool,
+    provenance: Provenance,
 
     #[serde(default)]
     external_filters: Vec<ExternalFilter>,
@@ -90,7 +90,7 @@ impl XmlConversionConfig {
             inject_dtd: None,
             id_prefix: None,
             id_strip_suffix: Vec::new(),
-            provenance: false,
+            provenance: Provenance::None,
             external_filters: Vec::new(),
             debug: false,
         }
@@ -138,7 +138,7 @@ impl XmlConversionConfig {
     }
 
     /// Add provenance information pointing each annotation to the appropriate node in the XML source files where it came from (translates into XPathSelector in Web Annotation output)
-    pub fn with_provenance(mut self, value: bool) -> Self {
+    pub fn with_provenance(mut self, value: Provenance) -> Self {
         self.provenance = value;
         self
     }
@@ -219,6 +219,7 @@ pub enum XmlWhitespaceHandling {
     Collapse,
 }
 
+
 impl Default for XmlWhitespaceHandling {
     fn default() -> Self {
         XmlWhitespaceHandling::Unspecified
@@ -228,6 +229,36 @@ impl Default for XmlWhitespaceHandling {
 impl XmlWhitespaceHandling {
     fn collapse() -> Self {
         XmlWhitespaceHandling::Collapse
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub enum Provenance {
+    /// Do not include provenance targets
+    None,
+
+    /// Prefer linking to the ID only if present, full XPath only as fallback
+    Concise,
+
+    /// Always output the full XPath
+    FullPath,
+}
+
+impl TryFrom<&str> for Provenance {
+    type Error = &'static str;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "none" | "None" => Ok(Self::None),
+            "Concise" | "concise" => Ok(Self::Concise),
+            "FullPath" | "fullpath" | "full" => Ok(Self::FullPath),
+            _ => Err("Provenance must be one of: none, concise or fullpath")
+        }
+    }
+}
+
+impl Default for Provenance {
+    fn default() -> Self {
+        Self::None
     }
 }
 
@@ -1906,10 +1937,15 @@ impl<'a> XmlToStamConverter<'a> {
                 builder = self.add_annotationdata_to_builder(element_config.annotationdata.iter(), builder, node.clone(), begin, end, resource_id, inputfile, doc_num)?;
 
 
-                if self.config.provenance  && inputfile.is_some() {
+                if self.config.provenance != Provenance::None && inputfile.is_some() {
                     let path_string = if let Some(id) = node.attribute((NS_XML,"id")) {
-                        //node has an ID, use that
-                        format!("//{}[@xml:id=\"{}\"]", self.get_node_name_for_xpath(&node), id)
+                        if self.config.provenance != Provenance::FullPath {
+                            //node has an ID, use that
+                            format!("//{}[@xml:id=\"{}\"]", self.get_node_name_for_xpath(&node), id)
+                        } else {
+                            //use full XPath expression by request (we merge this and the next else clause in rust 2024 but this suffices for now without forcing an edition upgrade)
+                            path.format_as_xpath(&self.prefixes)
+                        }
                     } else {
                         //no ID, use full XPath expression
                         path.format_as_xpath(&self.prefixes)

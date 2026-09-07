@@ -839,7 +839,8 @@ fn xml_arguments<'a>() -> Vec<clap::Arg<'a>> {
     args.push(
         Arg::with_name("provenance")
             .long("provenance")
-            .help("Add provenance information by pointing back to the XML source files using W3C Web Annotation's XPathSelector"),
+            .takes_value(true)
+            .help("Add provenance information by pointing back to the XML source files using W3C Web Annotation's XPathSelector. Takes a value `Concise` (will refer by xml:id if found) or `FullPath` (will always refer using full XPath)"),
     );
     args.push(
         Arg::with_name("id-prefix")
@@ -2170,7 +2171,11 @@ fn run<W: Write>(
                 )
             })?
             .with_debug(args.is_present("debug") || args.is_present("debug-xml"))
-            .with_provenance(args.is_present("provenance"));
+            .with_provenance(
+                args.value_of("provenance")
+                    .map(|x| x.try_into().expect("invalid value for provenance"))
+                    .unwrap_or_default(),
+            );
         if let Some(prefix) = args.value_of("id-prefix") {
             config = config.with_id_prefix(prefix);
         }
