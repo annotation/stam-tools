@@ -1,6 +1,10 @@
 # v0.15.14 - 2026-09-07
 
 * Updated to stam-rust v0.18.9
+* fromxml: `--provenance` argument takes a value now:
+    provenance is one of None, Concise or FullPath , default None.
+    Concise links to xml:id if present, full XPath only as fallback
+    FullPath output a full XPath selector in all cases.
 
 # v0.15.13 - 2026-09-03
 
