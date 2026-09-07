@@ -1,3 +1,7 @@
+# v0.15.14 - 2026-09-07
+
+* Updated to stam-rust v0.18.9
+
 # v0.15.13 - 2026-09-03
 
 * fromxml: added round, ceil, floor filters (converting float -> integer)
