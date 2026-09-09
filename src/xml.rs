@@ -1952,6 +1952,7 @@ impl<'a> XmlToStamConverter<'a> {
                     };
                     let databuilder = AnnotationDataBuilder::new().with_dataset(CONTEXT_ANNO.into()).with_key("target".into()).with_value(
                         BTreeMap::from([
+                            ("type".to_string(),"Text".into()),
                             ("source".to_string(),inputfile.unwrap().into()),
                             ("selector".to_string(),
                                     BTreeMap::from([
