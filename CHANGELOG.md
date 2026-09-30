@@ -1,3 +1,8 @@
+# v0.15.15 - 2026-09-30
+
+* fromxml: Output target type Text when XPathSelector is produced
+* fromxml: added contains filter
+
 # v0.15.14 - 2026-09-07
 
 * Updated to stam-rust v0.18.9
