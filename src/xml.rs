@@ -1271,6 +1271,15 @@ impl<'a> XmlToStamConverter<'a> {
                 panic!("map_* filters expect a list as value") //<< --^  TODO: PANIC IS WAY TO STRICT
             }
         });
+        template_engine.add_function("contains", |haystack: &upon::Value, needle: &upon::Value| {
+            if let upon::Value::List(list) = haystack {
+                list.contains(needle)
+            } else if let (upon::Value::String(s), upon::Value::String(needle)) = (haystack, needle) {
+                s.contains(needle)
+            } else {
+                panic!("contains takes a string and a substring or a list and a string/int/float") //<< --^  TODO: PANIC IS WAY TO STRICT
+            }
+        });
         template_engine.add_function("basename", filter_basename);
         template_engine.add_function("map_basename", |list: &upon::Value| {
             if let upon::Value::List(list) = list {
