@@ -1,16 +1,15 @@
 <p align="center">
-    <img src="https://github.com/annotation/stam/raw/master/logo.png" alt="stam logo" width="320" />
+    <img src="logo.png" alt="stam logo" width="320" />
 </p>
 
 [![Crate](https://img.shields.io/crates/v/stam-tools.svg)](https://crates.io/crates/stam-tools)
 [![Docs](https://docs.rs/stam-tools/badge.svg)](https://docs.rs/stam-tools/)
-[![GitHub release](https://img.shields.io/github/release/annotation/stam-tools.svg)](https://GitHub.com/annotation/stam-tools/releases/)
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 ![Technology Readiness Level 8/9 - Complete - Technology complete and qualified, released for all end-users in scholarly environments.](https://w3id.org/research-technology-readiness-levels/Level8Complete.svg)
 
 # STAM Tools
 
-A collection of command-line tools for working with [STAM](https://github.com/annotation/stam), a data-model for stand-off annotations on text.
+A collection of command-line tools for working with [STAM](https://proycon.codeberg.page/stam), a data-model for stand-off annotations on text.
 
 Various tools are grouped under the `stam` tool, and invoked with a subcommand:
 
@@ -62,7 +61,7 @@ reusing the first input file by setting an explicit output using `--output`.
 Instead of passing STAM JSON files, you can read from stdin and/or output to
 stdout by setting the filename to ``-``, this works in many places.
 
-These tools also support reading and writing [STAM CSV](https://github.com/annotation/stam/tree/master/extensions/stam-csv).
+These tools also support reading and writing [STAM CSV](https://proycon.codeberg.page/stam/specs/extensions/stam-csv/).
 
 ## Tools
 
@@ -105,7 +104,7 @@ STAM CSV. Example:
 $ stam init --output merged.store.stam.csv mystore1.store.stam.json mystore2.store.stam.json
 ```
 
-You can also pass [STAMQL](https://github.com/annotation/stam/blob/master/extensions/stam-query/README.md) queries
+You can also pass [STAMQL](https://proycon.codeberg.page/stam/specs/extensions/stam-query/) queries
 to `stam annotate` to add (or delete) annotations:
 
 ```
@@ -156,7 +155,7 @@ See ``stam query --help`` for a list of supported columns.
 
 A full query is done using the ``--query`` parameter and subsequently a query
 statement in [the STAM Query Language
-(STAMQL)](https://github.com/annotation/stam/blob/master/extensions/stam-query/README.md):
+(STAMQL)](https://proycon.codeberg.page/stam/specs/extensions/stam-query/):
 
 *Example 1) a query in STAMQL:*
 
@@ -335,7 +334,7 @@ to standard output (the document does not reference any external assets). An
 alternative visualisation is text with ANSI escape codes for colours (`--format
 ansi`), which is suited for display in a terminal rather than a browser. The
 annotations you want to visualise are requested via queries in
-[STAMQL](https://github.com/annotation/stam/tree/master/extensions/stam-query),
+[STAMQL](https://proycon.codeberg.page/stam/specs/extensions/stam-query/),
 using the `--query` parameter.
 
 The first query you have may contains *subqueries* which act as *highlight queries*.
@@ -352,11 +351,11 @@ Instead of specifying subqueries, you may use the `--query` parameter multiple
 times to define subqueries via the command line. Always make sure these
 reference a variable defines in the main query.
 
-![STAM view example](https://github.com/annotation/stam-tools/raw/master/stamvis1.png)
+![STAM view example](stamvis1.png)
 
 Example with tags: 
 
-![STAM view example with tags](https://github.com/annotation/stam-tools/raw/master/stamvis2.png)
+![STAM view example with tags](stamvis2.png)
 
 Tags can be enabled by prepending the query/subquery (i.e. before `SELECT`) with one of the following *attributes*:
 
@@ -386,7 +385,7 @@ Various real examples of visualisation and queries are shown here: <https://gith
 
 Example of ANSI output rather than HTML, using `--format ansi`:
 
-![STAM view example on the terminal with ANSI colours](https://github.com/annotation/stam-tools/raw/master/stamvis6.jpg)
+![STAM view example on the terminal with ANSI colours](stamvis6.jpg)
 
 ### stam align
 
@@ -400,7 +399,7 @@ The score parameters to either are fully configurable.
 
 The resulting alignment is added as an annotation, a so called transposition,
 according to the [STAM
-Transpose](https://github.com/annotation/stam/tree/master/extensions/stam-transpose)
+Transpose](https://proycon.codeberg.page/stam/specs/extensions/stam-transpose/)
 extension.
 
 This tool allows the alignment of any two text selections, which are passed via
@@ -434,7 +433,7 @@ and an extra final column with all annotations ID underlying the transposition
 If you do not just want to align exact matches, you can specify ``--grow`` to
 grow the alignments into larger blocks by incorporating non-matching parts. The
 resulting alignments will then be
-[translations](https://github.com/annotation/stam/tree/master/extensions/stam-translate)
+[translations](https://proycon.codeberg.page/stam/specs/extensions/stam-translate/)
 rather than transpositions. The ``--max-errors`` parameter determines the
 maximum number of the number of characters in the search string that may be
 missed when matching in the larger text. 
@@ -499,7 +498,7 @@ Instead of passing full queries, you can also pass resources or datasets directl
 
 Transpose annotations over a transposition pivot (annotation), effectively
 mapping them from one coordinate system to another (See the [STAM
-Transpose](https://github.com/annotation/stam/tree/master/extensions/stam-transpose)
+Transpose](https://proycon.codeberg.page/stam/specs/extensions/stam-transpose/)
 specification). The actual parts of the text that are covered by transpositions
 is the same in both/all text resources. (see `stam translate` if you want to
 relate parts of texts that are different).
@@ -518,7 +517,7 @@ them) will be added to the store.")
 
 Translate annotations over a translation pivot (annotation), effectively
 mapping them from one coordinate system to another (See the [STAM
-Translate](https://github.com/annotation/stam/tree/master/extensions/stam-translate)
+Translate](https://proycon.codeberg.page/stam/specs/extensions/stam-translate/)
 specification). The actual parts of the text that are covered by translations
 can be different in both/all text resources. (see `stam transpose` if you only want to
 relate parts of texts that are the same).
@@ -542,7 +541,7 @@ Notes:
 
 Translates one text to another by following translation rules from a
 configuration file. This will produce [Translation
-annotations](https://github.com/annotation/stam/tree/master/extensions/stam-translate)
+annotations](https://proycon.codeberg.page/stam/specs/extensions/stam-translate/)
 that relate the two texts and enables translation of further/future
 annotations (via `stam translate`).
 
