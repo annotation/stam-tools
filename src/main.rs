@@ -566,7 +566,7 @@ fn transpose_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("transposition")
             .short('T')
             .help("A query in STAMQL to retrieve the transposition pivot annotation, or just the exact transposition ID. See
-                https://github.com/annotation/stam/tree/master/extensions/stam-query for an
+                https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an
                 explanation of the query language's syntax. The query should produce only one result (if
                 not only the first is taken). Use may use one --transposition parameter for each --query parameter (in the same order).
                 If this parameter is not specified at all, the first transposition that can be found in your model will be used by default.")
@@ -632,7 +632,7 @@ fn translate_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("translation")
             .short('T')
             .help("A query in STAMQL to retrieve the translation pivot annotation, or just the exact translation ID. See
-                https://github.com/annotation/stam/tree/master/extensions/stam-query for an
+                https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an
                 explanation of the query language's syntax. The query should produce only one result (if
                 not only the first is taken). Use may use one --translation parameter for each --query parameter (in the same order).
                 If this parameter is not specified at all, the first translation that can be found in your model will be used by default.
@@ -705,7 +705,7 @@ fn translatetext_arguments<'a>() -> Vec<clap::Arg<'a>> {
             .long("query")
             .short('q')
             .help("A query in STAMQL to select text resources or text selections to translate. See
-                https://github.com/annotation/stam/tree/master/extensions/stam-query for an
+                https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an
                 explanation of the query language's syntax. The query may produce multiple results. If no resource arguments are specified at all, then all text resources will be taken for text translation.")
             .action(ArgAction::Append)
             .takes_value(true),
@@ -1002,7 +1002,7 @@ fn app<'a>(batchmode: bool) -> App<'a> {
                 .args(&tsv_arguments_out())
                 .args(&w3anno_arguments())
                 .args(&query_arguments("
-A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
+A query in STAMQL. See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
 "))
         )
         .subcommand(
@@ -1031,7 +1031,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
                 .args(&tsv_arguments_out())
                 .args(&w3anno_arguments())
                 .args(&query_arguments("
-A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
+A query in STAMQL. See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax. Only one query (with possible subqueries) is allowed.
 "))
         )
         .subcommand(
@@ -1087,7 +1087,7 @@ A query in STAMQL. See https://github.com/annotation/stam/tree/master/extensions
                 .args(&common_arguments())
                 .args(&store_arguments(true, false, batchmode))
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL that defines what to visualise. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. The query can have subqueries which will be marked as highlights. Alternative, you can specify no subqueries and specify multiple --query parameters on the command line. They will be automatically converted to subqueries of the first query. The first/main query is the primary selection and determines what text is shown. Highlight queries (subqueries) determine what parts inside this text are highlighted.
+                .args(&query_arguments("A query in STAMQL that defines what to visualise. See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax. The query can have subqueries which will be marked as highlights. Alternative, you can specify no subqueries and specify multiple --query parameters on the command line. They will be automatically converted to subqueries of the first query. The first/main query is the primary selection and determines what text is shown. Highlight queries (subqueries) determine what parts inside this text are highlighted.
 
 You can prepend the following *attributes* to `DATA` constraints in the query (in a `WHERE` clause before `DATA`), to determine how things are visualised:
 
@@ -1142,7 +1142,7 @@ If no attributes are provided, there will be no tags shown for that query, only 
                 .args(&store_arguments(true,true, batchmode))
                 .args(&annotate_arguments())
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL to ADD or DELETE items. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. ")),
+                .args(&query_arguments("A query in STAMQL to ADD or DELETE items. See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax. ")),
         )
         .subcommand(
             SubCommand::with_name("annotate")
@@ -1152,7 +1152,7 @@ If no attributes are provided, there will be no tags shown for that query, only 
                 .args(&annotate_arguments())
                 .args(&common_arguments())
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL to ADD or DELETE items. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. ")),
+                .args(&query_arguments("A query in STAMQL to ADD or DELETE items. See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax. ")),
         )
         .subcommand(
             SubCommand::with_name("tag")
@@ -1215,31 +1215,31 @@ returned, in that case anything else is considered context and will not be retur
                 ))
         .subcommand(
             SubCommand::with_name("align")
-                .about("Aligns two (or more) texts; computes a transposition annotation that maps the two (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose) and adds it to the store. The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters. In --verbose mode, the alignments will be outputted to standard output as tab separated values with the follows columns: resource 1, offset 1, resource 2, offset 2, text 1, text 2")
+                .about("Aligns two (or more) texts; computes a transposition annotation that maps the two (See https://proycon.codeberg.page/stam/specs/extensions/stam-transpose/) and adds it to the store. The texts are retrieved from the first two queries (--query) or (as a shortcut) from the first two --resource parameters. In --verbose mode, the alignments will be outputted to standard output as tab separated values with the follows columns: resource 1, offset 1, resource 2, offset 2, text 1, text 2")
                 .args(&common_arguments())
                 .args(&store_arguments(true,true, batchmode))
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL to retrieve a text. See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. 
+                .args(&query_arguments("A query in STAMQL to retrieve a text. See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax. 
 You need to specify this parameter twice, the text of first query will be aligned with text of the second one. If specified more than twice, each text will be aligned (independently) with the first one"))
                 .args(&align_arguments())
             )
         .subcommand(
             SubCommand::with_name("transpose")
-                .about("Transpose annotations over a transposition pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-transpose). Queries correspond to the input annotations to transpose via the transposition pivot (--transposition). The new transposed annotations (and the transpositions that produced them) will be added to the store.")
+                .about("Transpose annotations over a transposition pivot (annotation), effectively mapping them from one coordinate system to another (See https://proycon.codeberg.page/stam/specs/extensions/stam-transpose/). Queries correspond to the input annotations to transpose via the transposition pivot (--transposition). The new transposed annotations (and the transpositions that produced them) will be added to the store.")
                 .args(&common_arguments())
                 .args(&store_arguments(true,true, batchmode))
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
+                .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax.
 The first query should retrieve the transposition annotation to transpose over, it should produce only one result. Subsequent queries are the annotations to transpose."))
                 .args(&transpose_arguments())
             )
         .subcommand(
             SubCommand::with_name("translate")
-                .about("Translate annotations over a translation pivot (annotation), effectively mapping them from one coordinate system to another (See https://github.com/annotation/stam/tree/master/extensions/stam-translate). Queries correspond to the input annotations to translate via that translation pivot (--translation). The new translated annotations (and the translations that produced them) will be added to the store.")
+                .about("Translate annotations over a translation pivot (annotation), effectively mapping them from one coordinate system to another (See https://proycon.codeberg.page/stam/specs/extensions/stam-translate/). Queries correspond to the input annotations to translate via that translation pivot (--translation). The new translated annotations (and the translations that produced them) will be added to the store.")
                 .args(&common_arguments())
                 .args(&store_arguments(true,true, batchmode))
                 .args(&config_arguments())
-                .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax.
+                .args(&query_arguments("A query in STAMQL to retrieve annotation(s). See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax.
 The first query should retrieve the translation annotation to translate over, it should produce only one result. Subsequent queries are the annotations to translate."))
                 .args(&translate_arguments())
             )
@@ -1259,7 +1259,7 @@ The first query should retrieve the translation annotation to translate over, it
                 .args(&store_arguments(true,true, batchmode))
                 .args(&config_arguments())
                 .args(&split_arguments())
-                .args(&query_arguments("A query in STAMQL with the items to --keep or --remove. Use ?split as variable name if you use subqueries (otherwise the last/deepest variable is taken). See https://github.com/annotation/stam/tree/master/extensions/stam-query for an explanation of the query language's syntax. Multiple queries are allowed."))
+                .args(&query_arguments("A query in STAMQL with the items to --keep or --remove. Use ?split as variable name if you use subqueries (otherwise the last/deepest variable is taken). See https://proycon.codeberg.page/stam/specs/extensions/stam-query/ for an explanation of the query language's syntax. Multiple queries are allowed."))
         )
 }
 
