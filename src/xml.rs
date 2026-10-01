@@ -1334,7 +1334,24 @@ impl<'a> XmlToStamConverter<'a> {
 
     fn add_external_filters(&mut self) {
         for filter in self.config.external_filters.clone() {
-            self.template_engine.add_function(filter.name.clone(), move |value: &upon::Value| filter.run(value)  );
+            match filter.argcount {
+                0  => self.template_engine.add_function(filter.name.clone(), move |value: &upon::Value| filter.run(value, Vec::new())  ),
+                1  => self.template_engine.add_function(filter.name.clone(), move |value: &upon::Value, arg1: String| {
+                    filter.run(value, vec![arg1])
+                }),
+                2 => self.template_engine.add_function(filter.name.clone(), move |value: &upon::Value, arg1: String, arg2: String| {
+                    filter.run(value, vec![arg1,arg2])
+                }),
+                3 => self.template_engine.add_function(filter.name.clone(), move |value: &upon::Value, arg1: String, arg2: String, arg3: String| {
+                    filter.run(value, vec![arg1,arg2,arg3])
+                }),
+                4 => self.template_engine.add_function(filter.name.clone(), move |value: &upon::Value, arg1: String, arg2: String, arg3: String, arg4: String| {
+                    filter.run(value, vec![arg1,arg2,arg3,arg4])
+                }),
+                _ => {
+                    panic!("argcount for filter {} can not be greater than 4", filter.name) //<< --^  TODO: PANIC IS WAY TO STRICT
+                }
+            };
         }
     }
 
@@ -3442,12 +3459,16 @@ struct ExternalFilter {
 
     /// The arguments to pass to the command, you can use "{{ value }}" or `$value` to represent the input value if needed. It will also be passed to stdin. No escaping needed, it is not mediated by a shell.
     #[serde(default)]
-    args: Vec<String>
+    args: Vec<String>,
+
+    /// The number of positional arguments that this template requires, this is independent of `args` and are passes after processing args.
+    #[serde(default)]
+    argcount: u8,
 }
 
 impl ExternalFilter {
     //TODO: panic may be too strict in here:
-    fn run(&self, input_value: &upon::Value) -> upon::Value {
+    fn run(&self, input_value: &upon::Value, args: Vec<String>) -> upon::Value {
         let process = Command::new(self.command.as_str()).args(
             //args are passed directly, not mediated via shell, so no escaping necessary
             self.args.iter().map(|x| if x == "{{value}}" || x == "{{ value }}" || x == "$value" {
@@ -3457,11 +3478,11 @@ impl ExternalFilter {
                     upon::Value::Float(d) => format!("{}",d),
                     upon::Value::Bool(d) => format!("{}",d),
                     upon::Value::None => String::new(),
-                    _ => panic!("Lists and maps are not supported to be passed as parameter to  external filters yet!"), 
+                    _ => panic!("Lists and maps are not supported to be passed as parameter to  external filters yet!"),
                 }
             } else {
                 x.clone() //too much cloning, but Cow didn't work here because it is coerced into OsStr later
-            })
+            }).chain(args.into_iter())
         ).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn();
 
 

@@ -498,6 +498,23 @@ then picked up again by the templating engine:
 Alternatively, you can use ``{{ value }}`` or `$value` in args, which will pass
 the value as an argument to your script.
 
+Your filter can also accept positional arguments when calling, for example, it can be invoked like:
+
+```
+{{ my_variable | myfilter: x, y }}
+```
+
+To support this, set `argcount` to the number of positional arguments, the maximum value is 4:
+
+```
+[[external_filters]]
+name = "myfilter"
+command = "myscript.sh"
+argcount = 2
+```
+
+These arguments will then be passed on the command line to your external filter script. Note that they always come *after* any static arguments defined in `args`.
+
 ## Markers
 
 The natural way in XML to mark a span of text is using some element that scopes over the text, i.e.:
