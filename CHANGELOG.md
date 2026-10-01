@@ -1,3 +1,8 @@
+# v0.15.16 - 2026-10-01
+
+* fromxml: Support for positional arguments to external filters
+* fromxml: Allow not specifying `args` for external filters
+
 # v0.15.15 - 2026-09-30
 
 * fromxml: Output target type Text when XPathSelector is produced
