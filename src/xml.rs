@@ -3441,6 +3441,7 @@ struct ExternalFilter {
     command: String,
 
     /// The arguments to pass to the command, you can use "{{ value }}" or `$value` to represent the input value if needed. It will also be passed to stdin. No escaping needed, it is not mediated by a shell.
+    #[serde(default)]
     args: Vec<String>
 }
 
