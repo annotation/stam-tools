@@ -282,6 +282,10 @@ path = "//html:body"
 scope_id = "body"
 ```
 
+### discard_if_empty
+
+If set to true, no annotation will be created if the element covers no text. Similarly, no text prefixes/suffixes will be outputted in that case.
+
 ### annotationdata
 
 This is a list of tables that specifies the actual data or body for the annotation. These are the key/value pairs of which we can have an arbitrary number per annotation. We assume you're familiar with the STAM's concept of *AnnotationData*  and

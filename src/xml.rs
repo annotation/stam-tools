@@ -348,6 +348,9 @@ pub struct XmlElementConfig {
     /// The scope refers to the `scope_id` of another element that was used in text extraction.
     marker_scope: Option<String>,
 
+    /// Do not create an annotation nor output text prefixes/suffixes if this element has no text
+    #[serde(default)]
+    discard_if_empty: Option<bool>,
 }
 
 impl XmlElementConfig {
@@ -369,6 +372,7 @@ impl XmlElementConfig {
             include_textsuffix: None,
             scope_id: None,
             marker_scope: None,
+            discard_if_empty: None,
         }
     }
 
@@ -415,10 +419,13 @@ impl XmlElementConfig {
         if self.include_textprefix.is_none() {
             self.include_textprefix = base.include_textprefix;
         }
+        if self.discard_if_empty.is_none() {
+            self.discard_if_empty = base.discard_if_empty;
+        }
     }
 
 
-    /// This sets the mode that determines how the element is handledhttps://www.youtube.com/watch?v=G_BrbhRrP6g
+    /// This sets the mode that determines how the element is handled
     pub fn with_stop(mut self, stop: bool) -> Self {
         self.stop = Some(stop);
         self
@@ -439,6 +446,7 @@ impl XmlElementConfig {
         self.base = iter.into_iter().map(|s| s.into()).collect();
         self
     }
+
 
     pub fn without_text(mut self) -> Self {
         self.text = None;
@@ -1573,7 +1581,7 @@ impl<'a> XmlToStamConverter<'a> {
                 };
 
                 // process the text prefix, a text template to include prior to the actual text
-                self.process_textprefix(element_config, node, resource_id, inputfile, doc_num, &mut begin, &mut bytebegin)?;
+                let (textprefix_charlen, textprefix_len) = self.process_textprefix(element_config, node, resource_id, inputfile, doc_num, &mut begin, &mut bytebegin)?;
 
                 let textbegin = self.cursor;
                 // process all child elements
@@ -1693,6 +1701,20 @@ impl<'a> XmlToStamConverter<'a> {
                     }
                 }
 
+                if self.cursor == textbegin && element_config.discard_if_empty == Some(true) {
+                    if textprefix_len > 0 {
+                        //we have no text but we did output a textprefix even though discard_if_empty was set, we'll have to undo that now:
+                        if self.config.debug {
+                            eprintln!("[STAM fromxml]{} discarding empty element as requested", self.debugindent);
+                        }
+                        self.text.truncate(self.text.len() - textprefix_len);
+                        self.cursor -= textprefix_charlen;
+                    }
+
+                    //WE BAIL OUT EARLY NOW TO DISCARD THIS ELEMENT ENTIRELY (no textsuffix, no addition to positionmap for later annotations)
+                    return Ok(());
+                }
+
                 // process the text suffix, a preconfigured string of text to include after to the actual text
                 self.process_textsuffix(element_config, node, resource_id, inputfile, doc_num, &mut end_discount, &mut end_bytediscount, textbegin)?;
 
@@ -1713,7 +1735,7 @@ impl<'a> XmlToStamConverter<'a> {
                     .and_modify(|v| v.push((doc_num, node.id())))
                     .or_insert(vec![(doc_num, node.id())]);
 
-                // for markers it doesn't matter whether something text is defined as a prefix or suffix, it's functionally the same because a marker has no text itself
+                // for markers it doesn't matter whether some text is defined as a prefix or suffix, it's functionally the same because a marker has no text itself
 
                 self.process_textprefix(element_config, node, resource_id, inputfile, doc_num, &mut begin, &mut bytebegin)?;
                 self.process_textsuffix(element_config, node, resource_id, inputfile, doc_num, &mut end_discount, &mut end_bytediscount, self.cursor)?;
@@ -1747,7 +1769,7 @@ impl<'a> XmlToStamConverter<'a> {
         Ok(())
     }
 
-    /// process the text prefix, a text template to include prior to the actual text
+    /// process the text prefix, a text template to include prior to the actual text. Returns the number of characters the cursor was advanced and the number of bytes
     fn process_textprefix<'b>(
         &mut self,
         element_config: &XmlElementConfig,
@@ -1757,7 +1779,9 @@ impl<'a> XmlToStamConverter<'a> {
         doc_num: usize,
         begin: &mut usize,
         bytebegin: &mut usize
-    ) -> Result<(), XmlConversionError> {
+    ) -> Result<(usize, usize), XmlConversionError> {
+        let mut result_charlen = 0;
+        let mut result_bytelen = 0;
         if let Some(textprefix) = &element_config.textprefix {
             self.pending_whitespace = false;
             if self.config.debug {
@@ -1777,7 +1801,7 @@ impl<'a> XmlToStamConverter<'a> {
                         }
                         e => e,
                     })?;
-            let result_charlen = result.chars().count();
+            result_charlen = result.chars().count();
 
             if !element_config.annotatetextprefix.is_empty() {
                 //record the offsets for textprefix annotation later
@@ -1789,6 +1813,7 @@ impl<'a> XmlToStamConverter<'a> {
 
             self.cursor += result_charlen;
             self.text += &result;
+            result_bytelen = result.len();
 
             if element_config.include_textprefix != Some(true) {
                 // the textprefix will not be part of the annotation's text selection, increment the offsets:
@@ -1796,7 +1821,7 @@ impl<'a> XmlToStamConverter<'a> {
                 *bytebegin += result.len();
             }
         }
-        Ok(())
+        Ok((result_charlen, result_bytelen))
     }
 
     /// process the text suffix, a preconfigured string of text to include after to the actual text
