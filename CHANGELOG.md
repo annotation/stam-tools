@@ -1,3 +1,10 @@
+# v0.16.0 - 2026-10-07
+
+* fromxml: Fix xpath expression matching with `//` operator. There was a bug here causing some matches not to be found.
+* fromxml: Added `discard_if_empty` option for elements
+* moved from github to codeberg: https://proycon.codeberg.org/stam-tools
+* updated to stam-rust v0.19.0 (no functional changes in there aside from the move to codeberg)
+
 # v0.15.16 - 2026-10-01
 
 * fromxml: Support for positional arguments to external filters
