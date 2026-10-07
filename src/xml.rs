@@ -539,7 +539,6 @@ impl XPathExpression {
         config: &'a XmlConversionConfig,
     ) -> impl Iterator<Item = (Option<&'a str>, &'a str, Option<&'a str>)> {
         self.0.trim_start_matches('/').split("/").map(|segment| {
-            eprintln!("DEBUG: segment={}", segment);
             let (prefix, name, condition) = Self::parse_segment(segment);
             let namespace = if let Some(prefix) = prefix {
                 if let Some(namespace) = config.namespaces.get(prefix).map(|x| x.as_str()) {
@@ -559,7 +558,6 @@ impl XPathExpression {
 
     /// matches a node path against an XPath-like expression
     fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
-        eprintln!("DEBUG: testing node {:?} against {}", node, self.0);
         let refiter = self.iter(config).collect::<Vec<_>>().into_iter().rev();
         let pathiter = path.components.iter().rev();
         self.test_withiter(refiter, pathiter, node, 0,0,config)
@@ -574,14 +572,8 @@ impl XPathExpression {
             refdepth += 1;
             if refns.is_none() && refname == "" && condition.is_none() {
                 // This is a `//` selector (empty refname/ns/condition), we bifurcate here so we match both in case SOMETHING matches as well as when NOTHING matches, the recursion covers the latter logic route
-                if config.debug() {
-                    eprintln!("[STAM fromxml]          begin bifurcation: skipping no components of pathiter (one from refiter only)");
-                }
                 if self.test_withiter(refiter.clone(), pathiter.clone(), node, pathdepth, refdepth, config) {
                     return true;
-                }
-                if config.debug() {
-                    eprintln!("[STAM fromxml]          end bifurcation: skipped no components of pathiter (one from refiter only)");
                 }
                 // Bifurcate again for every possible component in the document path (as // is greedy and can match all) !
                 let mut pathiter2 = pathiter.clone();
@@ -593,9 +585,6 @@ impl XPathExpression {
                     if done2 {
                         unreachable!("Logic error in test_withiter bifurcation path: pathiter2 is not depleted but last node had no parent!");
                     }
-                    if config.debug() {
-                        eprintln!("[STAM fromxml]          begin bifurcation: skipping {} components of pathiter",pathdepth);
-                    }
                     if let Some(parent) = node2.parent() {
                         node2 = parent;
                     } else {
@@ -604,9 +593,6 @@ impl XPathExpression {
                     if self.test_withiter(refiter.clone(), pathiter2.clone(), node2, pathdepth+i, refdepth, config) {
                         return true;
                     }
-                    if config.debug() {
-                        eprintln!("[STAM fromxml]          end bifurcation: skipped {} components of pathiter",pathdepth);
-                    }
                 }
             }
             if let Some(component) = pathiter.next() {
@@ -614,10 +600,6 @@ impl XPathExpression {
                     unreachable!("Logic error in test_withiter: pathiter is not depleted but last node had no parent!");
                 }
                 pathdepth += 1;
-                if config.debug() {
-                    eprintln!("[STAM fromxml]          testing component {:?} (depth {}) against refns={:?} refname={} refdepth={} condition={:?}", component, pathdepth, refns, refname, refdepth, condition);
-                    eprintln!("[STAM fromxml]          node={:?}", node);
-                }
                 if refname != "" && refname != "*" {
                     if refns.is_none() != component.namespace.is_none() || component.namespace != refns || refname != component.tagname {
                         return false;
@@ -625,7 +607,6 @@ impl XPathExpression {
                 }
                 if let Some(condition) = condition {
                     if !self.test_condition(condition, node, config) {
-                        eprintln!("[STAM fromxml]            failed on condition test: {:?}", condition);
                         return false;
                     }
                 }
@@ -634,17 +615,11 @@ impl XPathExpression {
                 } else {
                     done = true;
                 }
-                if config.debug() {
-                    eprintln!("[STAM fromxml]            pass");
-                }
             } else {
                 if refname != "" {
                     return false;
                 }
             }
-        }
-        if config.debug() {
-            eprintln!("[STAM fromxml]          match");
         }
         true
     }
@@ -672,9 +647,6 @@ impl XPathExpression {
                     return false;
                 }
             }
-        }
-        if config.debug() {
-            eprintln!("[STAM fromxml]          condition matches");
         }
         true
     }
