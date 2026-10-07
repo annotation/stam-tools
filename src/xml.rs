@@ -539,7 +539,7 @@ impl XPathExpression {
         config: &'a XmlConversionConfig,
     ) -> impl Iterator<Item = (Option<&'a str>, &'a str, Option<&'a str>)> {
         self.0.trim_start_matches('/').split("/").map(|segment| {
-            //eprintln!("DEBUG: segment={}", segment);
+            eprintln!("DEBUG: segment={}", segment);
             let (prefix, name, condition) = Self::parse_segment(segment);
             let namespace = if let Some(prefix) = prefix {
                 if let Some(namespace) = config.namespaces.get(prefix).map(|x| x.as_str()) {
@@ -559,34 +559,65 @@ impl XPathExpression {
 
     /// matches a node path against an XPath-like expression
     fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
+        eprintln!("DEBUG: testing node {:?} against {}", node, self.0);
         let refiter = self.iter(config).collect::<Vec<_>>().into_iter().rev();
         let pathiter = path.components.iter().rev();
-        self.test_withiter(refiter, pathiter, node, config)
+        self.test_withiter(refiter, pathiter, node, 0,0,config)
     }
 
     /// matches a node path against an XPath-like expression
     /// The refiter is from the configuration, pathiter from the document. These paths are matched against eachother.
-    fn test_withiter<'a, 'b>(&self, mut refiter: impl Iterator<Item=(Option<&'a str>, &'a str, Option<&'a str>)> + Clone, mut pathiter: impl Iterator<Item=&'a NodePathComponent<'a, 'b>> + Clone, mut node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
+    /// Both iterators should walk over the path in REVERSE order (deepest node first)
+    fn test_withiter<'a, 'b>(&self, mut refiter: impl Iterator<Item=(Option<&'a str>, &'a str, Option<&'a str>)> + Clone, mut pathiter: impl Iterator<Item=&'a NodePathComponent<'a, 'b>> + Clone, mut node: Node<'a,'b>, mut pathdepth: usize, mut refdepth: usize, config: &XmlConversionConfig) -> bool {
+        let mut done = false;
         while let Some((refns, refname, condition)) = refiter.next() {
+            refdepth += 1;
             if refns.is_none() && refname == "" && condition.is_none() {
                 // This is a `//` selector (empty refname/ns/condition), we bifurcate here so we match both in case SOMETHING matches as well as when NOTHING matches, the recursion covers the latter logic route
-                if self.test_withiter(refiter.clone(), pathiter.clone(), node, config) {
+                if config.debug() {
+                    eprintln!("[STAM fromxml]          begin bifurcation: skipping no components of pathiter (one from refiter only)");
+                }
+                if self.test_withiter(refiter.clone(), pathiter.clone(), node, pathdepth, refdepth, config) {
                     return true;
+                }
+                if config.debug() {
+                    eprintln!("[STAM fromxml]          end bifurcation: skipped no components of pathiter (one from refiter only)");
                 }
                 // Bifurcate again for every possible component in the document path (as // is greedy and can match all) !
                 let mut pathiter2 = pathiter.clone();
+                let mut i = 0;
+                let mut node2 = node.clone();
+                let mut done2 = false;
                 while let Some(_) = pathiter2.next() {
-                    if self.test_withiter(refiter.clone(), pathiter2.clone(), node, config) {
+                    i += 1;
+                    if done2 {
+                        unreachable!("Logic error in test_withiter bifurcation path: pathiter2 is not depleted but last node had no parent!");
+                    }
+                    if config.debug() {
+                        eprintln!("[STAM fromxml]          begin bifurcation: skipping {} components of pathiter",pathdepth);
+                    }
+                    if let Some(parent) = node2.parent() {
+                        node2 = parent;
+                    } else {
+                        done2 = true;
+                    }
+                    if self.test_withiter(refiter.clone(), pathiter2.clone(), node2, pathdepth+i, refdepth, config) {
                         return true;
+                    }
+                    if config.debug() {
+                        eprintln!("[STAM fromxml]          end bifurcation: skipped {} components of pathiter",pathdepth);
                     }
                 }
             }
             if let Some(component) = pathiter.next() {
-                /*
-                if config.debug() {
-                    eprintln!("[STAM fromxml]          testing component {:?} against refns={:?} refname={} condition={:?}", component, refns, refname, condition);
+                if done {
+                    unreachable!("Logic error in test_withiter: pathiter is not depleted but last node had no parent!");
                 }
-                */
+                pathdepth += 1;
+                if config.debug() {
+                    eprintln!("[STAM fromxml]          testing component {:?} (depth {}) against refns={:?} refname={} refdepth={} condition={:?}", component, pathdepth, refns, refname, refdepth, condition);
+                    eprintln!("[STAM fromxml]          node={:?}", node);
+                }
                 if refname != "" && refname != "*" {
                     if refns.is_none() != component.namespace.is_none() || component.namespace != refns || refname != component.tagname {
                         return false;
@@ -594,11 +625,17 @@ impl XPathExpression {
                 }
                 if let Some(condition) = condition {
                     if !self.test_condition(condition, node, config) {
+                        eprintln!("[STAM fromxml]            failed on condition test: {:?}", condition);
                         return false;
                     }
                 }
                 if let Some(parent) = node.parent() {
                     node = parent;
+                } else {
+                    done = true;
+                }
+                if config.debug() {
+                    eprintln!("[STAM fromxml]            pass");
                 }
             } else {
                 if refname != "" {
@@ -606,11 +643,9 @@ impl XPathExpression {
                 }
             }
         }
-        /*
         if config.debug() {
             eprintln!("[STAM fromxml]          match");
         }
-        */
         true
     }
 
@@ -638,9 +673,9 @@ impl XPathExpression {
                 }
             }
         }
-        /*if config.debug() {
+        if config.debug() {
             eprintln!("[STAM fromxml]          condition matches");
-        }*/
+        }
         true
     }
 
@@ -1726,7 +1761,7 @@ impl<'a> XmlToStamConverter<'a> {
             {
                 // this is a marker, keep track of it so we can extract the span between markers in [`extract_element_annotation()`] later
                 if self.config.debug {
-                    eprintln!("[STAM fromxml]{} adding to markers (textprefix={:?}, textsuffix={:?})", self.debugindent, element_config.textprefix, element_config.textsuffix);
+                    eprintln!("[STAM fromxml]{} adding to markers (path={:?}, textprefix={:?}, textsuffix={:?})", self.debugindent, element_config.path, element_config.textprefix, element_config.textsuffix);
                 }
 
 
