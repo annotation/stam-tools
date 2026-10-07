@@ -558,6 +558,7 @@ impl XPathExpression {
 
     /// matches a node path against an XPath-like expression
     fn test<'a, 'b>(&self, path: &NodePath<'a, 'b>, node: Node<'a,'b>, config: &XmlConversionConfig) -> bool {
+        // (TO ADD DEBUG STATEMENTS HERE: git revert commit 0e4831ffcf0292af0244c76f5cb373c865f246f3)
         let refiter = self.iter(config).collect::<Vec<_>>().into_iter().rev();
         let pathiter = path.components.iter().rev();
         self.test_withiter(refiter, pathiter, node, 0,0,config)
@@ -567,6 +568,7 @@ impl XPathExpression {
     /// The refiter is from the configuration, pathiter from the document. These paths are matched against eachother.
     /// Both iterators should walk over the path in REVERSE order (deepest node first)
     fn test_withiter<'a, 'b>(&self, mut refiter: impl Iterator<Item=(Option<&'a str>, &'a str, Option<&'a str>)> + Clone, mut pathiter: impl Iterator<Item=&'a NodePathComponent<'a, 'b>> + Clone, mut node: Node<'a,'b>, mut pathdepth: usize, mut refdepth: usize, config: &XmlConversionConfig) -> bool {
+        // (TO ADD DEBUG STATEMENTS HERE: git revert commit 0e4831ffcf0292af0244c76f5cb373c865f246f3)
         let mut done = false;
         while let Some((refns, refname, condition)) = refiter.next() {
             refdepth += 1;
