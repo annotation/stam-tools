@@ -217,6 +217,8 @@ pub enum XmlWhitespaceHandling {
     Preserve,
     /// all whitespace becomes space, consecutive whitespace is squashed
     Collapse,
+    /// Strip all whitespace (i.e. whitespace in the XML is not signifant)
+    Strip,
 }
 
 
@@ -1579,6 +1581,7 @@ impl<'a> XmlToStamConverter<'a> {
                     match node.attribute((NS_XML, "space")).unwrap() {
                         "preserve" => XmlWhitespaceHandling::Preserve,
                         "collapse" | "replace" => XmlWhitespaceHandling::Collapse,
+                        "strip" | "trim" | "remove" => XmlWhitespaceHandling::Strip,
                         _ => whitespace,
                     }
                 } else if element_config.whitespace == XmlWhitespaceHandling::Inherit
@@ -1678,6 +1681,10 @@ impl<'a> XmlToStamConverter<'a> {
                             if self.config.debug {
                                 eprintln!("[STAM fromxml]{} ^- outputting text child (collapsed whitespace), cursor is now {}: {}",self.debugindent, self.cursor, innertext);
                             }
+                        } else if whitespace == XmlWhitespaceHandling::Strip {
+                            let innertext = innertext.replace(|c: char| c.is_whitespace(), "");
+                            self.text += &innertext;
+                            self.cursor += innertext.chars().count();
                         } else {
                             self.text += &innertext;
                             self.cursor += innertext.chars().count();

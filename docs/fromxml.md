@@ -45,6 +45,7 @@ Values are:
 
 * `Preserve` - Whitespace is kept exactly as it is in the XML.
 * `Collapse` - All whitespace is converted to a single space, and consecutive whitespace is squashed. You usually want to set this for the global option.
+* `Strip` - Strip all whitespace. Removes all whitespaces everywhere (not just leading and trailing!) in this element. You almost never want to use this for the global option, but may want this as an override at element level.
 
 Example:
 
