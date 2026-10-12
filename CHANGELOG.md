@@ -1,3 +1,7 @@
+# v0.16.1 - 2026-10-12
+
+* fromxml: added a whitespace = "Strip" option to strip all whitespace under an element (not just leading or trailing)
+
 # v0.16.0 - 2026-10-07
 
 * fromxml: Fix xpath expression matching with `//` operator. There was a bug here causing some matches not to be found.
